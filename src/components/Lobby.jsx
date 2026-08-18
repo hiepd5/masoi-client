@@ -1,24 +1,16 @@
 import { useState } from "react";
 
-const TEAM_NAMES = [
-  "Tiểu Hiệp",
-  "Long Hải",
-  "Thanh huyền",
-  "Kim Cúc",
-  "Thanh Hiếu",
-  "An Đì",
-  "Yến",
-  "Bích",
-  "Nam",
-  "Hưng Nghẹo",
+const RANDOM_NAMES = [
+  "Rồng Lửa", "Bóng Đêm", "Sói Xám", "Ánh Sao", "Hổ Phách",
+  "Mây Trắng", "Cáo Vàng", "Bão Tố", "Ngọc Bích", "Sấm Sét",
 ];
 
-function suggestDefaultName() {
-  return TEAM_NAMES[Math.floor(Math.random() * TEAM_NAMES.length)];
+function suggestName() {
+  return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
 }
 
 export default function Lobby({ socketRef, onJoined }) {
-  const [name, setName] = useState(() => sessionStorage.getItem("ws_name") || suggestDefaultName());
+  const [name, setName] = useState(() => sessionStorage.getItem("ws_name") || "");
   const [roomCode, setRoomCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,16 +21,16 @@ export default function Lobby({ socketRef, onJoined }) {
 
   function handleCreateRoom() {
     setError("");
+    const finalName = name.trim() || suggestName();
     setLoading(true);
-    persistName(name);
+    persistName(finalName);
     socketRef.current.emit("room:create", {}, (res) => {
       setLoading(false);
       if (!res.ok) {
         setError(res.error || "Không thể tạo phòng.");
         return;
       }
-      // Đổi tên ngay sau khi tạo, vì room:create chưa nhận tên tuỳ chỉnh
-      socketRef.current.emit("room:rename", { newName: name }, () => {
+      socketRef.current.emit("room:rename", { newName: finalName }, () => {
         onJoined(res.roomCode);
       });
     });
@@ -50,11 +42,12 @@ export default function Lobby({ socketRef, onJoined }) {
       setError("Vui lòng nhập mã phòng.");
       return;
     }
+    const finalName = name.trim() || suggestName();
     setLoading(true);
-    persistName(name);
+    persistName(finalName);
     socketRef.current.emit(
       "room:join",
-      { roomCode: roomCode.trim().toUpperCase(), name },
+      { roomCode: roomCode.trim().toUpperCase(), name: finalName },
       (res) => {
         setLoading(false);
         if (!res.ok) {
@@ -72,16 +65,14 @@ export default function Lobby({ socketRef, onJoined }) {
       <p className="subtitle">Chơi cùng bạn bè từ xa</p>
 
       <label>Tên của bạn</label>
-      <select
+      <input
+        type="text"
         value={name}
+        maxLength={20}
         onChange={(e) => setName(e.target.value)}
-      >
-        {TEAM_NAMES.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
+        placeholder="Nhập tên bạn muốn hiển thị..."
+        autoFocus
+      />
 
       {error && <div className="error">{error}</div>}
 
@@ -104,3 +95,4 @@ export default function Lobby({ socketRef, onJoined }) {
     </div>
   );
 }
+
