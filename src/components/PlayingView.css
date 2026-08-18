@@ -1,0 +1,530 @@
+.playing-view-container {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  min-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border-radius: 16px;
+  transition: background-color 0.5s ease, color 0.5s ease;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+}
+
+.night-mode {
+  background-color: #050814;
+  color: #a0a6cc;
+}
+
+.day-mode {
+  background-color: #d8e2eb;
+  color: #1a1f4a;
+}
+
+.phase-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.phase-header h2 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.highlight-role {
+  font-weight: 700;
+  color: #ffd166;
+  background: rgba(0,0,0,0.2);
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.phase-time {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ff5e5e;
+  font-weight: bold;
+  font-size: 1.5rem;
+  padding: 10px 20px;
+  border-radius: 16px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  border: 2px solid #ff5e5e;
+  animation: pulse-border 1.5s infinite;
+}
+
+.day-mode .phase-time {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 5px #ff5e5e; }
+  50% { box-shadow: 0 0 20px #ff5e5e; }
+  100% { box-shadow: 0 0 5px #ff5e5e; }
+}
+
+.game-area {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .playing-view-container {
+    padding: 10px;
+    margin-top: 10px;
+  }
+}
+
+/* MC Chat Panel */
+.mc-chat-panel {
+  width: 100%;
+  max-width: 600px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+}
+
+.day-mode .mc-chat-panel {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+}
+
+.mc-message {
+  font-weight: bold;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  line-height: 1.4;
+}
+
+.day-mode .mc-message {
+  background: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.mc-message.mc { color: #ffd166; }
+.mc-message.death { color: #ff5e5e; }
+.mc-message.save { color: #4ade80; }
+.mc-message.player { color: #ffffff; font-weight: normal; }
+.day-mode .mc-message.player { color: #0b0f2b; }
+
+.wolf-chat-form {
+  display: flex;
+  gap: 8px;
+}
+
+.wolf-chat-form input {
+  margin: 0;
+  flex: 1;
+}
+
+.btn-wolf-chat {
+  width: auto;
+  margin: 0;
+  background: #ff5e5e;
+  color: #fff;
+  transition: transform 0.2s, filter 0.2s;
+}
+
+.btn-wolf-chat:hover {
+  transform: scale(1.05);
+  filter: brightness(1.2);
+}
+
+.btn-wolf-chat:active {
+  transform: scale(0.95);
+}
+
+/* Circle Panel */
+.circle-panel {
+  flex: 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-circle-container {
+  position: relative;
+  width: 340px;
+  height: 340px;
+  margin: 20px auto;
+  border-radius: 50%;
+}
+
+@media (max-width: 400px) {
+  .player-circle-container {
+    transform: scale(0.85);
+    margin: 0 auto;
+  }
+}
+
+.campfire-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(circle, rgba(255,165,0,0.5) 0%, rgba(255,69,0,0) 70%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.campfire-icon {
+  font-size: 2.5rem;
+  animation: flicker 1.5s infinite alternate;
+}
+@keyframes flicker {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.1); opacity: 1; }
+}
+
+.player-circle-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.player-circle-item:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+.avatar-wrapper {
+  position: relative;
+}
+
+.avatar-img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  background: #2a2f5c;
+  transition: all 0.2s;
+}
+
+.day-mode .avatar-img {
+  background: #fff;
+  border-color: #cbd5e1;
+}
+
+.player-circle-item.selected .avatar-img {
+  border-color: #ffd166;
+  box-shadow: 0 0 15px rgba(255, 209, 102, 0.8);
+}
+
+.player-circle-item.dead-or-victim .avatar-img {
+  border-color: #ff5e5e;
+  filter: grayscale(80%);
+}
+
+.player-circle-item.dimmed .avatar-img {
+  opacity: 0.4;
+}
+
+.player-circle-item.seer-wolf .avatar-img {
+  border-color: #ff5e5e !important;
+  box-shadow: 0 0 20px rgba(255, 94, 94, 0.8) !important;
+}
+
+.player-circle-item.seer-human .avatar-img {
+  border-color: #4ade80 !important;
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.8) !important;
+}
+
+.wolf-target-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff5e5e;
+  color: white;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 12px;
+  font-weight: bold;
+}
+
+.mini-voters-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 5px;
+  width: 100%;
+}
+
+.mini-voter-img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid white;
+}
+
+.final-vote-badge {
+  margin-top: 5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: white;
+}
+.final-vote-badge.hang {
+  background: #ff5e5e;
+}
+.final-vote-badge.spare {
+  background: #4ade80;
+}
+
+.defendant-badge {
+  position: absolute;
+  top: -25px;
+  background: #f59e0b;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  animation: pulse 1.5s infinite;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+.player-name-plate {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  text-align: center;
+  background: rgba(0,0,0,0.6);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* Wolf speech bubble */
+.speech-bubble {
+  position: absolute;
+  bottom: 100%;
+  background: #fff;
+  color: #000;
+  padding: 6px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: popIn 0.2s ease-out forwards;
+}
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #fff transparent transparent transparent;
+}
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Action Panel */
+.action-panel {
+  margin-top: 20px;
+  text-align: center;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 16px;
+  border-radius: 12px;
+  width: 100%;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+.day-mode .action-panel {
+  background: rgba(255,255,255,0.5);
+}
+
+.waiting-text {
+  font-style: italic;
+  color: #8892b0;
+}
+.day-mode .waiting-text {
+  color: #64748b;
+}
+
+.btn-action { margin-top: 10px; }
+
+.witch-actions, .final-vote-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-save { background: #4ade80; color: #000; transition: transform 0.2s, filter 0.2s; }
+.btn-skip { background: #94a3b8; color: #000; transition: transform 0.2s, filter 0.2s; }
+.btn-poison, .btn-kill { background: #ff5e5e; color: #fff; transition: transform 0.2s, filter 0.2s; }
+
+.btn-save:hover, .btn-skip:hover, .btn-poison:hover, .btn-kill:hover {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+.btn-save:active, .btn-skip:active, .btn-poison:active, .btn-kill:active {
+  transform: scale(0.95);
+}
+
+/* ================================== */
+/* END GAME RECAP & ANIMATIONS        */
+/* ================================== */
+
+.endgame-recap-panel {
+  margin-top: 20px;
+  background: rgba(0,0,0,0.6);
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  text-align: center;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.recap-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 15px 0;
+  max-height: 200px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.recap-line {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  opacity: 0.5;
+  transition: opacity 0.5s ease;
+}
+
+.recap-line.active {
+  opacity: 1;
+  background: rgba(255,255,255,0.2);
+  border-left: 4px solid #ffd166;
+  font-weight: bold;
+}
+
+.restart-section {
+  margin-top: 20px;
+}
+
+/* Overlay cho icon hoạt ảnh (Sói, Phù thủy...) đè lên Avatar */
+.recap-anim-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 3rem;
+  pointer-events: none;
+  z-index: 20;
+  animation: popInAnim 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes popInAnim {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+  50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Các class lắc/chớp trên avatar khi bị tác động */
+.anim-wolf-bite .avatar-img {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  border-color: #ff5e5e !important;
+  box-shadow: 0 0 20px #ff5e5e;
+}
+
+.anim-guard-shield .avatar-img {
+  animation: pulse-shield 1s infinite alternate;
+  border-color: #4ade80 !important;
+}
+
+@keyframes pulse-shield {
+  from { box-shadow: 0 0 10px #4ade80; }
+  to { box-shadow: 0 0 30px #4ade80; }
+}
+
+.anim-witch-save .avatar-img {
+  animation: pop 0.5s ease-out;
+  border-color: #4ade80 !important;
+}
+
+.anim-witch-poison .avatar-img {
+  animation: shake 0.5s infinite;
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 20px #a855f7;
+}
+
+.anim-hang .avatar-img {
+  animation: dropdown 0.8s ease-in forwards;
+  filter: grayscale(100%);
+}
+
+@keyframes dropdown {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(30px); opacity: 0.5; }
+}
+
+.anim-seer .avatar-img {
+  animation: pulse-eye 1s ease-in-out;
+}
+
+@keyframes pulse-eye {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); box-shadow: 0 0 20px #fff; }
+  100% { transform: scale(1); }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translate3d(-2px, 0, 0); }
+  20%, 80% { transform: translate3d(4px, 0, 0); }
+  30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+  40%, 60% { transform: translate3d(6px, 0, 0); }
+}
+
