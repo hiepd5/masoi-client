@@ -76,6 +76,7 @@ export default function PlayerCircle({
         const hasNominated = nominationVotes && Object.values(nominationVotes).some(v => v.targetId === p.id);
         const onSeat = p.id === defendantId;
         const isWolfTeammate = wolfTeammates.includes(p.id);
+        const isDisconnected = !p.connected;
         
         let recapClass = "";
         let recapIcon = null;
@@ -100,7 +101,7 @@ export default function PlayerCircle({
         return (
           <div
             key={p.id}
-            className={`player-circle-item ${isDead ? "dead" : ""} ${isSelected ? "selected" : ""} ${hasNominated ? "nominated" : ""} ${onSeat ? "hot-seat" : ""} ${recapClass} ${showRed ? "dead-or-victim" : ""} ${seerResultClass} ${!p.alive ? "dimmed" : ""} ${isWolfTeammate ? "wolf-teammate" : ""}`}
+            className={`player-circle-item ${isDead ? "dead" : ""} ${isSelected ? "selected" : ""} ${hasNominated ? "nominated" : ""} ${onSeat ? "hot-seat" : ""} ${recapClass} ${showRed ? "dead-or-victim" : ""} ${seerResultClass} ${!p.alive ? "dimmed" : ""} ${isWolfTeammate ? "wolf-teammate" : ""} ${isDisconnected ? "disconnected" : ""}`}
             style={{
               transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
             }}
@@ -108,6 +109,7 @@ export default function PlayerCircle({
           >
             <div className="avatar-wrapper">
               <img src={p.avatar} alt={p.name} className="avatar-img" />
+              {isDisconnected && <div className="disconnect-overlay">🔌</div>}
               {wolfPicksOnThis > 0 && <div className="wolf-target-badge">{wolfPicksOnThis} 🐺</div>}
               {isWolfTeammate && <div className="wolf-badge">🐺</div>}
               {recapIcon && (
