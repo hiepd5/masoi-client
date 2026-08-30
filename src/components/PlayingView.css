@@ -456,15 +456,23 @@
 
 /* Vote Buttons styling */
 .voted-active {
-  transform: scale(1.05);
-  box-shadow: 0 0 15px currentColor;
-  font-weight: bold;
+  transform: scale(1.05) !important;
+  box-shadow: 0 0 15px rgba(255,255,255,0.5) !important;
+  font-weight: bold !important;
+  border: 2px solid white !important;
 }
 
 .voted-dim {
-  opacity: 0.3;
-  pointer-events: none;
-  filter: grayscale(80%);
+  opacity: 0.25 !important;
+  pointer-events: none !important;
+  filter: grayscale(90%) brightness(0.5) !important;
+  cursor: not-allowed !important;
+}
+
+/* Override browser disabled style on voted buttons */
+button.voted-active:disabled,
+button.voted-dim:disabled {
+  cursor: not-allowed;
 }
 
 
