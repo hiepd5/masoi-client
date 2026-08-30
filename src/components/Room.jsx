@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
 
-export default function Room({ socketRef, roomCode, onLeave }) {
-  const [room, setRoom] = useState(null);
+export default function Room({ socketRef, roomCode, roomData, onLeave }) {
+  const room = roomData;
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [error, setError] = useState("");
@@ -12,10 +12,7 @@ export default function Room({ socketRef, roomCode, onLeave }) {
   useEffect(() => {
     const socket = socketRef.current;
     
-    socket.on("room:update", (data) => setRoom(data));
-    
     socket.on("mc:message", (msg) => {
-      // Xác định loại tin nhắn để tô màu
       let type = "mc";
       if (msg.includes("không qua khỏi") || msg.includes("bị treo cổ") || msg.includes("chết")) type = "death";
       else if (msg.includes("không ai chết") || msg.includes("được tha")) type = "save";
@@ -28,7 +25,6 @@ export default function Room({ socketRef, roomCode, onLeave }) {
     });
 
     return () => {
-      socket.off("room:update");
       socket.off("mc:message");
       socket.off("village:chat");
     };

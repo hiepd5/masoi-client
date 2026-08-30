@@ -8,6 +8,7 @@ const SERVER_URL = import.meta.env.PROD
 export function useSocket() {
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
+  const [roomData, setRoomData] = useState(null);
 
   useEffect(() => {
     const socket = io(SERVER_URL, { autoConnect: true });
@@ -15,11 +16,12 @@ export function useSocket() {
 
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
+    socket.on("room:update", (data) => setRoomData(data));
 
     return () => {
       socket.disconnect();
     };
   }, []);
 
-  return { socketRef, connected };
+  return { socketRef, connected, roomData, setRoomData };
 }
