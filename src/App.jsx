@@ -4,7 +4,7 @@ import Lobby from "./components/Lobby.jsx";
 import Room from "./components/Room.jsx";
 
 export default function App() {
-  const { socketRef, connected, roomData, setRoomData } = useSocket();
+  const { socketRef, connected, roomData, setRoomData, setActiveRoom } = useSocket();
   const [roomCode, setRoomCode] = useState(null);
 
   if (!connected) {
@@ -15,14 +15,25 @@ export default function App() {
     );
   }
 
+  function handleJoined(code) {
+    setActiveRoom(code);
+    setRoomCode(code);
+  }
+
+  function handleLeave() {
+    setActiveRoom(null);
+    setRoomCode(null);
+    setRoomData(null);
+  }
+
   return roomCode ? (
     <Room 
       socketRef={socketRef} 
       roomCode={roomCode} 
       roomData={roomData}
-      onLeave={() => { setRoomCode(null); setRoomData(null); }} 
+      onLeave={handleLeave} 
     />
   ) : (
-    <Lobby socketRef={socketRef} onJoined={(code) => setRoomCode(code)} />
+    <Lobby socketRef={socketRef} onJoined={handleJoined} />
   );
 }
