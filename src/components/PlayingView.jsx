@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
+import VoiceRoom from "./VoiceRoom.jsx";
 
 const ROLE_LABELS = {
   wolf: "Sói",
@@ -150,10 +151,19 @@ export default function PlayingView({ room, socketRef, mcLog }) {
         <div className="game-time">Thời gian trận: {gameTimeStr}</div>
         <h2>{g.winner ? "Trò Chơi Kết Thúc" : `Ngày ${g.dayNumber} - ${g.nightDayPhase.toUpperCase()}`}</h2>
         <p className="role-text">Vai của bạn: <span className="highlight-role">{me?.role ? ROLE_LABELS[me.role] || me.role : "Chết"}</span></p>
-        {showPhaseTimer && phaseTimeStr && (
-          <div className="phase-time">Còn lại: {phaseTimeStr}</div>
-        )}
+      {showPhaseTimer && phaseTimeStr && (
+        <div className="phase-time">Còn lại: {phaseTimeStr}</div>
+      )}
       </div>
+
+      {!g.winner && (
+        <VoiceRoom 
+          socketRef={socketRef} 
+          isNight={isNight} 
+          myRole={me?.role} 
+          wolfTeammates={g.wolfTeammates || []} 
+        />
+      )}
 
       <div className="game-area">
         {/* Lịch sử MC Chat */}

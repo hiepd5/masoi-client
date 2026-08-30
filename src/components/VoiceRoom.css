@@ -1,0 +1,26 @@
+﻿.voice-room-container {
+  background: rgba(0,0,0,0.4);
+  padding: 10px;
+  border-radius: 12px;
+  margin-top: 10px;
+  text-align: center;
+}
+.voice-status {
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #4ade80;
+}
+.voice-buttons {
+  display: flex;
+  justify-content: center;
+}
+.voice-loading, .voice-error {
+  padding: 10px;
+  text-align: center;
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+.voice-error { color: #ff5e5e; }
+.lk-control-bar { background: transparent !important; border: none !important; }
+
