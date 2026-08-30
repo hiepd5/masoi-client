@@ -17,6 +17,7 @@ export default function PlayerCircle({
   finalVotes = {}, // { voterId: 'hang' | 'spare' }
   defendantId = null,
   recapAnimation = null,
+  wolfTeammates = [],
 }) {
   const numPlayers = players.length;
   const radius = 140; // radius of the circle
@@ -74,6 +75,7 @@ export default function PlayerCircle({
 
         const hasNominated = nominationVotes && Object.values(nominationVotes).some(v => v.targetId === p.id);
         const onSeat = p.id === defendantId;
+        const isWolfTeammate = wolfTeammates.includes(p.id);
         
         let recapClass = "";
         let recapIcon = null;
@@ -98,7 +100,7 @@ export default function PlayerCircle({
         return (
           <div
             key={p.id}
-            className={`player-circle-item ${isDead ? "dead" : ""} ${isSelected ? "selected" : ""} ${hasNominated ? "nominated" : ""} ${onSeat ? "hot-seat" : ""} ${recapClass} ${showRed ? "dead-or-victim" : ""} ${seerResultClass} ${!p.alive ? "dimmed" : ""}`}
+            className={`player-circle-item ${isDead ? "dead" : ""} ${isSelected ? "selected" : ""} ${hasNominated ? "nominated" : ""} ${onSeat ? "hot-seat" : ""} ${recapClass} ${showRed ? "dead-or-victim" : ""} ${seerResultClass} ${!p.alive ? "dimmed" : ""} ${isWolfTeammate ? "wolf-teammate" : ""}`}
             style={{
               transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
             }}
@@ -107,6 +109,7 @@ export default function PlayerCircle({
             <div className="avatar-wrapper">
               <img src={p.avatar} alt={p.name} className="avatar-img" />
               {wolfPicksOnThis > 0 && <div className="wolf-target-badge">{wolfPicksOnThis} 🐺</div>}
+              {isWolfTeammate && <div className="wolf-badge">🐺</div>}
               {recapIcon && (
                 <div className="recap-anim-overlay">{recapIcon}</div>
               )}
@@ -149,3 +152,4 @@ export default function PlayerCircle({
     </div>
   );
 }
+

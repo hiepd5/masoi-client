@@ -140,8 +140,10 @@ export default function PlayingView({ room, socketRef, mcLog }) {
     return <div className="playing-view-container"><div className="waiting-text">Đang tải dữ liệu tổng kết...</div></div>;
   }
 
+  const roleBgClass = isNight && me?.role ? `role-bg-${me.role}` : "";
+
   return (
-    <div className={`playing-view-container ${isNight && !g.winner ? "night-mode" : "day-mode"}`}>
+    <div className={`playing-view-container ${isNight && !g.winner ? "night-mode" : "day-mode"} ${roleBgClass}`}>
       
       {/* HUD: Phase Info */}
       <div className="phase-header">
@@ -200,12 +202,13 @@ export default function PlayingView({ room, socketRef, mcLog }) {
             wolfVictimId={g.witchInfo?.victimId}
             nightDeaths={g.nightDeaths}
             wolfPicksVisible={g.wolfPicksVisible}
-            bubbleChatLog={localBubbleChatLog}
+            wolfChatLog={localBubbleChatLog}
             seerLastResult={me?.role === "seer" ? g.seerLastResult : null}
             nominationVotes={g.nominationVotes}
             finalVotes={g.finalVotes}
             defendantId={g.phase === "day_final_vote" ? g.hotSeatQueue[g.hotSeatIndex] : null}
             recapAnimation={recapAnimation}
+            wolfTeammates={g.wolfTeammates || []}
           />
 
           {g.winner ? (
@@ -273,11 +276,19 @@ export default function PlayingView({ room, socketRef, mcLog }) {
                   {g.nightDayPhase === "day_final_vote" && (
                     <div className="final-vote-actions">
                       <p>Phán xét: {room.players.find(p => p.id === g.hotSeatQueue[g.hotSeatIndex])?.name}</p>
-                      <button className="btn-kill" onClick={() => socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true))}>
-                        Treo cổ {g.finalVotes && g.finalVotes[me.id] === "hang" && " (Đã chọn)"}
+                      <button 
+                        className={`btn-kill ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-dim" : ""}`} 
+                        disabled={!!(g.finalVotes && g.finalVotes[me.id])}
+                        onClick={() => socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true))}
+                      >
+                        ⚔️ Treo cổ {g.finalVotes && g.finalVotes[me.id] === "hang" && " ✓"}
                       </button>
-                      <button className="btn-save" onClick={() => socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true))}>
-                        Tha {g.finalVotes && g.finalVotes[me.id] === "spare" && " (Đã chọn)"}
+                      <button 
+                        className={`btn-save ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-dim" : ""}`} 
+                        disabled={!!(g.finalVotes && g.finalVotes[me.id])}
+                        onClick={() => socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true))}
+                      >
+                        🕊️ Tha {g.finalVotes && g.finalVotes[me.id] === "spare" && " ✓"}
                       </button>
                     </div>
                   )}
@@ -291,3 +302,4 @@ export default function PlayingView({ room, socketRef, mcLog }) {
     </div>
   );
 }
+

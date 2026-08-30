@@ -9,6 +9,7 @@
   border-radius: 16px;
   transition: background-color 0.5s ease, color 0.5s ease;
   box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  overflow: hidden;
 }
 
 .night-mode {
@@ -21,9 +22,30 @@
   color: #1a1f4a;
 }
 
+/* Backgrounds for roles */
+.role-bg-wolf { background: linear-gradient(180deg, #1a0000 0%, #050814 100%) !important; }
+.role-bg-wolf::before { content: "🐺"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
+.role-bg-seer { background: linear-gradient(180deg, #1a0033 0%, #050814 100%) !important; }
+.role-bg-seer::before { content: "👁️"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
+.role-bg-guard { background: linear-gradient(180deg, #001a0d 0%, #050814 100%) !important; }
+.role-bg-guard::before { content: "🛡️"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
+.role-bg-witch { background: linear-gradient(180deg, #1f0033 0%, #050814 100%) !important; }
+.role-bg-witch::before { content: "🧪"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
+.role-bg-tanner { background: linear-gradient(180deg, #1a1a1a 0%, #050814 100%) !important; }
+.role-bg-tanner::before { content: "💀"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
+.role-bg-villager { background: linear-gradient(180deg, #1a1000 0%, #050814 100%) !important; }
+.role-bg-villager::before { content: "🌾"; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 15rem; opacity: 0.04; pointer-events: none; z-index: 0; }
+
 .phase-header {
   text-align: center;
   margin-bottom: 20px;
+  position: relative;
+  z-index: 1;
 }
 
 .phase-header h2 {
@@ -72,6 +94,8 @@
   align-items: center;
   gap: 20px;
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
 @media (max-width: 768px) {
@@ -264,6 +288,26 @@
   box-shadow: 0 0 20px rgba(74, 222, 128, 0.8) !important;
 }
 
+.wolf-teammate .avatar-img {
+  border-color: #ff2222 !important;
+  box-shadow: 0 0 12px rgba(255, 34, 34, 0.6);
+  animation: pulse-wolf 1.5s infinite;
+}
+
+@keyframes pulse-wolf {
+  0% { box-shadow: 0 0 8px rgba(255, 34, 34, 0.4); }
+  50% { box-shadow: 0 0 20px rgba(255, 34, 34, 0.8); }
+  100% { box-shadow: 0 0 8px rgba(255, 34, 34, 0.4); }
+}
+
+.wolf-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 0.9rem;
+  filter: drop-shadow(0 0 4px red);
+}
+
 .wolf-target-badge {
   position: absolute;
   top: -8px;
@@ -402,13 +446,27 @@
 .btn-skip { background: #94a3b8; color: #000; transition: transform 0.2s, filter 0.2s; }
 .btn-poison, .btn-kill { background: #ff5e5e; color: #fff; transition: transform 0.2s, filter 0.2s; }
 
-.btn-save:hover, .btn-skip:hover, .btn-poison:hover, .btn-kill:hover {
+.btn-save:hover:not(:disabled), .btn-skip:hover:not(:disabled), .btn-poison:hover:not(:disabled), .btn-kill:hover:not(:disabled) {
   transform: scale(1.05);
   filter: brightness(1.1);
 }
-.btn-save:active, .btn-skip:active, .btn-poison:active, .btn-kill:active {
+.btn-save:active:not(:disabled), .btn-skip:active:not(:disabled), .btn-poison:active:not(:disabled), .btn-kill:active:not(:disabled) {
   transform: scale(0.95);
 }
+
+/* Vote Buttons styling */
+.voted-active {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px currentColor;
+  font-weight: bold;
+}
+
+.voted-dim {
+  opacity: 0.3;
+  pointer-events: none;
+  filter: grayscale(80%);
+}
+
 
 /* ================================== */
 /* END GAME RECAP & ANIMATIONS        */
@@ -527,4 +585,5 @@
   30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
   40%, 60% { transform: translate3d(6px, 0, 0); }
 }
+
 
