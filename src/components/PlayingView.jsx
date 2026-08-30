@@ -14,7 +14,9 @@ const ROLE_LABELS = {
 
 export default function PlayingView({ room, socketRef, mcLog }) {
   const g = room.game;
-  const me = room.players.find((p) => p.id === socketRef.current.id);
+  // Dùng playerId ổn định (không thay đổi khi reconnect)
+  const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
+  const me = room.players.find((p) => p.id === myPlayerId);
   
   const [selectedId, setSelectedId] = useState(null);
   const [wolfChatInput, setWolfChatInput] = useState("");

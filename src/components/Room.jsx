@@ -7,7 +7,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
   const [nameInput, setNameInput] = useState("");
   const [error, setError] = useState("");
   const [mcLog, setMcLog] = useState([]);
-  const myId = socketRef.current?.id;
+  const myId = sessionStorage.getItem("ws_playerId") || socketRef.current?.id;
 
   useEffect(() => {
     const socket = socketRef.current;

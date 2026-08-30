@@ -30,7 +30,9 @@ export default function Lobby({ socketRef, onJoined }) {
         setError(res.error || "Không thể tạo phòng.");
         return;
       }
-      socketRef.current.emit("room:rename", { newName: finalName }, () => {
+      socketRef.current.emit("room:rename", { newName: finalName }, (renameRes) => {
+        // playerId được set trong room:create ACK
+        if (res.playerId) sessionStorage.setItem("ws_playerId", res.playerId);
         onJoined(res.roomCode);
       });
     });
@@ -54,6 +56,8 @@ export default function Lobby({ socketRef, onJoined }) {
           setError(res.error || "Không thể vào phòng.");
           return;
         }
+        // Lưu playerId ổn định (không đổi khi reconnect)
+        if (res.playerId) sessionStorage.setItem("ws_playerId", res.playerId);
         onJoined(res.roomCode);
       }
     );
