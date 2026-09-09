@@ -38,6 +38,7 @@ export function useSocket() {
   const [connected, setConnected] = useState(false);
   const [roomData, setRoomData] = useState(null);
   const [reconnectStatus, setReconnectStatus] = useState(null); // null | 'reconnecting' | 'failed'
+  const [kicked, setKicked] = useState(null); // null | string (reason)
   const activeRoomCodeRef = useRef(null);
 
   useEffect(() => {
@@ -106,8 +107,15 @@ export function useSocket() {
       socket.emit('pong:client');
     });
 
+    // Kicked by host
+    socket.on('room:kicked', ({ reason }) => {
+      clearSession();
+      setKicked(reason || 'Bạn đã bị kick khỏi phòng.');
+    });
+
     return () => {
       socket.off('ping:server');
+      socket.off('room:kicked');
       socket.disconnect();
     };
   }, []);
@@ -116,5 +124,5 @@ export function useSocket() {
     activeRoomCodeRef.current = code;
   }
 
-  return { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus };
+  return { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus, kicked, clearKicked: () => setKicked(null) };
 }

@@ -11,6 +11,16 @@
   color: white;
 }
 
+/* game-left backgrounds */
+.game-left.bg-day { background: radial-gradient(ellipse at 50% 30%, #0a1a08 0%, #050d03 100%); }
+.game-left.bg-night { background: radial-gradient(ellipse at 50% 30%, #060a18 0%, #020408 100%); }
+
+/* Phase colors for HUD */
+.phase-header.phase-day { border-bottom-color: rgba(245,158,11,0.5); border-bottom-width: 2px; }
+.phase-header.phase-night { border-bottom-color: rgba(99,102,241,0.5); border-bottom-width: 2px; }
+.phase-header.phase-vote { border-bottom-color: rgba(239,68,68,0.6); border-bottom-width: 2px; }
+.phase-header.phase-defense { border-bottom-color: rgba(249,115,22,0.6); border-bottom-width: 2px; }
+
 /* HUD Top Bar */
 .phase-header {
   display: flex;
@@ -27,10 +37,11 @@
 .hud-center { display: flex; align-items: center; gap: 10px; }
 .hud-right { display: flex; align-items: center; gap: 8px; }
 .game-time { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; }
-.phase-title { font-size: 14px; font-weight: 700; margin: 0; white-space: nowrap; }
+.phase-title { font-size: 14px; font-weight: 700; margin: 0; white-space: nowrap; text-shadow: 0 1px 6px rgba(0,0,0,0.9); }
 .role-badge {
-  background: rgba(255,255,255,0.1);
-  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.3);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
   border-radius: 20px;
   padding: 4px 12px;
   font-size: 13px;
@@ -74,9 +85,9 @@
 .game-right {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgba(255,255,255,0.1);
+  border-left: 1px solid rgba(255,255,255,0.08);
   overflow: hidden;
-  background: rgba(0,0,0,0.3);
+  background: rgba(3,4,12,0.9);
   gap: 0;
 }
 
@@ -106,7 +117,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255,255,255,0.1);
   flex-shrink: 0;
 }
@@ -164,8 +176,22 @@
   to   { transform: scale(1.2); }
 }
 
-/* Mobile portrait: tab layout */
+/* Mobile portrait: tab layout and compact HUD */
 @media (max-width: 700px), screen and (orientation: portrait) {
+  .phase-header { 
+    flex-wrap: wrap; 
+    padding: 6px 10px; 
+    min-height: auto; 
+    gap: 4px; 
+  }
+  .hud-left { flex: 1; }
+  .hud-right { flex-shrink: 0; gap: 4px; }
+  .game-time { display: none; } /* ẩn giờ chơi, giữ phase timer */
+  .phase-title { font-size: 13px; }
+  .btn-mc-voice { font-size: 11px; padding: 4px 8px; }
+  .btn-fullscreen { font-size: 11px; padding: 4px 8px; }
+  .phase-timer { font-size: 14px; font-weight: 800; padding: 4px 12px; }
+
   .mobile-tab-bar { display: flex; }
   .game-layout {
     grid-template-columns: 1fr;
@@ -185,7 +211,6 @@
     border-top: none;
     max-height: none;
   }
-  .phase-title { font-size: 12px; }
 }
 
 /* Landscape desktop: ẩn tab bar, show cả 2 cột bình thường */

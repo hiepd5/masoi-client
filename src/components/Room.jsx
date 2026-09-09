@@ -198,6 +198,32 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
             <span className="player-name">{p.name}</span>
             {p.isHost && <span className="host-tag">Chủ phòng</span>}
             {p.id === myId && <span className="you-tag">Bạn</span>}
+            
+            {me?.isHost && p.id !== myId && (
+              <button
+                className="btn-kick"
+                onClick={() => {
+                  if (window.confirm(`Kick ${p.name} khỏi phòng?`)) {
+                    socketRef.current.emit('room:kick', { targetId: p.id }, (res) => {
+                      if (res && !res.ok) alert(res.error || 'Không kick được.');
+                    });
+                  }
+                }}
+                style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(239,68,68,0.2)',
+                  border: '1px solid rgba(239,68,68,0.4)',
+                  color: '#fca5a5',
+                  borderRadius: 6,
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                Kick ✕
+              </button>
+            )}
           </div>
         ))}
       </div>

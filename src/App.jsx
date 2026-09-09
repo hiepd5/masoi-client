@@ -4,7 +4,7 @@ import Lobby from "./components/Lobby.jsx";
 import Room from "./components/Room.jsx";
 
 export default function App() {
-  const { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus } = useSocket();
+  const { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus, kicked, clearKicked } = useSocket();
   const [roomCode, setRoomCode] = useState(null);
 
   useEffect(() => {
@@ -13,6 +13,15 @@ export default function App() {
       setActiveRoom(roomData.code);
     }
   }, [roomData?.code, roomCode]);
+
+  useEffect(() => {
+    if (kicked) {
+      setActiveRoom(null);
+      setRoomCode(null);
+      alert(kicked);
+      clearKicked();
+    }
+  }, [kicked, setActiveRoom, clearKicked]);
 
   if (!connected) {
     return (

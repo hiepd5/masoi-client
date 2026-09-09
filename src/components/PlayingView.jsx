@@ -313,7 +313,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       />
       
       {/* Top HUD bar */}
-      <div className="phase-header">
+      <div className={`phase-header phase-${g.nightDayPhase ? g.nightDayPhase.split('_')[0] : 'default'}`}>
         <div className="hud-left">
           <div className="game-time">⏱ {gameTimeStr}</div>
           <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
@@ -373,7 +373,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       >
         
         {/* LEFT: Player circle + actions */}
-        <div className={`game-left ${mobileTab === 'game' ? 'tab-active' : 'tab-hidden'}`} style={{ position: 'relative' }}>
+        <div className={`game-left ${mobileTab === 'game' ? 'tab-active' : 'tab-hidden'} ${isNight ? 'bg-night' : 'bg-day'}`} style={{ position: 'relative' }}>
           <ParticleBackground isNight={isNight} />
           <PlayerCircle 
             players={room.players} 

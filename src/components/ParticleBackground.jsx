@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function ParticleBackground({ isNight }) {
   const canvasRef = useRef(null);
@@ -48,8 +48,10 @@ export default function ParticleBackground({ isNight }) {
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 2.5, 0, Math.PI*2);
           ctx.fillStyle = g; ctx.fill();
         } else {
+          // Day: hạt bụi vàng nhạt — giảm opacity mạnh để không làm sáng nền
+          const alpha2 = (0.3 + 0.3 * Math.sin(p.phase)) * 0.35; // giảm từ 0.55 xuống 0.35*0.6
           ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-          ctx.fillStyle = `hsla(${p.hue},90%,75%,${alpha})`; ctx.fill();
+          ctx.fillStyle = `hsla(${p.hue},70%,55%,${alpha2})`; ctx.fill();
         }
       });
     }
