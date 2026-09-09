@@ -27,67 +27,104 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
     };
   }, [socketRef]);
 
-  // Speak MC messages via TTS (giọng nữ tiếng Việt)
+  // ============ AUDIO: MiniMax MP3 + TTS fallback ============
+  const currentAudioRef = useRef(null);
+
+  // Map câu MC tĩnh → file MP3 đã thu âm
+  const AUDIO_MAP = [
+    { pattern: /Đêm đầu tiên buông xuống/,     file: 'game_start.mp3' },
+    { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,   file: 'wolf_wake.mp3' },
+    { pattern: /Sói đã ngủ lại.*Phù Thủy/,     file: 'witch_wake.mp3' },
+    { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,file: 'seer_wake.mp3' },
+    { pattern: /Đêm qua không ai chết/,         file: 'no_death.mp3' },
+    { pattern: /Mời cả làng đề cử/,             file: 'begin_nominate.mp3' },
+    { pattern: /Không ai bị đề cử/,             file: 'no_nominee.mp3' },
+    { pattern: /Treo cổ hay Tha/,               file: 'begin_vote.mp3' },
+    { pattern: /Bảo Vệ ơi.*thức dậy/,          file: 'night_starts.mp3' },
+    { pattern: /Phe Sói chiến thắng/,           file: 'wolf_wins.mp3' },
+    { pattern: /Phe Dân chiến thắng/,           file: 'village_wins.mp3' },
+    { pattern: /Chán Đời.*thắng/,               file: 'tanner_wins.mp3' },
+    { pattern: /Cả làng thảo luận/,             file: 'begin_discuss.mp3' },
+  ];
+
+  function findAudioFile(text) {
+    for (const { pattern, file } of AUDIO_MAP) {
+      if (pattern.test(text)) return `/audio/${file}`;
+    }
+    return null; // câu động (có tên người chơi) → dùng TTS
+  }
+
+  function playMp3(src) {
+    return new Promise((resolve) => {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+      const audio = new Audio(src);
+      audio.volume = 0.92;
+      currentAudioRef.current = audio;
+      audio.onended = resolve;
+      audio.onerror = resolve; // file lỗi → tiếp tục không crash
+      audio.play().catch(resolve);
+    });
+  }
+
+  function speakTTS(text, voice) {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis) { resolve(); return; }
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'vi-VN';
+      utter.rate = 0.82;
+      utter.pitch = 0.95;
+      utter.volume = 0.9;
+      if (voice) utter.voice = voice;
+      utter.onend = resolve;
+      utter.onerror = resolve;
+      window.speechSynthesis.speak(utter);
+    });
+  }
+
+  function pickBestViVoice() {
+    const voices = window.speechSynthesis?.getVoices() || [];
+    const vi = voices.filter(v => v.lang === 'vi-VN' || v.lang === 'vi');
+    const preferred = [
+      'Microsoft HoaiMy Online (Natural)',
+      'Microsoft NamMinh Online (Natural)',
+      'Microsoft HoaiMy', 'Microsoft NamMinh',
+      'Google Tiếng Việt', 'Google Vietnamese',
+    ];
+    for (const name of preferred) {
+      const found = vi.find(v => v.name.includes(name));
+      if (found) return found;
+    }
+    return vi.find(v => v.name.toLowerCase().includes('online')) || vi[0] || null;
+  }
+
   useEffect(() => {
     if (!mcVoiceEnabled) return;
     if (mcLog.length === 0) return;
     const newMessages = mcLog.slice(lastSpokenRef.current + 1).filter(m => m.type !== 'player');
     if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
 
-    function pickBestViVoice(voices) {
-      const vi = voices.filter(v => v.lang === 'vi-VN' || v.lang === 'vi');
-      // Danh sách ưu tiên: Microsoft Neural (Edge/Chrome Windows) > Google > bất kỳ
-      const preferred = [
-        'Microsoft HoaiMy Online (Natural)',   // Edge female neural — tốt nhất
-        'Microsoft NamMinh Online (Natural)',   // Edge male neural
-        'Microsoft HoaiMy',
-        'Microsoft NamMinh',
-        'Google Tiếng Việt',
-        'Google Vietnamese',
-        'Google vi',
-      ];
-      for (const name of preferred) {
-        const found = vi.find(v => v.name.includes(name));
-        if (found) return found;
-      }
-      // Fallback: lấy voice có "online" trong tên (thường là neural)
-      const online = vi.find(v => v.name.toLowerCase().includes('online'));
-      if (online) return online;
-      // Cuối cùng: lấy voice đầu tiên của tiếng Việt
-      return vi[0] || null;
-    }
-
-    function speakAll() {
-      const voices = window.speechSynthesis.getVoices();
-      const bestVoice = pickBestViVoice(voices);
-
-      // Đọc từng tin nhắn — không cancel giữa chừng, dùng queue
-      window.speechSynthesis.cancel();
-      newMessages.forEach((msg, i) => {
-        const utter = new SpeechSynthesisUtterance(msg.text || msg);
-        utter.lang = 'vi-VN';
-        utter.rate = 0.82;   // chậm hơn một chút, kịch tính hơn
-        utter.pitch = 0.95;  // pitch tự nhiên, không cần cao giả nữ
-        utter.volume = 0.9;
-        if (bestVoice) utter.voice = bestVoice;
-        // Thêm delay nhỏ giữa các tin nhắn bằng cách dùng onend
-        if (i === 0) {
-          window.speechSynthesis.speak(utter);
+    async function playAll() {
+      const voice = pickBestViVoice();
+      for (const msg of newMessages) {
+        const text = msg.text || msg;
+        const audioSrc = findAudioFile(text);
+        if (audioSrc) {
+          await playMp3(audioSrc);        // ✅ File MP3 MiniMax
         } else {
-          const prev = new SpeechSynthesisUtterance(' ');
-          prev.lang = 'vi-VN';
-          prev.volume = 0;
-          window.speechSynthesis.speak(prev);
-          window.speechSynthesis.speak(utter);
+          await speakTTS(text, voice);    // 🔄 TTS cho câu động (tên người)
         }
-      });
+      }
     }
 
-    // voices có thể chưa load xong → chờ
-    if (window.speechSynthesis.getVoices().length > 0) {
-      speakAll();
+    // Khởi chạy (đợi voices load nếu cần)
+    if (!window.speechSynthesis || window.speechSynthesis.getVoices().length > 0) {
+      playAll();
     } else {
-      window.speechSynthesis.addEventListener('voiceschanged', speakAll, { once: true });
+      window.speechSynthesis.addEventListener('voiceschanged', playAll, { once: true });
     }
 
     lastSpokenRef.current = mcLog.length - 1;
