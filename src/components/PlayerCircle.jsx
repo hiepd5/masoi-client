@@ -1,5 +1,6 @@
 import React from "react";
 import "./PlayingView.css"; // We will add specific styles here or in index.css
+import Campfire from './Campfire.jsx';
 
 export default function PlayerCircle({
   players,
@@ -34,10 +35,11 @@ export default function PlayerCircle({
   };
 
   return (
+    <div className="player-circle-scene">
     <div className="player-circle-container">
       {/* Campfire / Center Chat */}
       <div className="campfire-center">
-        <div className="campfire-icon">🔥</div>
+        <Campfire />
       </div>
 
       {/* Players */}
@@ -128,6 +130,7 @@ export default function PlayerCircle({
             }}
             onClick={() => p.alive && onSelectPlayer && onSelectPlayer(p.id)}
           >
+            <div className="avatar-card-3d">
             <div className="avatar-wrapper">
               <img src={p.avatar} alt={p.name} className={`avatar-img ${isMe ? 'avatar-me' : ''}`} style={avatarStyle} />
               {isMe && roleColor && (
@@ -140,6 +143,7 @@ export default function PlayerCircle({
               {recapIcon && (
                 <div className="recap-anim-overlay">{recapIcon}</div>
               )}
+            </div>
             </div>
             
             {phase === "day_final_vote" && p.id === defendantId && (
@@ -176,6 +180,7 @@ export default function PlayerCircle({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

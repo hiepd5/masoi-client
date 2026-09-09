@@ -3,6 +3,7 @@ import PlayerCircle from "./PlayerCircle.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
 import FullscreenButton from "./FullscreenButton.jsx";
+import ParticleBackground from "./ParticleBackground.jsx";
 
 const ROLE_LABELS = {
   wolf: "Sói",
@@ -280,7 +281,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       <div className="game-layout">
         
         {/* LEFT: Player circle + actions */}
-        <div className="game-left">
+        <div className="game-left" style={{ position: 'relative' }}>
+          <ParticleBackground isNight={isNight} />
           <PlayerCircle 
             players={room.players} 
             me={me}

@@ -1086,3 +1086,157 @@ button.voted-dim:disabled {
   transition: all 0.2s;
 }
 .btn-mc-voice:hover { background: rgba(255,255,255,0.15); }
+
+/* ============================================ */
+/* 3D PLAYER SCENE */
+/* ============================================ */
+.player-circle-scene {
+  perspective: 700px;
+  perspective-origin: 50% 25%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+.player-circle-container {
+  transform: rotateX(10deg);
+  transform-style: preserve-3d;
+}
+.avatar-card-3d {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-style: preserve-3d;
+  transition: transform 0.2s ease;
+}
+.player-circle-item:hover:not(.dead) .avatar-card-3d {
+  transform: translateZ(18px) scale(1.06);
+}
+.player-circle-item.selected .avatar-card-3d {
+  transform: translateZ(28px) scale(1.08);
+}
+/* Drop shadow under each avatar for 3D floor effect */
+.avatar-wrapper::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 75%;
+  height: 6px;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.45) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* ============================================ */
+/* 3D CAMPFIRE */
+/* ============================================ */
+.campfire-3d {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.campfire-logs { position: absolute; bottom: 2px; width: 48px; height: 12px; }
+.log {
+  position: absolute;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg,#5c2d0a,#7c3d12,#4a1f06);
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,0.5);
+}
+.log-1 { width: 44px; bottom: 0; left: 50%; transform: translateX(-50%) rotate(-12deg); }
+.log-2 { width: 40px; bottom: 0; left: 50%; transform: translateX(-50%) rotate(12deg); }
+.flame-group { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 38px; height: 52px; }
+.flame {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 50% 50% 30% 30%;
+  transform-origin: bottom center;
+}
+.flame-outer {
+  width: 38px; height: 52px;
+  background: linear-gradient(to top,#ff6000,#ff9500,#ffcc00,transparent);
+  filter: blur(1.5px);
+  animation: fl-outer 1.3s ease-in-out infinite alternate;
+}
+.flame-mid {
+  width: 26px; height: 40px;
+  background: linear-gradient(to top,#ff4500,#ff7700,#ffaa00,transparent);
+  filter: blur(1px);
+  animation: fl-mid 0.95s ease-in-out infinite alternate-reverse;
+}
+.flame-inner {
+  width: 18px; height: 30px;
+  background: linear-gradient(to top,#ff2200,#ff5500,#ffcc44,transparent);
+  filter: blur(0.5px);
+  animation: fl-inner 1.1s ease-in-out infinite alternate;
+}
+.flame-core {
+  width: 9px; height: 18px;
+  background: linear-gradient(to top,#fff5cc,#ffeeaa,transparent);
+  animation: fl-core 0.7s ease-in-out infinite alternate-reverse;
+}
+@keyframes fl-outer {
+  from { transform: translateX(-50%) scaleX(1) rotate(-2deg); }
+  to   { transform: translateX(-50%) scaleX(0.93) scaleY(1.06) rotate(2deg); }
+}
+@keyframes fl-mid {
+  from { transform: translateX(-50%) scaleX(1) rotate(1deg); }
+  to   { transform: translateX(-50%) scaleX(1.08) scaleY(0.95) rotate(-2deg); }
+}
+@keyframes fl-inner {
+  from { transform: translateX(-50%) scaleY(1) rotate(-1.5deg); }
+  to   { transform: translateX(-50%) scaleY(1.12) rotate(1.5deg); }
+}
+@keyframes fl-core {
+  from { transform: translateX(-50%) scaleY(1); opacity:0.9; }
+  to   { transform: translateX(-50%) scaleY(1.2); opacity:1; }
+}
+.campfire-embers { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); width: 40px; height: 1px; }
+.ember {
+  position: absolute;
+  width: 3px; height: 3px;
+  border-radius: 50%;
+  background: #ff7700;
+  box-shadow: 0 0 4px #ffaa00;
+}
+.ember-1 { animation: emb 2.1s ease-out infinite 0.0s; left:30%; --ex:-12px; }
+.ember-2 { animation: emb 1.8s ease-out infinite 0.3s; left:55%; --ex:14px; }
+.ember-3 { animation: emb 2.4s ease-out infinite 0.6s; left:45%; --ex:-6px; }
+.ember-4 { animation: emb 1.6s ease-out infinite 0.9s; left:65%; --ex:18px; }
+.ember-5 { animation: emb 2.2s ease-out infinite 0.2s; left:25%; --ex:-16px; }
+.ember-6 { animation: emb 1.9s ease-out infinite 0.7s; left:50%; --ex:8px; }
+.ember-7 { animation: emb 2.0s ease-out infinite 1.1s; left:40%; --ex:-10px; }
+.ember-8 { animation: emb 1.7s ease-out infinite 0.4s; left:60%; --ex:12px; }
+@keyframes emb {
+  0%   { transform: translate(0,0) scale(1); opacity:1; }
+  60%  { transform: translate(var(--ex),-35px) scale(0.7); opacity:0.7; }
+  100% { transform: translate(var(--ex),-60px) scale(0.2); opacity:0; }
+}
+.campfire-glow {
+  position: absolute;
+  bottom: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 80px; height: 22px;
+  background: radial-gradient(ellipse, rgba(255,110,0,0.5) 0%, transparent 70%);
+  border-radius: 50%;
+  animation: cglow 1.5s ease-in-out infinite alternate;
+}
+@keyframes cglow {
+  from { opacity:0.6; transform:translateX(-50%) scaleX(0.9); }
+  to   { opacity:1; transform:translateX(-50%) scaleX(1.15); }
+}
+.night-mode .campfire-glow {
+  width:110px;
+  background: radial-gradient(ellipse, rgba(255,120,0,0.55) 0%, rgba(255,60,0,0.2) 55%, transparent 70%);
+}
