@@ -111,19 +111,259 @@
   flex-shrink: 0;
 }
 
-/* Mobile: stacked layout */
-@media (max-width: 640px) or (orientation: portrait) {
+/* ============================================ */
+/* MOBILE TAB NAVIGATION                        */
+/* ============================================ */
+
+/* Tab bar — CHỈ hiện trên mobile portrait */
+.mobile-tab-bar {
+  display: none; /* mặc định ẩn trên desktop */
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.6);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  padding: 4px 8px;
+  gap: 6px;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.6);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+  position: relative;
+}
+.tab-btn.active {
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  border-bottom: 2px solid #f59e0b;
+}
+.unread-badge {
+  background: #ef4444;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: badge-pulse 0.8s ease-in-out infinite alternate;
+}
+@keyframes badge-pulse {
+  from { transform: scale(1); }
+  to   { transform: scale(1.2); }
+}
+
+/* Mobile portrait: tab layout */
+@media (max-width: 700px), screen and (orientation: portrait) {
+  .mobile-tab-bar { display: flex; }
   .game-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 1fr;
   }
-  .game-right {
+  /* Ẩn/hiện panel theo tab */
+  .tab-hidden { display: none !important; }
+  .tab-active {
+    display: flex !important;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+  }
+  /* game-right full height khi ở tab chat */
+  .game-right.tab-active {
     border-left: none;
-    border-top: 1px solid rgba(255,255,255,0.1);
-    max-height: 220px;
+    border-top: none;
+    max-height: none;
   }
   .phase-title { font-size: 12px; }
 }
+
+/* Landscape desktop: ẩn tab bar, show cả 2 cột bình thường */
+@media (min-width: 701px) and (orientation: landscape) {
+  .mobile-tab-bar { display: none !important; }
+  .tab-hidden { display: flex !important; }
+  .game-layout { grid-template-columns: 1fr 340px; }
+}
+
+/* ============================================ */
+/* CHAT MESSAGES — IMPROVED BUBBLES             */
+/* ============================================ */
+
+/* MC announcement */
+.chat-mc-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.12);
+  border-left: 3px solid #f59e0b;
+  border-radius: 0 10px 10px 0;
+  padding: 10px 12px;
+  margin: 4px 0;
+}
+.chat-mc-bubble.mc-death {
+  background: rgba(239, 68, 68, 0.15);
+  border-left-color: #ef4444;
+}
+.chat-mc-bubble.mc-win {
+  background: rgba(34, 197, 94, 0.15);
+  border-left-color: #22c55e;
+}
+.chat-mc-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.chat-mc-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+.chat-mc-text {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #fde68a;
+  font-weight: 500;
+}
+.chat-mc-bubble.mc-death .chat-mc-text { color: #fca5a5; }
+.chat-mc-bubble.mc-win   .chat-mc-text { color: #86efac; }
+
+/* Player chat bubbles */
+.chat-player-bubble {
+  display: flex;
+  flex-direction: column;
+  max-width: 84%;
+  margin: 3px 0;
+}
+.chat-player-bubble.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chat-player-bubble.others {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+.chat-sender-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 3px;
+}
+.chat-sender-avatar { font-size: 13px; }
+.chat-sender-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.75);
+}
+.chat-bubble-body {
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.mine .chat-bubble-body {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+.others .chat-bubble-body {
+  background: rgba(255,255,255,0.1);
+  color: #f1f5f9;
+  border-bottom-left-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.wolf-msg .chat-bubble-body {
+  background: rgba(185, 28, 28, 0.4) !important;
+  border: 1px solid rgba(239,68,68,0.3) !important;
+}
+.chat-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  margin-top: 2px;
+}
+.chat-time-mine { align-self: flex-end; }
+
+/* ============================================ */
+/* CHAT INPUT — MOBILE OPTIMISED               */
+/* ============================================ */
+
+.chat-input-area {
+  flex-shrink: 0;
+  padding: 8px 10px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  background: rgba(0,0,0,0.4);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.chat-input-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.chat-input {
+  flex: 1;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 22px;
+  color: white;
+  padding: 10px 16px;
+  font-size: 16px; /* 16px ngăn iOS Safari zoom khi focus */
+  outline: none;
+  transition: border-color 0.2s;
+}
+.chat-input:focus {
+  border-color: rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.12);
+}
+.chat-input::placeholder { color: rgba(255,255,255,0.35); }
+.btn-send {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.btn-send:active { transform: scale(0.9); }
+.village-send { background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; }
+.wolf-send    { background: linear-gradient(135deg, #dc2626, #991b1b); color: white; }
+
+/* Scroll to bottom button */
+.scroll-to-bottom-btn {
+  position: relative;
+  display: block;
+  margin: 0 auto 6px;
+  background: rgba(99, 102, 241, 0.9);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  animation: fade-in 0.2s ease;
+  z-index: 5;
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 
 /* Fullscreen button */
 .fullscreen-controls {

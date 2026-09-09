@@ -59,10 +59,18 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [showRoleTutorial, setShowRoleTutorial] = useState(false);
   const [chatLog, setChatLog] = useState([]);
   const [mySkipVote, setMySkipVote] = useState(false);
-  const [dayNightTransition, setDayNightTransition] = useState(null); // 'to-night' | 'to-day' | null
+  const [dayNightTransition, setDayNightTransition] = useState(null);
   const [reactions, setReactions] = useState([]);
+  // Mobile tab navigation
+  const [mobileTab, setMobileTab] = useState('game');   // 'game' | 'chat'
+  const [unreadCount, setUnreadCount] = useState(0);    // tin chưa đọc khi ở tab game
+  const [newMsgCount, setNewMsgCount] = useState(0);    // tin mới khi không ở cuối chat
+  const [isAtBottom, setIsAtBottom] = useState(true);   // có đang ở cuối chat không
   const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
   const prevIsNightRef = useRef(null);
+  const touchStartXRef = useRef(null);  // swipe gesture
+
 
 
   useEffect(() => {
@@ -73,10 +81,21 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     }
   }, [me?.role]);
 
-  // Tự động cuộn chat xuống cuối cùng
+  // Smart scroll + unread tracking
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatLog, localBubbleChatLog]);
+    if (chatLog.length === 0) return;
+    // Tăng unread khi đang ở tab game
+    if (mobileTab !== 'chat') {
+      setUnreadCount(prev => prev + 1);
+    }
+    // Chỉ auto-scroll nếu đang ở cuối
+    if (isAtBottom) {
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 50);
+    } else {
+      setNewMsgCount(prev => prev + 1);
+    }
+  }, [chatLog]);
+
 
   // Timer cho game và phase
   useEffect(() => {
@@ -321,11 +340,40 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
       </div>
 
+      {/* Tab bar — chỉ hiện trên mobile portrait */}
+      <div className="mobile-tab-bar">
+        <button
+          className={`tab-btn ${mobileTab === 'game' ? 'active' : ''}`}
+          onClick={() => setMobileTab('game')}
+        >
+          🎮 Trò Chơi
+        </button>
+        <button
+          className={`tab-btn ${mobileTab === 'chat' ? 'active' : ''}`}
+          onClick={() => { setMobileTab('chat'); setUnreadCount(0); setNewMsgCount(0); }}
+        >
+          💬 Chat
+          {unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}
+        </button>
+      </div>
+
       {/* Main 2-column layout */}
-      <div className="game-layout">
+      <div
+        className="game-layout"
+        onTouchStart={e => { touchStartXRef.current = e.touches[0].clientX; }}
+        onTouchEnd={e => {
+          if (!touchStartXRef.current) return;
+          const dx = e.changedTouches[0].clientX - touchStartXRef.current;
+          if (Math.abs(dx) > 60) {
+            if (dx < 0) { setMobileTab('chat'); setUnreadCount(0); setNewMsgCount(0); }
+            else { setMobileTab('game'); }
+          }
+          touchStartXRef.current = null;
+        }}
+      >
         
         {/* LEFT: Player circle + actions */}
-        <div className="game-left" style={{ position: 'relative' }}>
+        <div className={`game-left ${mobileTab === 'game' ? 'tab-active' : 'tab-hidden'}`} style={{ position: 'relative' }}>
           <ParticleBackground isNight={isNight} />
           <PlayerCircle 
             players={room.players} 
@@ -454,7 +502,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
 
         {/* RIGHT: Chat + Voice */}
-        <div className="game-right">
+        <div className={`game-right ${mobileTab === 'chat' ? 'tab-active' : 'tab-hidden'}`}>
           {!g.winner && (
             <VoiceRoom 
               socketRef={socketRef} 
@@ -466,60 +514,106 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           )}
           
           <div className="mc-chat-panel">
-            <div className="chat-messages">
+            {/* Chat messages */}
+            <div
+              className="chat-messages"
+              ref={chatContainerRef}
+              onScroll={e => {
+                const el = e.target;
+                const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+                setIsAtBottom(atBottom);
+                if (atBottom) setNewMsgCount(0);
+              }}
+            >
               {chatLog.map((msg, i) => (
-                <div key={i} className={`chat-msg chat-msg-${msg.type} ${
-                  msg.senderId === me?.id ? 'chat-msg-mine' : ''
-                }`}>
+                <div key={i} className={`chat-msg chat-msg-${msg.type} ${msg.senderId === me?.id ? 'chat-msg-mine' : ''}`}>
+
+                  {/* MC announcement */}
                   {msg.type === 'mc' && (
-                    <div className="chat-mc-bubble">
-                      <span className="chat-mc-icon">📜</span>
-                      <span className="chat-mc-text">{msg.text}</span>
-                      <span className="chat-time">{msg.time}</span>
+                    <div className={`chat-mc-bubble ${msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') ? 'mc-death' : ''} ${msg.text?.includes('chiến thắng') ? 'mc-win' : ''}`}>
+                      <span className="chat-mc-icon">
+                        {msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') ? '💀' :
+                         msg.text?.includes('chiến thắng') ? '🏆' :
+                         msg.text?.includes('Sói') && msg.text?.includes('thức dậy') ? '🐺' :
+                         msg.text?.includes('Tiên Tri') ? '🔮' :
+                         msg.text?.includes('Phù Thủy') ? '🧙' :
+                         msg.text?.includes('sáng') ? '☀️' : '📜'}
+                      </span>
+                      <div className="chat-mc-content">
+                        <span className="chat-mc-text">{msg.text}</span>
+                        <span className="chat-time">{msg.time}</span>
+                      </div>
                     </div>
                   )}
+
+                  {/* Player chat bubble */}
                   {(msg.type === 'village' || msg.type === 'wolf') && (
-                    <div className={`chat-player-bubble ${msg.senderId === me?.id ? 'mine' : 'others'}`}>
+                    <div className={`chat-player-bubble ${msg.senderId === me?.id ? 'mine' : 'others'} ${msg.type === 'wolf' ? 'wolf-msg' : ''}`}>
                       {msg.senderId !== me?.id && (
-                        <span className="chat-sender-name">{msg.senderName}</span>
+                        <div className="chat-sender-row">
+                          <span className="chat-sender-avatar">{msg.type === 'wolf' ? '🐺' : '👤'}</span>
+                          <span className="chat-sender-name">{msg.senderName}</span>
+                          <span className="chat-time">{msg.time}</span>
+                        </div>
                       )}
                       <div className="chat-bubble-body">
-                        {msg.type === 'wolf' && <span className="chat-wolf-icon">🐺</span>}
                         <span className="chat-text">{msg.text}</span>
                       </div>
-                      <span className="chat-time">{msg.time}</span>
+                      {msg.senderId === me?.id && (
+                        <span className="chat-time chat-time-mine">{msg.time}</span>
+                      )}
                     </div>
                   )}
+
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
-            
-            {isNight && me?.role === "wolf" && (
-              <form onSubmit={handleWolfChat} className="wolf-chat-form">
-                <input 
-                  placeholder="Chat riêng cho bầy sói..." 
-                  value={wolfChatInput}
-                  onChange={e => setWolfChatInput(e.target.value)}
-                />
-                <button type="submit" className="btn-wolf-chat">Gửi</button>
-              </form>
-            )}
 
-            {!isNight && me?.alive && (
-              <form onSubmit={handleVillageChat} className="wolf-chat-form">
-                <input 
-                  placeholder="Thảo luận chung với dân làng..." 
-                  value={villageChatInput}
-                  onChange={e => setVillageChatInput(e.target.value)}
-                />
-                <button type="submit" className="btn-wolf-chat" style={{background: "#7c8cf8"}}>Chat</button>
-              </form>
+            {/* Nút scroll xuống khi có tin mới */}
+            {newMsgCount > 0 && (
+              <button
+                className="scroll-to-bottom-btn"
+                onClick={() => {
+                  chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                  setNewMsgCount(0);
+                  setIsAtBottom(true);
+                }}
+              >
+                ↓ {newMsgCount} tin mới
+              </button>
             )}
+            
+            {/* Chat inputs — sticky bottom */}
+            <div className="chat-input-area">
+              {isNight && me?.role === "wolf" && (
+                <form onSubmit={handleWolfChat} className="chat-input-form wolf-input">
+                  <input 
+                    className="chat-input"
+                    placeholder="🐺 Chat bầy sói..." 
+                    value={wolfChatInput}
+                    onChange={e => setWolfChatInput(e.target.value)}
+                  />
+                  <button type="submit" className="btn-send wolf-send">➤</button>
+                </form>
+              )}
+              {!isNight && me?.alive && (
+                <form onSubmit={handleVillageChat} className="chat-input-form village-input">
+                  <input 
+                    className="chat-input"
+                    placeholder="💬 Thảo luận..." 
+                    value={villageChatInput}
+                    onChange={e => setVillageChatInput(e.target.value)}
+                  />
+                  <button type="submit" className="btn-send village-send">➤</button>
+                </form>
+              )}
+            </div>
           </div>
         </div>
 
       </div>
+
 
       {/* EndGame overlay stays full width */}
       {g.winner && g.history && (
