@@ -34,30 +34,52 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
     const newMessages = mcLog.slice(lastSpokenRef.current + 1).filter(m => m.type !== 'player');
     if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
 
+    function pickBestViVoice(voices) {
+      const vi = voices.filter(v => v.lang === 'vi-VN' || v.lang === 'vi');
+      // Danh sách ưu tiên: Microsoft Neural (Edge/Chrome Windows) > Google > bất kỳ
+      const preferred = [
+        'Microsoft HoaiMy Online (Natural)',   // Edge female neural — tốt nhất
+        'Microsoft NamMinh Online (Natural)',   // Edge male neural
+        'Microsoft HoaiMy',
+        'Microsoft NamMinh',
+        'Google Tiếng Việt',
+        'Google Vietnamese',
+        'Google vi',
+      ];
+      for (const name of preferred) {
+        const found = vi.find(v => v.name.includes(name));
+        if (found) return found;
+      }
+      // Fallback: lấy voice có "online" trong tên (thường là neural)
+      const online = vi.find(v => v.name.toLowerCase().includes('online'));
+      if (online) return online;
+      // Cuối cùng: lấy voice đầu tiên của tiếng Việt
+      return vi[0] || null;
+    }
+
     function speakAll() {
       const voices = window.speechSynthesis.getVoices();
-      const viVoices = voices.filter(v => v.lang.startsWith('vi'));
-      // Ưu tiên giọng nữ: tìm theo tên hoặc lấy voice thứ hai nếu có
-      const femaleVoice = viVoices.find(v =>
-        v.name.toLowerCase().includes('female') ||
-        v.name.includes('Thu') ||
-        v.name.includes('Hoa') ||
-        v.name.toLowerCase().includes('google vi') ||
-        v.name.toLowerCase().includes('nam linh')
-      ) || viVoices[viVoices.length > 1 ? 1 : 0]; // fallback: voice cuối thường là nữ
+      const bestVoice = pickBestViVoice(voices);
 
+      // Đọc từng tin nhắn — không cancel giữa chừng, dùng queue
+      window.speechSynthesis.cancel();
       newMessages.forEach((msg, i) => {
-        setTimeout(() => {
-          if (!window.speechSynthesis) return;
-          window.speechSynthesis.cancel(); // hủy bất kỳ lời nói đang chạy
-          const utter = new SpeechSynthesisUtterance(msg.text || msg);
-          utter.lang = 'vi-VN';
-          utter.rate = 0.85;
-          utter.pitch = 1.3;  // pitch cao hơn = nghe nữ hơn
-          utter.volume = 0.85;
-          if (femaleVoice) utter.voice = femaleVoice;
+        const utter = new SpeechSynthesisUtterance(msg.text || msg);
+        utter.lang = 'vi-VN';
+        utter.rate = 0.82;   // chậm hơn một chút, kịch tính hơn
+        utter.pitch = 0.95;  // pitch tự nhiên, không cần cao giả nữ
+        utter.volume = 0.9;
+        if (bestVoice) utter.voice = bestVoice;
+        // Thêm delay nhỏ giữa các tin nhắn bằng cách dùng onend
+        if (i === 0) {
           window.speechSynthesis.speak(utter);
-        }, i * 800);
+        } else {
+          const prev = new SpeechSynthesisUtterance(' ');
+          prev.lang = 'vi-VN';
+          prev.volume = 0;
+          window.speechSynthesis.speak(prev);
+          window.speechSynthesis.speak(utter);
+        }
       });
     }
 
