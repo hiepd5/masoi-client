@@ -55,7 +55,10 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [showRoleTutorial, setShowRoleTutorial] = useState(false);
   const [chatLog, setChatLog] = useState([]);
   const [mySkipVote, setMySkipVote] = useState(false);
+  const [dayNightTransition, setDayNightTransition] = useState(null); // 'to-night' | 'to-day' | null
   const chatEndRef = useRef(null);
+  const prevIsNightRef = useRef(null);
+
 
   useEffect(() => {
     if (me?.role && g.dayNumber === 1 && g.nightDayPhase === 'night_guard') {
@@ -104,6 +107,18 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     (g.nightDayPhase === "night_wolf" && me?.role === "wolf") ||
     (g.nightDayPhase === "night_witch" && me?.role === "witch") ||
     (g.nightDayPhase === "night_seer" && me?.role === "seer");
+
+  // Hiệu ứng chuyển ngày/đêm: mặt trăng đi xuống (đêm) / mặt trời đi lên (ngày)
+  useEffect(() => {
+    if (prevIsNightRef.current === null) { prevIsNightRef.current = isNight; return; }
+    if (prevIsNightRef.current !== isNight) {
+      const type = isNight ? 'to-night' : 'to-day';
+      setDayNightTransition(type);
+      const t = setTimeout(() => setDayNightTransition(null), 2600);
+      prevIsNightRef.current = isNight;
+      return () => clearTimeout(t);
+    }
+  }, [isNight]);
 
   useEffect(() => {
     const handleVillageChat = ({ senderId, senderName, message }) => {
@@ -474,6 +489,15 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             <h2>Bạn là {ROLE_LABELS[me.role]}</h2>
             <p>{ROLE_DESCRIPTIONS[me.role]}</p>
             <button className="btn-primary" onClick={() => setShowRoleTutorial(false)}>Hiểu rồi!</button>
+          </div>
+        </div>
+      )}
+
+      {/* Hiệu ứng chuyển Ngày/Đêm — mặt trời đi lên / mặt trăng đi xuống */}
+      {dayNightTransition && (
+        <div className={`day-night-transition transition-${dayNightTransition}`}>
+          <div className="transition-emoji">
+            {dayNightTransition === 'to-night' ? '🌙' : '☀️'}
           </div>
         </div>
       )}

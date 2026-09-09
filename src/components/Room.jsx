@@ -14,44 +14,60 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
   useEffect(() => {
     const socket = socketRef.current;
     
+    // Chỉ MC messages vào mcLog — village:chat được xử lý trong PlayingView
     socket.on("mc:message", (msg) => {
       let type = "mc";
       if (msg.includes("không qua khỏi") || msg.includes("bị treo cổ") || msg.includes("chết")) type = "death";
       else if (msg.includes("không ai chết") || msg.includes("được tha")) type = "save";
-      
       setMcLog(prev => [...prev, { text: msg, type }]);
-    });
-
-    socket.on("village:chat", ({ senderName, message }) => {
-      setMcLog(prev => [...prev, { text: `${senderName}: ${message}`, type: "player" }]);
     });
 
     return () => {
       socket.off("mc:message");
-      socket.off("village:chat");
     };
   }, [socketRef]);
 
-  // Speak MC messages via TTS
+  // Speak MC messages via TTS (giọng nữ tiếng Việt)
   useEffect(() => {
     if (!mcVoiceEnabled) return;
     if (mcLog.length === 0) return;
-    const newMessages = mcLog.slice(lastSpokenRef.current + 1);
-    newMessages.forEach((msg, i) => {
-      setTimeout(() => {
-        if (!window.speechSynthesis) return;
-        const utter = new SpeechSynthesisUtterance(msg.text || msg);
-        utter.lang = 'vi-VN';
-        utter.rate = 0.9;
-        utter.pitch = 1.0;
-        utter.volume = 0.8;
-        // Try to find Vietnamese voice
-        const voices = window.speechSynthesis.getVoices();
-        const viVoice = voices.find(v => v.lang.startsWith('vi'));
-        if (viVoice) utter.voice = viVoice;
-        window.speechSynthesis.speak(utter);
-      }, i * 500);
-    });
+    const newMessages = mcLog.slice(lastSpokenRef.current + 1).filter(m => m.type !== 'player');
+    if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
+
+    function speakAll() {
+      const voices = window.speechSynthesis.getVoices();
+      const viVoices = voices.filter(v => v.lang.startsWith('vi'));
+      // Ưu tiên giọng nữ: tìm theo tên hoặc lấy voice thứ hai nếu có
+      const femaleVoice = viVoices.find(v =>
+        v.name.toLowerCase().includes('female') ||
+        v.name.includes('Thu') ||
+        v.name.includes('Hoa') ||
+        v.name.toLowerCase().includes('google vi') ||
+        v.name.toLowerCase().includes('nam linh')
+      ) || viVoices[viVoices.length > 1 ? 1 : 0]; // fallback: voice cuối thường là nữ
+
+      newMessages.forEach((msg, i) => {
+        setTimeout(() => {
+          if (!window.speechSynthesis) return;
+          window.speechSynthesis.cancel(); // hủy bất kỳ lời nói đang chạy
+          const utter = new SpeechSynthesisUtterance(msg.text || msg);
+          utter.lang = 'vi-VN';
+          utter.rate = 0.85;
+          utter.pitch = 1.3;  // pitch cao hơn = nghe nữ hơn
+          utter.volume = 0.85;
+          if (femaleVoice) utter.voice = femaleVoice;
+          window.speechSynthesis.speak(utter);
+        }, i * 800);
+      });
+    }
+
+    // voices có thể chưa load xong → chờ
+    if (window.speechSynthesis.getVoices().length > 0) {
+      speakAll();
+    } else {
+      window.speechSynthesis.addEventListener('voiceschanged', speakAll, { once: true });
+    }
+
     lastSpokenRef.current = mcLog.length - 1;
   }, [mcLog, mcVoiceEnabled]);
 

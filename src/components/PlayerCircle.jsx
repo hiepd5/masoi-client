@@ -8,20 +8,30 @@ export default function PlayerCircle({
   myRole,
   onSelectPlayer,
   selectedPlayerId,
-  wolfVictimId, // to show red for witch
-  nightDeaths, // to show red for day
+  wolfVictimId,
+  nightDeaths,
   wolfPicksVisible,
   wolfChatLog,
-  seerLastResult, // { targetId, result: "wolf" | "not_wolf" }
+  seerLastResult,
   nominationVotes,
-  finalVotes = {}, // { voterId: 'hang' | 'spare' }
+  finalVotes = {},
   defendantId = null,
   recapAnimation = null,
   wolfTeammates = [],
   speakingIds = [],
 }) {
   const numPlayers = players.length;
-  const radius = 140; // radius of the circle
+  const radius = 140;
+
+  // Màu glow theo vai — dùng để làm ring xung quanh avatar của chính mình
+  const ROLE_COLORS = {
+    wolf:     '#ef4444',
+    seer:     '#a855f7',
+    guard:    '#3b82f6',
+    witch:    '#22c55e',
+    tanner:   '#9ca3af',
+    villager: '#eab308',
+  };
 
   return (
     <div className="player-circle-container">
@@ -79,6 +89,15 @@ export default function PlayerCircle({
         const isWolfTeammate = wolfTeammates.includes(p.id);
         const isSpeaking = (speakingIds || []).includes(p.id);
         const isDisconnected = !p.connected;
+        const isMe = p.id === me?.id;
+        const roleColor = isMe ? (ROLE_COLORS[myRole] || '#ffffff') : null;
+
+        // Inline style cho avatar của chính mình: ring màu theo vai
+        const avatarStyle = isMe && roleColor ? {
+          boxShadow: `0 0 0 3px ${roleColor}, 0 0 18px ${roleColor}99, 0 0 35px ${roleColor}44`,
+          transform: 'scale(1.12)',
+          transition: 'all 0.3s ease',
+        } : {};
         
         let recapClass = "";
         let recapIcon = null;
@@ -110,7 +129,10 @@ export default function PlayerCircle({
             onClick={() => p.alive && onSelectPlayer && onSelectPlayer(p.id)}
           >
             <div className="avatar-wrapper">
-              <img src={p.avatar} alt={p.name} className="avatar-img" />
+              <img src={p.avatar} alt={p.name} className={`avatar-img ${isMe ? 'avatar-me' : ''}`} style={avatarStyle} />
+              {isMe && roleColor && (
+                <div className="me-role-ring" style={{ borderColor: roleColor, boxShadow: `0 0 10px ${roleColor}` }} />
+              )}
               {isDisconnected && <div className="disconnect-overlay">🔌</div>}
               {wolfPicksOnThis > 0 && <div className="wolf-target-badge">{wolfPicksOnThis} 🐺</div>}
               {isWolfTeammate && <div className="wolf-badge">🐺</div>}
@@ -126,8 +148,8 @@ export default function PlayerCircle({
               </div>
             )}
 
-            <div className="player-name-plate">
-              {p.name} {p.id === me?.id && "(Bạn)"}
+            <div className="player-name-plate" style={isMe && roleColor ? { color: roleColor, fontWeight: 700, textShadow: `0 0 8px ${roleColor}` } : {}}>
+              {p.name}{isMe && <span className="you-indicator"> ★</span>}
             </div>
 
             {/* Hiển thị ai đang vote cho người này (Day Nominate) */}

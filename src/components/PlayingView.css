@@ -866,6 +866,106 @@ button.voted-dim:disabled {
 }
 
 
+/* ============ AVATAR: NHÂN VẬT CỦA BẠN ============ */
+.avatar-me {
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+/* Ring màu theo vai — vòng bao quanh avatar */
+.me-role-ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 3px solid;
+  pointer-events: none;
+  z-index: 4;
+  animation: role-ring-pulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes role-ring-pulse {
+  from { opacity: 0.7; transform: scale(1); }
+  to   { opacity: 1;   transform: scale(1.05); }
+}
+
+.you-indicator {
+  color: #ffd700;
+  font-size: 12px;
+  margin-left: 2px;
+}
+
+/* ============ HIỆU ỨNG CHUYỂN NGÀY/ĐÊM ============ */
+.day-night-transition {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 900;
+  overflow: hidden;
+}
+
+/* Overlay mờ khi chuyển */
+.transition-to-night {
+  animation: darken-flash 2.5s ease-in-out forwards;
+}
+.transition-to-day {
+  animation: brighten-flash 2.5s ease-in-out forwards;
+}
+
+@keyframes darken-flash {
+  0%   { background: transparent; }
+  30%  { background: rgba(5,5,30,0.75); }
+  70%  { background: rgba(5,5,30,0.75); }
+  100% { background: transparent; }
+}
+
+@keyframes brighten-flash {
+  0%   { background: transparent; }
+  30%  { background: rgba(255,160,0,0.3); }
+  70%  { background: rgba(255,160,0,0.3); }
+  100% { background: transparent; }
+}
+
+/* Emoji mặt trời/mặt trăng */
+.transition-emoji {
+  position: absolute;
+  font-size: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 20px currentColor);
+}
+
+.transition-to-night .transition-emoji {
+  animation: moon-descend 2.5s ease-in-out forwards;
+  top: 0;
+}
+
+.transition-to-day .transition-emoji {
+  animation: sun-ascend 2.5s ease-in-out forwards;
+  bottom: -80px;
+}
+
+/* Mặt trăng đi xuống */
+@keyframes moon-descend {
+  0%   { top: -90px; opacity: 0; }
+  20%  { opacity: 1; }
+  50%  { top: 50%; opacity: 1; }
+  80%  { opacity: 0.3; }
+  100% { top: 110%; opacity: 0; }
+}
+
+/* Mặt trời đi lên */
+@keyframes sun-ascend {
+  0%   { bottom: -90px; opacity: 0; }
+  20%  { opacity: 1; }
+  50%  { bottom: 50%; opacity: 1; }
+  80%  { opacity: 0.3; }
+  100% { bottom: 110%; opacity: 0; }
+}
+
+/* ============ CHAT: FIX DUPLICATE (mcLog chỉ hiện MC) ============ */
+/* Đảm bảo type "player" trong mcLog không hiển thị trong chatLog */
+.chat-msg-player { display: none; }
+
 
 /* ============ CHAT BUBBLE STYLES ============ */
 .chat-msg { display: flex; flex-direction: column; gap: 1px; }
