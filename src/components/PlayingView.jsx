@@ -367,6 +367,16 @@ export default function PlayingView({ room, socketRef, mcLog }) {
       )}
       
       {/* Tutorial overlay if any */}
+      {showRoleTutorial && me?.role && (
+        <div className="role-tutorial-overlay" onClick={() => setShowRoleTutorial(false)}>
+          <div className="role-tutorial-card">
+            <div className="role-tutorial-emoji">{ROLE_EMOJIS[me.role] || '🎭'}</div>
+            <h2>Bạn là {ROLE_LABELS[me.role]}</h2>
+            <p>{ROLE_DESCRIPTIONS[me.role]}</p>
+            <button className="btn-primary" onClick={() => setShowRoleTutorial(false)}>Hiểu rồi!</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
