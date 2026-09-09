@@ -5,19 +5,31 @@ const SERVER_URL = import.meta.env.PROD
   ? "https://masoi-server-production.up.railway.app"
   : "http://localhost:3001";
 
-const SESSION_KEY = "ws_session"; // { roomCode, sessionToken, playerId, name }
+// Each browser tab gets a unique key so sessions don't cross-contaminate
+function getTabId() {
+  let id = sessionStorage.getItem('ws_tab_id');
+  if (!id) {
+    id = Math.random().toString(36).slice(2, 9);
+    sessionStorage.setItem('ws_tab_id', id);
+  }
+  return id;
+}
+
+function getSessionKey() {
+  return `ws_session_${getTabId()}`;
+}
 
 export function saveSession(roomCode, sessionToken, playerId, name) {
-  localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, sessionToken, playerId, name }));
+  localStorage.setItem(getSessionKey(), JSON.stringify({ roomCode, sessionToken, playerId, name }));
 }
 
 export function clearSession() {
-  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(getSessionKey());
 }
 
 export function getSession() {
   try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY));
+    return JSON.parse(localStorage.getItem(getSessionKey()));
   } catch { return null; }
 }
 

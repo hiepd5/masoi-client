@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
 
 export default function Room({ socketRef, roomCode, roomData, onLeave }) {
@@ -7,6 +7,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
   const [nameInput, setNameInput] = useState("");
   const [error, setError] = useState("");
   const [mcLog, setMcLog] = useState([]);
+  const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
+  const lastSpokenRef = useRef(-1);
   const myId = sessionStorage.getItem("ws_playerId") || socketRef.current?.id;
 
   useEffect(() => {
@@ -29,6 +31,29 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
       socket.off("village:chat");
     };
   }, [socketRef]);
+
+  // Speak MC messages via TTS
+  useEffect(() => {
+    if (!mcVoiceEnabled) return;
+    if (mcLog.length === 0) return;
+    const newMessages = mcLog.slice(lastSpokenRef.current + 1);
+    newMessages.forEach((msg, i) => {
+      setTimeout(() => {
+        if (!window.speechSynthesis) return;
+        const utter = new SpeechSynthesisUtterance(msg.text || msg);
+        utter.lang = 'vi-VN';
+        utter.rate = 0.9;
+        utter.pitch = 1.0;
+        utter.volume = 0.8;
+        // Try to find Vietnamese voice
+        const voices = window.speechSynthesis.getVoices();
+        const viVoice = voices.find(v => v.lang.startsWith('vi'));
+        if (viVoice) utter.voice = viVoice;
+        window.speechSynthesis.speak(utter);
+      }, i * 500);
+    });
+    lastSpokenRef.current = mcLog.length - 1;
+  }, [mcLog, mcVoiceEnabled]);
 
   function copyRoomCode() {
     navigator.clipboard?.writeText(roomCode);
@@ -74,7 +99,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
       <PlayingView 
         room={room} 
         socketRef={socketRef} 
-        mcLog={mcLog} 
+        mcLog={mcLog}
+        mcVoiceEnabled={mcVoiceEnabled}
+        setMcVoiceEnabled={setMcVoiceEnabled}
       />
     );
   }

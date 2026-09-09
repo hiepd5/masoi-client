@@ -37,7 +37,7 @@ const PHASE_LABELS = {
   day_no_nomination: '☀️ Không Có Đề Cử',
 };
 
-export default function PlayingView({ room, socketRef, mcLog }) {
+export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, setMcVoiceEnabled }) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
   const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
@@ -53,6 +53,8 @@ export default function PlayingView({ room, socketRef, mcLog }) {
   const [recapAnimation, setRecapAnimation] = useState(null);
   const [speakingIds, setSpeakingIds] = useState([]);
   const [showRoleTutorial, setShowRoleTutorial] = useState(false);
+  const [chatLog, setChatLog] = useState([]);
+  const [mySkipVote, setMySkipVote] = useState(false);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export default function PlayingView({ room, socketRef, mcLog }) {
   // Tự động cuộn chat xuống cuối cùng
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [mcLog, localBubbleChatLog]);
+  }, [chatLog, localBubbleChatLog]);
 
   // Timer cho game và phase
   useEffect(() => {
@@ -93,6 +95,7 @@ export default function PlayingView({ room, socketRef, mcLog }) {
   useEffect(() => {
     setHasActed(false);
     setSelectedId(null);
+    setMySkipVote(false);
   }, [g.nightDayPhase]);
 
   const isNight = g.nightDayPhase.startsWith("night_");
@@ -103,7 +106,8 @@ export default function PlayingView({ room, socketRef, mcLog }) {
     (g.nightDayPhase === "night_seer" && me?.role === "seer");
 
   useEffect(() => {
-    const handleBubbleChat = ({ senderId, message }) => {
+    const handleVillageChat = ({ senderId, senderName, message }) => {
+      // Speech bubble overlay on player avatar
       setLocalBubbleChatLog(prev => ({ ...prev, [senderId]: message }));
       setTimeout(() => {
         setLocalBubbleChatLog(prev => {
@@ -111,16 +115,62 @@ export default function PlayingView({ room, socketRef, mcLog }) {
           delete next[senderId];
           return next;
         });
-      }, 4000); // clear after 4s
+      }, 4000);
+      // Push to unified chat log
+      setChatLog(prev => [...prev, {
+        type: 'village',
+        senderId,
+        senderName,
+        text: message,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      }]);
     };
 
-    socketRef.current.on("wolf:chat", handleBubbleChat);
-    socketRef.current.on("village:chat", handleBubbleChat);
-    return () => {
-      socketRef.current.off("wolf:chat", handleBubbleChat);
-      socketRef.current.off("village:chat", handleBubbleChat);
+    const handleWolfChat = ({ senderId, message }) => {
+      // Speech bubble overlay on player avatar
+      setLocalBubbleChatLog(prev => ({ ...prev, [senderId]: message }));
+      setTimeout(() => {
+        setLocalBubbleChatLog(prev => {
+          const next = { ...prev };
+          delete next[senderId];
+          return next;
+        });
+      }, 4000);
+      // Push to unified chat log
+      const sender = room.players.find(p => p.id === senderId);
+      setChatLog(prev => [...prev, {
+        type: 'wolf',
+        senderId,
+        senderName: sender?.name || 'Sói',
+        text: message,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      }]);
     };
-  }, [socketRef]);
+
+    socketRef.current.on("wolf:chat", handleWolfChat);
+    socketRef.current.on("village:chat", handleVillageChat);
+    return () => {
+      socketRef.current.off("wolf:chat", handleWolfChat);
+      socketRef.current.off("village:chat", handleVillageChat);
+    };
+  }, [socketRef, room.players]);
+
+  // Sync mcLog messages into unified chatLog
+  useEffect(() => {
+    if (mcLog.length === 0) return;
+    const last = mcLog[mcLog.length - 1];
+    setChatLog(prev => {
+      // Avoid duplicates
+      const lastInLog = prev.filter(m => m.type === 'mc').slice(-1)[0];
+      const lastText = last.text || last;
+      if (lastInLog?.text === lastText) return prev;
+      return [...prev, {
+        type: 'mc',
+        text: lastText,
+        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+      }];
+    });
+  }, [mcLog]);
 
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
@@ -198,6 +248,15 @@ export default function PlayingView({ room, socketRef, mcLog }) {
           )}
         </div>
         <div className="hud-right">
+          {setMcVoiceEnabled && (
+            <button
+              className="btn-mc-voice"
+              onClick={() => setMcVoiceEnabled(prev => !prev)}
+              title={mcVoiceEnabled ? 'Tắt giọng MC' : 'Bật giọng MC'}
+            >
+              {mcVoiceEnabled ? '🔊 MC' : '🔇 MC'}
+            </button>
+          )}
           <FullscreenButton />
         </div>
       </div>
@@ -271,9 +330,30 @@ export default function PlayingView({ room, socketRef, mcLog }) {
               {!isNight && (
                 <>
                   {g.nightDayPhase === "day_discuss" && (
-                    <button className="btn-secondary" onClick={() => socketRef.current.emit("action:voteExtendDiscussion", { wantExtend: true })}>
-                      +2 Phút Thảo Luận
-                    </button>
+                    <>
+                      <button className="btn-secondary" onClick={() => socketRef.current.emit("action:voteExtendDiscussion", { wantExtend: true })}>
+                        +2 Phút Thảo Luận
+                      </button>
+                      {me?.alive && (
+                        <div className="skip-discuss-panel">
+                          <button
+                            className={`btn-skip-discuss ${mySkipVote ? 'skip-voted' : ''}`}
+                            onClick={() => {
+                              socketRef.current.emit('action:skipDiscussion', {}, (res) => {
+                                if (res?.ok) setMySkipVote(prev => !prev);
+                              });
+                            }}
+                          >
+                            {mySkipVote ? '⏭️ Rút phiếu' : '⏭️ Bỏ qua thảo luận'}
+                          </button>
+                          {g.skipDiscussVotes && (
+                            <span className="skip-progress">
+                              {Object.keys(g.skipDiscussVotes).length}/{room.players.filter(p => p.alive).length} đồng ý
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {g.nightDayPhase === "day_nominate" && (
@@ -322,9 +402,29 @@ export default function PlayingView({ room, socketRef, mcLog }) {
           
           <div className="mc-chat-panel">
             <div className="chat-messages">
-              {mcLog.map((log, i) => (
-                <div key={i} className={`mc-message ${log.type}`}>
-                  {log.text}
+              {chatLog.map((msg, i) => (
+                <div key={i} className={`chat-msg chat-msg-${msg.type} ${
+                  msg.senderId === me?.id ? 'chat-msg-mine' : ''
+                }`}>
+                  {msg.type === 'mc' && (
+                    <div className="chat-mc-bubble">
+                      <span className="chat-mc-icon">📜</span>
+                      <span className="chat-mc-text">{msg.text}</span>
+                      <span className="chat-time">{msg.time}</span>
+                    </div>
+                  )}
+                  {(msg.type === 'village' || msg.type === 'wolf') && (
+                    <div className={`chat-player-bubble ${msg.senderId === me?.id ? 'mine' : 'others'}`}>
+                      {msg.senderId !== me?.id && (
+                        <span className="chat-sender-name">{msg.senderName}</span>
+                      )}
+                      <div className="chat-bubble-body">
+                        {msg.type === 'wolf' && <span className="chat-wolf-icon">🐺</span>}
+                        <span className="chat-text">{msg.text}</span>
+                      </div>
+                      <span className="chat-time">{msg.time}</span>
+                    </div>
+                  )}
                 </div>
               ))}
               <div ref={chatEndRef} />
