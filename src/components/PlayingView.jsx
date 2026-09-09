@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
+import FullscreenButton from "./FullscreenButton.jsx";
 
 const ROLE_LABELS = {
   wolf: "Sói",
@@ -10,6 +11,30 @@ const ROLE_LABELS = {
   witch: "Phù Thủy",
   tanner: "Chán Đời",
   villager: "Nông Dân",
+};
+
+const ROLE_EMOJIS = { wolf: '🐺', seer: '🔮', guard: '🛡️', witch: '🧪', tanner: '💀', villager: '👨🌾' };
+
+const ROLE_DESCRIPTIONS = {
+  wolf: 'Mỗi đêm, hãy bí mật chọn 1 người dân để tiêu diệt. Che giấu danh tính của bạn!',
+  seer: 'Mỗi đêm, bạn có thể kiểm tra bí mật 1 người xem họ có phải Sói không.',
+  guard: 'Mỗi đêm, bảo vệ 1 người khỏi bị Sói tấn công. Không tự bảo vệ bản thân.',
+  witch: 'Bạn có 1 lọ cứu và 1 lọ độc. Dùng chúng vào thời điểm thích hợp.',
+  tanner: 'Bạn muốn bị treo cổ! Thắng nếu làng treo cổ bạn.',
+  villager: 'Quan sát, suy luận và thuyết phục mọi người tìm ra Sói!',
+};
+
+const PHASE_LABELS = {
+  night_guard: '🌙 Bảo Vệ Thức Dậy',
+  night_wolf: '🌙 Đêm Sói Săn Mồi',
+  night_witch: '🌙 Phù Thủy Hành Động',
+  night_seer: '🌙 Tiên Tri Nhìn Xa',
+  day_reveal: '☀️ Bình Minh',
+  day_discuss: '☀️ Thảo Luận',
+  day_nominate: '🗳️ Đề Cử',
+  day_defense: '⚖️ Biện Hộ',
+  day_final_vote: '🪢 Bỏ Phiếu Cuối',
+  day_no_nomination: '☀️ Không Có Đề Cử',
 };
 
 export default function PlayingView({ room, socketRef, mcLog }) {
@@ -26,7 +51,17 @@ export default function PlayingView({ room, socketRef, mcLog }) {
   const [gameTimeStr, setGameTimeStr] = useState("00:00");
   const [phaseTimeStr, setPhaseTimeStr] = useState("");
   const [recapAnimation, setRecapAnimation] = useState(null);
+  const [speakingIds, setSpeakingIds] = useState([]);
+  const [showRoleTutorial, setShowRoleTutorial] = useState(false);
   const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    if (me?.role && g.dayNumber === 1 && g.nightDayPhase === 'night_guard') {
+      setShowRoleTutorial(true);
+      const t = setTimeout(() => setShowRoleTutorial(false), 8000);
+      return () => clearTimeout(t);
+    }
+  }, [me?.role]);
 
   // Tự động cuộn chat xuống cuối cùng
   useEffect(() => {
@@ -146,64 +181,32 @@ export default function PlayingView({ room, socketRef, mcLog }) {
   const roleBgClass = isNight && me?.role ? `role-bg-${me.role}` : "";
 
   return (
-    <div className={`playing-view-container ${isNight && !g.winner ? "night-mode" : "day-mode"} ${roleBgClass}`}>
+    <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass}`}>
       
-      {/* HUD: Phase Info */}
+      {/* Top HUD bar */}
       <div className="phase-header">
-        <div className="game-time">Thời gian trận: {gameTimeStr}</div>
-        <h2>{g.winner ? "Trò Chơi Kết Thúc" : `Ngày ${g.dayNumber} - ${g.nightDayPhase.toUpperCase()}`}</h2>
-        <p className="role-text">Vai của bạn: <span className="highlight-role">{me?.role ? ROLE_LABELS[me.role] || me.role : "Chết"}</span></p>
-      {showPhaseTimer && phaseTimeStr && (
-        <div className="phase-time">Còn lại: {phaseTimeStr}</div>
-      )}
-      </div>
-
-      {!g.winner && (
-        <VoiceRoom 
-          socketRef={socketRef} 
-          isNight={isNight} 
-          myRole={me?.role} 
-          wolfTeammates={g.wolfTeammates || []} 
-        />
-      )}
-
-      <div className="game-area">
-        {/* Lịch sử MC Chat */}
-        <div className="mc-chat-panel">
-          <div className="chat-messages">
-            {mcLog.map((log, i) => (
-              <div key={i} className={`mc-message ${log.type}`}>
-                {log.text}
-              </div>
-            ))}
-            <div ref={chatEndRef} />
-          </div>
-          
-          {isNight && me?.role === "wolf" && (
-            <form onSubmit={handleWolfChat} className="wolf-chat-form">
-              <input 
-                placeholder="Chat riêng cho bầy sói..." 
-                value={wolfChatInput}
-                onChange={e => setWolfChatInput(e.target.value)}
-              />
-              <button type="submit" className="btn-wolf-chat">Gửi</button>
-            </form>
-          )}
-
-          {!isNight && me?.alive && (
-            <form onSubmit={handleVillageChat} className="wolf-chat-form">
-              <input 
-                placeholder="Thảo luận chung với dân làng..." 
-                value={villageChatInput}
-                onChange={e => setVillageChatInput(e.target.value)}
-              />
-              <button type="submit" className="btn-wolf-chat" style={{background: "#7c8cf8"}}>Chat</button>
-            </form>
+        <div className="hud-left">
+          <div className="game-time">⏱ {gameTimeStr}</div>
+          <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
+        </div>
+        <div className="hud-center">
+          <span className="role-badge">
+            {ROLE_EMOJIS[me?.role]} {me?.role ? ROLE_LABELS[me.role] : 'Chết'}
+          </span>
+          {showPhaseTimer && phaseTimeStr && (
+            <span className="phase-timer">{phaseTimeStr}</span>
           )}
         </div>
+        <div className="hud-right">
+          <FullscreenButton />
+        </div>
+      </div>
 
-        {/* Vòng tròn người chơi */}
-        <div className="circle-panel">
+      {/* Main 2-column layout */}
+      <div className="game-layout">
+        
+        {/* LEFT: Player circle + actions */}
+        <div className="game-left">
           <PlayerCircle 
             players={room.players} 
             me={me}
@@ -221,18 +224,12 @@ export default function PlayingView({ room, socketRef, mcLog }) {
             defendantId={g.phase === "day_final_vote" ? g.hotSeatQueue[g.hotSeatIndex] : null}
             recapAnimation={recapAnimation}
             wolfTeammates={g.wolfTeammates || []}
+            speakingIds={speakingIds}
           />
-
-          {g.winner ? (
-            <EndGameRecap 
-              history={g.history} 
-              isHost={me?.isHost} 
-              onRestart={() => socketRef.current.emit("room:restart")}
-              onAnimate={setRecapAnimation} 
-            />
-          ) : me?.alive && (
+          
+          {/* Action buttons - moved here */}
+          {!g.winner && me?.alive && (
             <div className="action-panel">
-              
               {/* Giao diện cho các Phase Ban Đêm */}
               {isNight && (
                 isMyTurn ? (
@@ -310,8 +307,66 @@ export default function PlayingView({ room, socketRef, mcLog }) {
             </div>
           )}
         </div>
+
+        {/* RIGHT: Chat + Voice */}
+        <div className="game-right">
+          {!g.winner && (
+            <VoiceRoom 
+              socketRef={socketRef} 
+              isNight={isNight} 
+              myRole={me?.role} 
+              wolfTeammates={g.wolfTeammates || []} 
+              onSpeakingChange={setSpeakingIds}
+            />
+          )}
+          
+          <div className="mc-chat-panel">
+            <div className="chat-messages">
+              {mcLog.map((log, i) => (
+                <div key={i} className={`mc-message ${log.type}`}>
+                  {log.text}
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            
+            {isNight && me?.role === "wolf" && (
+              <form onSubmit={handleWolfChat} className="wolf-chat-form">
+                <input 
+                  placeholder="Chat riêng cho bầy sói..." 
+                  value={wolfChatInput}
+                  onChange={e => setWolfChatInput(e.target.value)}
+                />
+                <button type="submit" className="btn-wolf-chat">Gửi</button>
+              </form>
+            )}
+
+            {!isNight && me?.alive && (
+              <form onSubmit={handleVillageChat} className="wolf-chat-form">
+                <input 
+                  placeholder="Thảo luận chung với dân làng..." 
+                  value={villageChatInput}
+                  onChange={e => setVillageChatInput(e.target.value)}
+                />
+                <button type="submit" className="btn-wolf-chat" style={{background: "#7c8cf8"}}>Chat</button>
+              </form>
+            )}
+          </div>
+        </div>
+
       </div>
+
+      {/* EndGame overlay stays full width */}
+      {g.winner && g.history && (
+        <EndGameRecap 
+          history={g.history} 
+          isHost={me?.isHost} 
+          onRestart={() => socketRef.current.emit("room:restart")}
+          onAnimate={setRecapAnimation} 
+        />
+      )}
+      
+      {/* Tutorial overlay if any */}
     </div>
   );
 }
-
