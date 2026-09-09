@@ -101,7 +101,15 @@ export function useSocket() {
       }
     });
 
-    return () => { socket.disconnect(); };
+    // Respond to server heartbeat
+    socket.on('ping:server', () => {
+      socket.emit('pong:client');
+    });
+
+    return () => {
+      socket.off('ping:server');
+      socket.disconnect();
+    };
   }, []);
 
   function setActiveRoom(code) {

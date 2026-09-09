@@ -1240,3 +1240,49 @@ button.voted-dim:disabled {
   width:110px;
   background: radial-gradient(ellipse, rgba(255,120,0,0.55) 0%, rgba(255,60,0,0.2) 55%, transparent 70%);
 }
+
+/* ============================================ */
+/* QUICK EMOJI REACTIONS */
+/* ============================================ */
+.emoji-reactions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.emoji-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-btn:hover:not(.cooldown) {
+  background: rgba(255,255,255,0.18);
+  transform: scale(1.2);
+}
+.emoji-btn.cooldown {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.floating-reaction {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 22px;
+  animation: float-up 2.5s ease-out forwards;
+  pointer-events: none;
+  z-index: 20;
+}
+@keyframes float-up {
+  0%   { transform: translateX(-50%) translateY(0); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-40px); opacity: 0; }
+}

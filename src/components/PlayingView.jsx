@@ -4,6 +4,9 @@ import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
 import FullscreenButton from "./FullscreenButton.jsx";
 import ParticleBackground from "./ParticleBackground.jsx";
+import AmbientSound from "./AmbientSound.jsx";
+import { SFX } from "./SFX.js";
+import EmojiReactions from "./EmojiReactions.jsx";
 
 const ROLE_LABELS = {
   wolf: "Sói",
@@ -57,6 +60,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [chatLog, setChatLog] = useState([]);
   const [mySkipVote, setMySkipVote] = useState(false);
   const [dayNightTransition, setDayNightTransition] = useState(null); // 'to-night' | 'to-day' | null
+  const [reactions, setReactions] = useState([]);
   const chatEndRef = useRef(null);
   const prevIsNightRef = useRef(null);
 
@@ -188,18 +192,53 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     });
   }, [mcLog]);
 
+  // SFX: death / win sounds triggered by chatLog changes
+  useEffect(() => {
+    if (chatLog.length === 0) return;
+    const last = chatLog[chatLog.length - 1];
+    if (last?.type === 'death') SFX.death();
+    if (last?.type === 'mc' && last?.text?.includes('chiến thắng')) {
+      if (last.text.includes('Phe Sói')) SFX.winWolf();
+      else SFX.winVillage();
+    }
+  }, [chatLog]);
+
+  // SFX: bell when it becomes my turn
+  useEffect(() => {
+    if (isMyTurn) SFX.bell();
+  }, [isMyTurn]);
+
+  // Emoji reactions: listen for broadcasts and auto-remove after 2.5s
+  useEffect(() => {
+    const handleReaction = (reaction) => {
+      const id = Date.now() + Math.random();
+      setReactions(prev => [...prev, { ...reaction, id }]);
+      setTimeout(() => {
+        setReactions(prev => prev.filter(r => r.id !== id));
+      }, 2500);
+    };
+    socketRef.current.on('reaction:broadcast', handleReaction);
+    return () => {
+      socketRef.current.off('reaction:broadcast', handleReaction);
+    };
+  }, [socketRef]);
+
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
 
     if (g.nightDayPhase === "night_guard") {
+      SFX.vote();
       socketRef.current.emit("action:guardProtect", { targetId: selectedId }, () => setHasActed(true));
     } else if (g.nightDayPhase === "night_wolf") {
+      SFX.select();
       socketRef.current.emit("action:wolfPick", { targetId: selectedId }); // Sói có thể đổi lại liên tục nên ko setHasActed
     } else if (g.nightDayPhase === "night_witch") {
       // Witch action is handled separately via specific buttons
     } else if (g.nightDayPhase === "night_seer") {
+      SFX.select();
       socketRef.current.emit("action:seerCheck", { targetId: selectedId }, () => setHasActed(true));
     } else if (g.nightDayPhase === "day_nominate") {
+      SFX.vote();
       socketRef.current.emit("action:nominationVote", { targetId: selectedId }, () => setHasActed(true));
     }
   }
@@ -248,6 +287,11 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
   return (
     <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass}`}>
+      <AmbientSound
+        isNight={isNight}
+        isTense={g.nightDayPhase === 'day_final_vote'}
+        enabled={mcVoiceEnabled}
+      />
       
       {/* Top HUD bar */}
       <div className="phase-header">
@@ -288,7 +332,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             me={me}
             phase={g.nightDayPhase}
             myRole={me?.role}
-            onSelectPlayer={(id) => setSelectedId(id)}
+            onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
             selectedPlayerId={selectedId}
             wolfVictimId={g.witchInfo?.victimId}
             nightDeaths={g.nightDeaths}
@@ -301,6 +345,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             recapAnimation={recapAnimation}
             wolfTeammates={g.wolfTeammates || []}
             speakingIds={speakingIds}
+            reactions={reactions}
           />
           
           {/* Action buttons - moved here */}
@@ -385,14 +430,14 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                       <button 
                         className={`btn-kill ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-dim" : ""}`} 
                         disabled={!!(g.finalVotes && g.finalVotes[me.id])}
-                        onClick={() => socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true))}
+                        onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true)); }}
                       >
                         ⚔️ Treo cổ {g.finalVotes && g.finalVotes[me.id] === "hang" && " ✓"}
                       </button>
                       <button 
                         className={`btn-save ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-dim" : ""}`} 
                         disabled={!!(g.finalVotes && g.finalVotes[me.id])}
-                        onClick={() => socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true))}
+                        onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true)); }}
                       >
                         🕊️ Tha {g.finalVotes && g.finalVotes[me.id] === "spare" && " ✓"}
                       </button>
@@ -400,6 +445,9 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                   )}
                 </>
               )}
+
+              {/* Emoji Reactions */}
+              <EmojiReactions socketRef={socketRef} myName={me?.name} />
 
             </div>
           )}

@@ -20,6 +20,7 @@ export default function PlayerCircle({
   recapAnimation = null,
   wolfTeammates = [],
   speakingIds = [],
+  reactions = [],
 }) {
   const numPlayers = players.length;
   const radius = 140;
@@ -177,6 +178,11 @@ export default function PlayerCircle({
                 {wolfMessage}
               </div>
             )}
+
+            {/* Floating emoji reactions above this player */}
+            {reactions.filter(r => r.name === p.name).map((r, i) => (
+              <div key={r.id || i} className="floating-reaction">{r.emoji}</div>
+            ))}
           </div>
         );
       })}
