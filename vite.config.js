@@ -6,4 +6,20 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Tách LiveKit (~400KB) — chỉ load khi vào phòng chơi
+          livekit: ['@livekit/components-react', 'livekit-client'],
+          // Tách React core
+          vendor: ['react', 'react-dom'],
+          // Socket.io riêng
+          socket: ['socket.io-client'],
+        },
+      },
+    },
+    // Giảm warning threshold
+    chunkSizeWarningLimit: 600,
+  },
 });
