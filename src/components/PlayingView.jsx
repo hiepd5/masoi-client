@@ -72,30 +72,83 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [phaseTimeStr, setPhaseTimeStr] = useState("");
   const [recapAnimation, setRecapAnimation] = useState(null);
   const [speakingIds, setSpeakingIds] = useState([]);
-  const [showRoleTutorial, setShowRoleTutorial] = useState(false);
+  // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
+  const [tutorialStep, setTutorialStep] = useState(0);
+  const [tutorialSeconds, setTutorialSeconds] = useState(7);
   const [chatLog, setChatLog] = useState([]);
   const [mySkipVote, setMySkipVote] = useState(false);
   const [dayNightTransition, setDayNightTransition] = useState(null);
   const [reactions, setReactions] = useState([]);
+  // Seer history log — nhớ kết quả soi qua các đêm
+  const [seerHistory, setSeerHistory] = useState([]);
+  // Dead player overlay
+  const [showDeadOverlay, setShowDeadOverlay] = useState(false);
+  const prevAliveRef = useRef(true);
   // Mobile tab navigation
-  const [mobileTab, setMobileTab] = useState('game');   // 'game' | 'chat'
-  const [unreadCount, setUnreadCount] = useState(0);    // tin chưa đọc khi ở tab game
-  const [newMsgCount, setNewMsgCount] = useState(0);    // tin mới khi không ở cuối chat
-  const [isAtBottom, setIsAtBottom] = useState(true);   // có đang ở cuối chat không
+  const [mobileTab, setMobileTab] = useState('game');
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [newMsgCount, setNewMsgCount] = useState(0);
+  const [isAtBottom, setIsAtBottom] = useState(true);
   const chatEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const prevIsNightRef = useRef(null);
-  const touchStartXRef = useRef(null);  // swipe gesture
+  const touchStartXRef = useRef(null);
 
-
-
+  // Tutorial 3 bước — hiện khi game bắt đầu
   useEffect(() => {
     if (me?.role && g.dayNumber === 1 && g.nightDayPhase === 'night_guard') {
-      setShowRoleTutorial(true);
-      const t = setTimeout(() => setShowRoleTutorial(false), 8000);
-      return () => clearTimeout(t);
+      setTutorialStep(1);
+      setTutorialSeconds(7);
     }
   }, [me?.role]);
+
+  // Đếm ngược từng bước tutorial
+  useEffect(() => {
+    if (tutorialStep === 0) return;
+    const durations = [0, 7, 8, 5]; // bước 1=7s, 2=8s, 3=5s
+    const dur = durations[tutorialStep] || 7;
+    setTutorialSeconds(dur);
+    const interval = setInterval(() => {
+      setTutorialSeconds(s => {
+        if (s <= 1) {
+          clearInterval(interval);
+          // Tự sang bước tiếp hoặc ẩn
+          setTutorialStep(prev => prev >= 3 ? 0 : prev + 1);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [tutorialStep]);
+
+  // Seer history: lưu kết quả soi mỗi đêm
+  useEffect(() => {
+    if (me?.role === 'seer' && g.seerLastResult) {
+      const targetPlayer = room.players.find(p => p.id === g.seerLastResult.targetId);
+      if (!targetPlayer) return;
+      setSeerHistory(prev => {
+        const alreadyHas = prev.some(h => h.targetId === g.seerLastResult.targetId && h.day === g.dayNumber);
+        if (alreadyHas) return prev;
+        return [...prev, {
+          day: g.dayNumber,
+          targetId: g.seerLastResult.targetId,
+          targetName: targetPlayer.name,
+          result: g.seerLastResult.result,
+        }];
+      });
+    }
+  }, [g.seerLastResult?.targetId]);
+
+  // Dead overlay: hiện 1 lần khi người chơi vừa chết
+  useEffect(() => {
+    const isAliveNow = me?.alive !== false;
+    if (prevAliveRef.current === true && !isAliveNow) {
+      setShowDeadOverlay(true);
+    }
+    prevAliveRef.current = isAliveNow ?? true;
+  }, [me?.alive]);
+
 
   // Smart scroll + unread tracking
   useEffect(() => {
@@ -471,27 +524,67 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     <>
                       {g.nightDayPhase === "night_witch" ? (
                         <div className="witch-actions">
-                          <p>Có người bị cắn! Bạn làm gì?</p>
-                          <button className="btn-save" disabled={g.witchInfo?.usedSave} onClick={() => handleWitch(true, null)}>Cứu</button>
-                          <button className="btn-skip" onClick={() => handleWitch(false, null)}>Bỏ qua / Không cứu</button>
-                          <div style={{marginTop: 10}}>
-                            <button className="btn-poison" disabled={g.witchInfo?.usedPoison || !selectedId} onClick={() => handleWitch(false, selectedId)}>
-                              {selectedId ? "Đầu độc người đã chọn" : "Chọn 1 người để đầu độc"}
+                          {/* Trạng thái 2 bình */}
+                          <div className="witch-potion-status">
+                            <div className={`potion-badge ${g.witchInfo?.usedSave ? 'potion-used' : 'potion-available'}`}>
+                              {g.witchInfo?.usedSave ? '🔴' : '💚'} Bình Cứu: {g.witchInfo?.usedSave ? 'ĐÃ DÙNG' : 'CÒN'}
+                            </div>
+                            <div className={`potion-badge ${g.witchInfo?.usedPoison ? 'potion-used' : 'potion-available'}`}>
+                              {g.witchInfo?.usedPoison ? '🔴' : '☠️'} Bình Độc: {g.witchInfo?.usedPoison ? 'ĐÃ DÙNG' : 'CÒN'}
+                            </div>
+                          </div>
+                          {/* Nút hành động */}
+                          {g.wolfVictimId ? (
+                            <p className="witch-victim-text">⚠️ Có người vừa bị tấn công!</p>
+                          ) : (
+                            <p className="witch-victim-text">😮‍💨 Đêm nay không ai bị cắn</p>
+                          )}
+                          <div className="witch-btn-row">
+                            {g.wolfVictimId && (
+                              <button className="btn-save" disabled={g.witchInfo?.usedSave} onClick={() => handleWitch(true, null)}>
+                                💚 Cứu
+                              </button>
+                            )}
+                            <button className="btn-skip" onClick={() => handleWitch(false, null)}>
+                              ⏭️ Bỏ qua
                             </button>
                           </div>
+                          {!g.witchInfo?.usedPoison && (
+                            <button className="btn-poison" disabled={!selectedId} onClick={() => handleWitch(false, selectedId)}>
+                              ☠️ {selectedId ? 'Đầu độc người đã chọn' : 'Chọn 1 người để đầu độc'}
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
                           <button className="btn-primary btn-action" disabled={!selectedId} onClick={handleAction}>
                             Xác nhận hành động
                           </button>
-                          {g.nightDayPhase === "night_seer" && g.seerLastResult && (
-                            <div className="status-text" style={{marginTop: 8}}>
-                              Lần soi gần nhất: Người này là <b>{g.seerLastResult.result === "wolf" ? "SÓI" : "DÂN"}</b>
+                          {/* Seer: hiện kết quả vừa soi + lịch sử các đêm */}
+                          {g.nightDayPhase === "night_seer" && (
+                            <div className="seer-panel">
+                              {g.seerLastResult && (
+                                <div className={`seer-result-badge ${g.seerLastResult.result === 'wolf' ? 'seer-wolf' : 'seer-human'}`}>
+                                  {g.seerLastResult.result === 'wolf' ? '🔴 SÓI!' : '🔵 Người tốt'}
+                                </div>
+                              )}
+                              {seerHistory.length > 0 && (
+                                <div className="seer-history">
+                                  <div className="seer-history-title">🔮 Lịch sử soi:</div>
+                                  {seerHistory.map((h, i) => (
+                                    <div key={i} className={`seer-history-row ${h.result === 'wolf' ? 'sh-wolf' : 'sh-human'}`}>
+                                      <span className="sh-day">Đêm {h.day}</span>
+                                      <span className="sh-name">{h.targetName}</span>
+                                      <span className="sh-result">{h.result === 'wolf' ? '🔴 SÓI' : '🔵 Tốt'}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           )}
                         </>
                       )}
+
                     </>
                   )
                 ) : (
@@ -734,15 +827,100 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         />
       )}
       
-      {/* Tutorial overlay if any */}
-      {showRoleTutorial && me?.role && (
-        <div className="role-tutorial-overlay" onClick={() => setShowRoleTutorial(false)}>
-          <div className="role-tutorial-card">
-            <div className="role-tutorial-emoji">{ROLE_EMOJIS[me.role] || '🎭'}</div>
-            <h2>Bạn là {ROLE_LABELS[me.role]}</h2>
-            <p>{ROLE_DESCRIPTIONS[me.role]}</p>
-            <button className="btn-primary" onClick={() => setShowRoleTutorial(false)}>Hiểu rồi!</button>
+      {/* Tutorial 3 bước — overlay khi game bắt đầu */}
+      {tutorialStep > 0 && me?.role && (
+        <div className="role-tutorial-overlay">
+          <div className="role-tutorial-card tutorial-3step">
+
+            {/* Step indicator */}
+            <div className="tutorial-steps-bar">
+              {[1,2,3].map(s => (
+                <div key={s} className={`tutorial-step-dot ${tutorialStep === s ? 'active' : tutorialStep > s ? 'done' : ''}`} />
+              ))}
+            </div>
+
+            {/* Bước 1: Vai của bạn */}
+            {tutorialStep === 1 && (
+              <div className="tutorial-step-content">
+                <div className="role-tutorial-emoji">{ROLE_EMOJIS[me.role] || '🎭'}</div>
+                <h2>Bạn là <span style={{ color: '#f59e0b' }}>{ROLE_LABELS[me.role]}</span></h2>
+                <p className="tutorial-team">Phe: {me.role === 'wolf' ? '🐺 Sói' : me.role === 'tanner' ? '💀 Trung Lập' : '👥 Dân Làng'}</p>
+              </div>
+            )}
+
+            {/* Bước 2: Nhiệm vụ */}
+            {tutorialStep === 2 && (
+              <div className="tutorial-step-content">
+                <div className="role-tutorial-emoji">📋</div>
+                <h2>Nhiệm vụ của bạn</h2>
+                <p className="tutorial-desc">{ROLE_DESCRIPTIONS[me.role]}</p>
+              </div>
+            )}
+
+            {/* Bước 3: Ván này có ai */}
+            {tutorialStep === 3 && (
+              <div className="tutorial-step-content">
+                <div className="role-tutorial-emoji">🎮</div>
+                <h2>Ván này có</h2>
+                <div className="tutorial-role-counts">
+                  {g.roleCounts && Object.entries(g.roleCounts)
+                    .filter(([, c]) => c > 0)
+                    .map(([r, c]) => (
+                      <div key={r} className={`role-count-chip ${r === me.role ? 'role-count-mine' : ''}`}>
+                        {ROLE_EMOJIS[r]} {ROLE_LABELS[r]} × {c}
+                        {r === me.role && ' (Bạn!)'}
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
+            )}
+
+            {/* Progress bar + nút */}
+            <div className="tutorial-footer">
+              <div className="tutorial-progress-bar">
+                <div className="tutorial-progress-fill"
+                     style={{ width: `${(tutorialSeconds / ([0,7,8,5][tutorialStep] || 7)) * 100}%` }} />
+              </div>
+              <div className="tutorial-btn-row">
+                <span className="tutorial-seconds">{tutorialSeconds}s</span>
+                {tutorialStep < 3 ? (
+                  <button className="btn-primary tutorial-btn"
+                          onClick={() => setTutorialStep(s => s + 1)}>
+                    Tiếp ▶
+                  </button>
+                ) : (
+                  <button className="btn-primary tutorial-btn"
+                          onClick={() => setTutorialStep(0)}>
+                    Bắt đầu! ✓
+                  </button>
+                )}
+                <button className="tutorial-skip-btn" onClick={() => setTutorialStep(0)}>Skip</button>
+              </div>
+            </div>
+
           </div>
+        </div>
+      )}
+
+      {/* Dead Player — Spectator overlay */}
+      {showDeadOverlay && (
+        <div className="dead-overlay">
+          <div className="dead-overlay-card">
+            <div className="dead-overlay-emoji">💀</div>
+            <h2>Bạn đã rời ván đấu</h2>
+            <p>Bạn có thể <strong>xem tiếp</strong> nhưng không được tiết lộ thông tin cho người còn sống.</p>
+            <button className="btn-primary" onClick={() => setShowDeadOverlay(false)}>
+              👁️ Xem tiếp
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Spectator banner — sticky khi đang xem sau khi chết */}
+      {me && !me.alive && !showDeadOverlay && !g.winner && (
+        <div className="spectator-banner">
+          👁️ QUAN SÁT — Bạn thấy tất cả nhưng không nói được
         </div>
       )}
 
@@ -754,6 +932,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           </div>
         </div>
       )}
+
     </div>
   );
 }
