@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_COLORS } from '../config/roles.config.js';
+
+// Map event type → recap narration file
+const RECAP_AUDIO = {
+  wolf:         '/audio/recap_wolf.mp3',
+  guard:        '/audio/recap_guard.mp3',
+  witch_save:   '/audio/recap_witch_save.mp3',
+  witch_poison: '/audio/recap_witch_poison.mp3',
+};
+
+function playRecapAudio(file) {
+  if (!file) return;
+  const audio = new Audio(file);
+  audio.volume = 0.85;
+  audio.playbackRate = 0.92; // chậm lại một chút
+  audio.play().catch(() => {});
+}
 
 
 const WINNER_CONFIG = {
@@ -20,12 +36,14 @@ export default function EndGameRecap({ history, isHost, onRestart, onAnimate, pl
   const [timelineIndex, setTimelineIndex] = useState(-1);
   const [showTurning, setShowTurning] = useState(false);
 
-  // Phase 1: splash for 2.5s then move to flip
+  // Phase 1: splash + play recap_intro voice, then move to flip
   useEffect(() => {
     if (phase !== 'splash') return;
-    const t = setTimeout(() => setPhase('flip'), 2500);
+    playRecapAudio('/audio/recap_intro.mp3');
+    const t = setTimeout(() => setPhase('flip'), 3000);
     return () => clearTimeout(t);
   }, [phase]);
+
 
   // Phase 2: flip cards staggered 300ms each, then move to timeline
   useEffect(() => {
@@ -40,14 +58,16 @@ export default function EndGameRecap({ history, isHost, onRestart, onAnimate, pl
     }
   }, [phase, flippedCount, players.length]);
 
-  // Phase 3: timeline events
+  // Phase 3: timeline events + recap voice narration
   useEffect(() => {
     if (phase !== 'timeline') return;
     if (!history || history.length === 0) { setPhase('turning'); return; }
     if (timelineIndex < history.length) {
       const event = history[timelineIndex];
       onAnimate?.(event);
-      const t = setTimeout(() => setTimelineIndex(i => i + 1), 2500);
+      // Play narration audio for this event type (chậm rãi, trầm lắng)
+      playRecapAudio(RECAP_AUDIO[event.type] || null);
+      const t = setTimeout(() => setTimelineIndex(i => i + 1), 2800);
       return () => clearTimeout(t);
     } else {
       onAnimate?.(null);
@@ -55,6 +75,7 @@ export default function EndGameRecap({ history, isHost, onRestart, onAnimate, pl
       return () => clearTimeout(t);
     }
   }, [phase, timelineIndex, history]);
+
 
   // Phase 4: show turning point then done
   useEffect(() => {

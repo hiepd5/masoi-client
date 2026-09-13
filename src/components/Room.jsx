@@ -32,20 +32,30 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
 
   // Map câu MC tĩnh → file MP3 đã thu âm
   const AUDIO_MAP = [
-    { pattern: /Đêm đầu tiên buông xuống/,     file: 'game_start.mp3' },
-    { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,   file: 'wolf_wake.mp3' },
-    { pattern: /Sói đã ngủ lại.*Phù Thủy/,     file: 'witch_wake.mp3' },
-    { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,file: 'seer_wake.mp3' },
-    { pattern: /Đêm qua không ai chết/,         file: 'no_death.mp3' },
-    { pattern: /Mời cả làng đề cử/,             file: 'begin_nominate.mp3' },
-    { pattern: /Không ai bị đề cử/,             file: 'no_nominee.mp3' },
-    { pattern: /Treo cổ hay Tha/,               file: 'begin_vote.mp3' },
-    { pattern: /Bảo Vệ ơi.*thức dậy/,          file: 'night_starts.mp3' },
-    { pattern: /Phe Sói chiến thắng/,           file: 'wolf_wins.mp3' },
-    { pattern: /Phe Dân chiến thắng/,           file: 'village_wins.mp3' },
-    { pattern: /Chán Đời.*thắng/,               file: 'tanner_wins.mp3' },
-    { pattern: /Cả làng thảo luận/,             file: 'begin_discuss.mp3' },
+    // ===== Khởi đầu =====
+    { pattern: /Đêm đầu tiên buông xuống/,        file: 'game_start.mp3' },
+    // ===== Gọi vai đêm =====
+    { pattern: /Bảo Vệ ơi.*thức dậy/,             file: 'night_starts.mp3' },
+    { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,       file: 'wolf_wake.mp3' },
+    { pattern: /Sói đã ngủ lại.*Phù Thủy/,         file: 'witch_wake.mp3' },
+    { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,   file: 'seer_wake.mp3' },
+    // ===== Bình minh =====
+    { pattern: /Đêm qua không ai chết/,            file: 'no_death.mp3' },
+    { pattern: /đêm đẫm máu/i,                     file: 'night_bloody.mp3' },
+    // ===== Ban ngày =====
+    { pattern: /Cả làng thảo luận/,               file: 'begin_discuss.mp3' },
+    { pattern: /Mời cả làng đề cử/,               file: 'begin_nominate.mp3' },
+    { pattern: /Không ai bị đề cử/,               file: 'no_nominee.mp3' },
+    { pattern: /Treo cổ hay Tha/,                  file: 'begin_vote.mp3' },
+    // ===== Kết quả vote =====
+    { pattern: /sẽ rời khỏi ván đấu/,             file: 'hang_announce.mp3' },
+    { pattern: /Làng đã tha/,                      file: 'spare_announce.mp3' },
+    // ===== Kết thúc =====
+    { pattern: /Phe Sói chiến thắng/,              file: 'wolf_wins.mp3' },
+    { pattern: /Phe Dân chiến thắng/,              file: 'village_wins.mp3' },
+    { pattern: /Chán Đời.*thắng/,                  file: 'tanner_wins.mp3' },
   ];
+
 
   function findAudioFile(text) {
     for (const { pattern, file } of AUDIO_MAP) {
