@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useRef } from "react";
 import "./PlayingView.css"; // We will add specific styles here or in index.css
 import Campfire from './Campfire.jsx';
+import ActionBeam from './ActionBeam.jsx';
 
 export default function PlayerCircle({
   players,
@@ -35,8 +36,22 @@ export default function PlayerCircle({
     villager: '#eab308',
   };
 
+  const sceneRef = useRef(null);
+
+  function getPlayerEl(playerId) {
+    return sceneRef.current?.querySelector(`[data-player-id="${playerId}"]`);
+  }
+
   return (
-    <div className="player-circle-scene">
+    <div className="player-circle-scene" ref={sceneRef}>
+      {/* Beam effects SVG overlay */}
+      {recapAnimation && (
+        <ActionBeam
+          event={recapAnimation}
+          getPlayerEl={getPlayerEl}
+          containerRef={sceneRef}
+        />
+      )}
     <div className="player-circle-container">
       {/* Campfire / Center Chat */}
       <div className="campfire-center">
@@ -125,6 +140,7 @@ export default function PlayerCircle({
         return (
           <div
             key={p.id}
+            data-player-id={p.id}
             className={`player-circle-item ${isDead ? "dead" : ""} ${isSelected ? "selected" : ""} ${hasNominated ? "nominated" : ""} ${onSeat ? "hot-seat" : ""} ${recapClass} ${showRed ? "dead-or-victim" : ""} ${seerResultClass} ${!p.alive ? "dimmed" : ""} ${isWolfTeammate ? "wolf-teammate" : ""} ${isDisconnected ? "disconnected" : ""} ${isSpeaking ? "is-speaking" : ""}`}
             style={{
               transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,

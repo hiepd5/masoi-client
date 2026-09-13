@@ -8,25 +8,8 @@ import AmbientSound from "./AmbientSound.jsx";
 import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
 
-const ROLE_LABELS = {
-  wolf: "Sói",
-  seer: "Tiên Tri",
-  guard: "Bảo Vệ",
-  witch: "Phù Thủy",
-  tanner: "Chán Đời",
-  villager: "Nông Dân",
-};
+import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS } from '../config/roles.config.js';
 
-const ROLE_EMOJIS = { wolf: '🐺', seer: '🔮', guard: '🛡️', witch: '🧪', tanner: '💀', villager: '👨🌾' };
-
-const ROLE_DESCRIPTIONS = {
-  wolf: 'Mỗi đêm, hãy bí mật chọn 1 người dân để tiêu diệt. Che giấu danh tính của bạn!',
-  seer: 'Mỗi đêm, bạn có thể kiểm tra bí mật 1 người xem họ có phải Sói không.',
-  guard: 'Mỗi đêm, bảo vệ 1 người khỏi bị Sói tấn công. Không tự bảo vệ bản thân.',
-  witch: 'Bạn có 1 lọ cứu và 1 lọ độc. Dùng chúng vào thời điểm thích hợp.',
-  tanner: 'Bạn muốn bị treo cổ! Thắng nếu làng treo cổ bạn.',
-  villager: 'Quan sát, suy luận và thuyết phục mọi người tìm ra Sói!',
-};
 
 const PHASE_LABELS = {
   night_guard: '🌙 Bảo Vệ Thức Dậy',
@@ -823,7 +806,9 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           history={g.history} 
           isHost={me?.isHost} 
           onRestart={() => socketRef.current.emit("room:restart")}
-          onAnimate={setRecapAnimation} 
+          onAnimate={setRecapAnimation}
+          players={room.players}
+          winner={g.winner}
         />
       )}
       

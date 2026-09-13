@@ -2008,3 +2008,180 @@ button.voted-dim:disabled {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* ============================================ */
+/* RECAP CINEMA                                 */
+/* ============================================ */
+.recap-cinema-overlay {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.92);
+  display: flex; align-items: flex-start; justify-content: center;
+  overflow-y: auto;
+  padding: 16px;
+  backdrop-filter: blur(8px);
+  animation: fade-in 0.5s ease;
+}
+.recap-cinema-panel {
+  max-width: 560px; width: 100%;
+  display: flex; flex-direction: column; gap: 24px;
+  padding-bottom: 40px;
+  position: relative;
+}
+.recap-section-title {
+  font-size: 15px; font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase; letter-spacing: 1px;
+  margin: 0 0 12px;
+}
+
+/* Winner splash */
+.recap-winner-splash {
+  border: 1.5px solid; border-radius: 20px;
+  padding: 28px 24px; text-align: center;
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: center;
+  transition: all 0.5s ease;
+}
+.splash-active { animation: splash-in 0.6s ease; }
+@keyframes splash-in {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+.recap-winner-emoji { font-size: 64px; animation: bounce 0.8s ease infinite alternate; }
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-8px); }
+}
+.recap-winner-title { margin: 0; font-size: 24px; font-weight: 800; }
+.recap-winner-sub   { margin: 0; font-size: 14px; color: rgba(255,255,255,0.65); }
+
+/* Card flip section */
+.recap-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 10px;
+}
+.recap-card {
+  perspective: 800px;
+  height: 110px;
+  cursor: default;
+}
+.recap-card-inner {
+  position: relative; width: 100%; height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s ease;
+}
+.recap-card.flipped .recap-card-inner { transform: rotateY(180deg); }
+.recap-card-front,
+.recap-card-back {
+  position: absolute; inset: 0;
+  backface-visibility: hidden;
+  border-radius: 12px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: 6px;
+}
+.recap-card-front {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 1.5px solid rgba(99,102,241,0.4);
+}
+.recap-card-back-icon { font-size: 32px; }
+.recap-card-back {
+  background: rgba(0,0,0,0.7);
+  border: 1.5px solid rgba(255,255,255,0.15);
+  transform: rotateY(180deg);
+}
+.card-wolf .recap-card-back { border-color: rgba(239,68,68,0.5); }
+.recap-card-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+.recap-card-role   { font-size: 11px; font-weight: 700; text-align: center; }
+.recap-card-name   { font-size: 10px; color: rgba(255,255,255,0.7); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 68px; }
+.recap-card-dead   { font-size: 14px; }
+
+/* Timeline section */
+.recap-timeline { display: flex; flex-direction: column; gap: 12px; }
+.recap-day-block {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px; padding: 12px;
+}
+.recap-day-header {
+  font-size: 13px; font-weight: 800;
+  color: rgba(99,102,241,0.9);
+  margin-bottom: 8px;
+}
+.recap-event-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 6px 8px; border-radius: 8px; margin-bottom: 4px;
+  border-left: 3px solid var(--ev-color, rgba(255,255,255,0.2));
+  transition: all 0.4s ease;
+}
+.event-visible { opacity: 1; transform: translateX(0); animation: event-slide-in 0.4s ease; }
+.event-hidden  { opacity: 0; transform: translateX(20px); pointer-events: none; }
+@keyframes event-slide-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.recap-event-icon { font-size: 16px; flex-shrink: 0; margin-top: 2px; }
+.recap-event-text { font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5; }
+
+/* Turning points */
+.recap-turning-section { display: flex; flex-direction: column; gap: 8px; }
+.recap-turning-row {
+  display: flex; gap: 8px; align-items: flex-start;
+  background: rgba(251,191,36,0.06);
+  border: 1px solid rgba(251,191,36,0.2);
+  border-radius: 10px; padding: 10px 12px;
+  animation: event-slide-in 0.5s ease;
+}
+.turning-bullet { color: #fbbf24; font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+.turning-text { font-size: 13px; color: rgba(255,255,255,0.85); line-height: 1.5; }
+
+/* Restart + skip */
+.recap-restart-section { text-align: center; padding: 8px 0; }
+.recap-restart-btn { min-width: 200px; padding: 14px 24px; font-size: 16px; }
+.recap-skip-btn {
+  position: fixed; bottom: 24px; right: 24px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.6); border-radius: 20px;
+  padding: 8px 16px; cursor: pointer; font-size: 13px; z-index: 9999;
+}
+.recap-skip-btn:hover { background: rgba(255,255,255,0.18); color: white; }
+
+/* ============================================ */
+/* BEAM EFFECTS SVG                             */
+/* ============================================ */
+.action-beam-svg { position: absolute; inset: 0; pointer-events: none; z-index: 30; overflow: visible; width: 100%; height: 100%; }
+
+.beam-path { stroke-dasharray: 200; stroke-dashoffset: 200; animation: beam-draw 0.5s ease forwards; }
+@keyframes beam-draw {
+  from { stroke-dashoffset: 200; opacity: 0; }
+  to   { stroke-dashoffset: 0;   opacity: 1; }
+}
+
+.beam-wolf { animation: beam-draw 0.3s ease forwards, beam-pulse 0.3s 0.3s ease infinite alternate; }
+@keyframes beam-pulse {
+  from { stroke-opacity: 1; }
+  to   { stroke-opacity: 0.4; }
+}
+
+.beam-impact-pulse {
+  animation: impact-ring 0.6s ease-out forwards;
+}
+@keyframes impact-ring {
+  0%   { r: 4;  opacity: 0.9; }
+  100% { r: 24; opacity: 0;   }
+}
+
+.beam-orb {
+  opacity: 0.9;
+  filter: blur(1px);
+}
+
+.beam-sparkle {
+  animation: sparkle-pop 0.6s ease-out forwards;
+  opacity: 0;
+}
+@keyframes sparkle-pop {
+  0%   { r: 0; opacity: 0; }
+  30%  { r: 5; opacity: 1; }
+  100% { r: 0; opacity: 0; }
+}
