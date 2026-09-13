@@ -41,6 +41,22 @@ const PHASE_LABELS = {
   day_no_nomination: '☀️ Không Có Đề Cử',
 };
 
+// Banner ngữ cảnh — dẫn dắt người chơi biết phải làm gì
+const ACTION_BANNERS = {
+  night_guard:     { icon:'🛡️', color:'#3b82f6', text:'Chọn 1 người để bảo vệ đêm nay. Không được chọn trùng đêm trước!' },
+  night_wolf:      { icon:'🐺', color:'#ef4444', text:'Cùng bầy sói thống nhất chọn 1 con mồi. Click vào người đó!' },
+  night_witch:     { icon:'🧪', color:'#8b5cf6', text:'Có người bị sói tấn công. Bạn có muốn cứu không? Hoặc dùng bình độc?' },
+  night_witch_nd:  { icon:'🧪', color:'#8b5cf6', text:'Đêm nay sói không tấn công ai. Bạn có muốn dùng bình độc không?' },
+  night_seer:      { icon:'🔮', color:'#6366f1', text:'Click vào 1 người để soi. Đỏ = Sói 🔴 — Xanh = Người tốt 🔵' },
+  day_reveal:      { icon:'☀️', color:'#f59e0b', text:'Bình minh ló dạng. Xem có ai bị tấn công đêm qua không...' },
+  day_discuss:     { icon:'💬', color:'#10b981', text:'Thảo luận để tìm Sói! Nêu nghi ngờ, chia sẻ thông tin.' },
+  day_nominate:    { icon:'🗳️', color:'#f59e0b', text:'Click vào người bạn nghi là Sói để đề cử. Ai đủ phiếu sẽ lên ghế nóng!' },
+  day_defense:     { icon:'⚖️', color:'#f97316', text:'Lắng nghe bị cáo tự bào chữa trước khi bỏ phiếu.' },
+  day_final_vote:  { icon:'🪢', color:'#ef4444', text:'Quyết định: Treo Cổ hay Tha? Nhấn nút để bỏ phiếu.' },
+  day_no_nomination:{ icon:'😮‍💨', color:'#6b7280', text:'Không ai bị đề cử. Cả làng được sống thêm 1 ngày.' },
+};
+
+
 export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, setMcVoiceEnabled }) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
@@ -298,6 +314,32 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
   const showPhaseTimer = (!isNight || isMyTurn) && !g.winner; // Ngày ai cũng thấy, đêm chỉ ai đến lượt mới thấy
 
+  // --- Computed: Action Banner ---
+  const getActionBanner = () => {
+    if (!me?.alive || g.winner) return null;
+    const phase = g.nightDayPhase;
+    if (isNight && !isMyTurn) return null; // đêm: chỉ hiện cho người đến lượt
+    if (phase === 'night_witch') {
+      return g.wolfVictimId ? ACTION_BANNERS.night_witch : ACTION_BANNERS.night_witch_nd;
+    }
+    return ACTION_BANNERS[phase] || null;
+  };
+  const actionBanner = getActionBanner();
+
+  // --- Computed: live Sói/Dân count ---
+  const alivePlayers = room.players.filter(p => p.alive);
+  const aliveWolfCount  = g.roleCounts ? Math.max(0,
+    alivePlayers.filter(p => g.wolfTeammates?.includes(p.id) || p.role === 'wolf').length
+  ) : (g.wolfTeammates?.filter(id => room.players.find(p => p.id===id)?.alive).length ?? '?');
+  const aliveVillageCount = alivePlayers.length - (typeof aliveWolfCount === 'number' ? aliveWolfCount : 0);
+
+  // --- Computed: final vote tally ---
+  const hangCount  = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='hang').length  : 0;
+  const spareCount = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='spare').length : 0;
+  const totalAlive = alivePlayers.length;
+  const hangNeeded = Math.floor(totalAlive / 2) + 1;
+
+
   if (g.winner && !g.history) {
     return <div className="playing-view-container"><div className="waiting-text">Đang tải dữ liệu tổng kết...</div></div>;
   }
@@ -327,18 +369,39 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           )}
         </div>
         <div className="hud-right">
+          {/* Live Sói/Dân counter */}
+          <div className="hud-score">
+            <span className="hud-wolf">🐺 {aliveWolfCount}</span>
+            <span className="hud-vs">vs</span>
+            <span className="hud-village">👥 {aliveVillageCount}</span>
+          </div>
           {setMcVoiceEnabled && (
             <button
               className="btn-mc-voice"
               onClick={() => setMcVoiceEnabled(prev => !prev)}
               title={mcVoiceEnabled ? 'Tắt giọng MC' : 'Bật giọng MC'}
             >
-              {mcVoiceEnabled ? '🔊 MC' : '🔇 MC'}
+              {mcVoiceEnabled ? '🔊' : '🔇'}
             </button>
           )}
           <FullscreenButton />
         </div>
       </div>
+
+      {/* Action Banner — hướng dẫn ngữ cảnh */}
+      {actionBanner && !g.winner && (
+        <div
+          className={`action-banner ${hasActed ? 'action-banner-done' : ''}`}
+          style={{ '--banner-color': actionBanner.color }}
+        >
+          <span className="action-banner-icon">{actionBanner.icon}</span>
+          <span className="action-banner-text">
+            {hasActed
+              ? `✅ Đã ghi nhận lựa chọn! Đang chờ phase tiếp theo...`
+              : actionBanner.text}
+          </span>
+        </div>
+      )}
 
       {/* Tab bar — chỉ hiện trên mobile portrait */}
       <div className="mobile-tab-bar">
@@ -474,23 +537,49 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
                   {g.nightDayPhase === "day_final_vote" && (
                     <div className="final-vote-actions">
-                      <p>Phán xét: {room.players.find(p => p.id === g.hotSeatQueue[g.hotSeatIndex])?.name}</p>
-                      <button 
-                        className={`btn-kill ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-dim" : ""}`} 
-                        disabled={!!(g.finalVotes && g.finalVotes[me.id])}
-                        onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true)); }}
-                      >
-                        ⚔️ Treo cổ {g.finalVotes && g.finalVotes[me.id] === "hang" && " ✓"}
-                      </button>
-                      <button 
-                        className={`btn-save ${g.finalVotes && g.finalVotes[me.id] === "spare" ? "voted-active" : ""} ${g.finalVotes && g.finalVotes[me.id] === "hang" ? "voted-dim" : ""}`} 
-                        disabled={!!(g.finalVotes && g.finalVotes[me.id])}
-                        onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true)); }}
-                      >
-                        🕊️ Tha {g.finalVotes && g.finalVotes[me.id] === "spare" && " ✓"}
-                      </button>
+                      <p className="vote-defendant">
+                        ⚖️ Phán xét: <strong>{room.players.find(p => p.id === g.hotSeatQueue[g.hotSeatIndex])?.name}</strong>
+                      </p>
+
+                      {/* Nút vote */}
+                      <div className="vote-btn-row">
+                        <button
+                          className={`btn-kill ${g.finalVotes?.[me.id] === 'hang' ? 'voted-active' : g.finalVotes?.[me.id] ? 'voted-dim' : ''}`}
+                          disabled={!!(g.finalVotes?.[me.id])}
+                          onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true)); }}
+                        >
+                          🪢 Treo Cổ {g.finalVotes?.[me.id] === 'hang' && '✓'}
+                        </button>
+                        <button
+                          className={`btn-save ${g.finalVotes?.[me.id] === 'spare' ? 'voted-active' : g.finalVotes?.[me.id] ? 'voted-dim' : ''}`}
+                          disabled={!!(g.finalVotes?.[me.id])}
+                          onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true)); }}
+                        >
+                          🕊️ Tha {g.finalVotes?.[me.id] === 'spare' && '✓'}
+                        </button>
+                      </div>
+
+                      {/* Thanh tỉ lệ real-time */}
+                      {hangCount + spareCount > 0 && (
+                        <div className="vote-tally">
+                          <div className="vote-tally-row">
+                            <span className="tally-label tally-hang">🪢 {hangCount}</span>
+                            <div className="tally-bar-bg">
+                              <div className="tally-bar-hang"
+                                   style={{ width: `${(hangCount / (hangCount + spareCount)) * 100}%` }} />
+                            </div>
+                            <span className="tally-label tally-spare">{spareCount} 🕊️</span>
+                          </div>
+                          <div className="tally-hint">
+                            {hangCount >= hangNeeded
+                              ? '🪢 Đủ phiếu treo cổ!'
+                              : `Cần thêm ${hangNeeded - hangCount} phiếu Treo để xử tử`}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
+
                 </>
               )}
 
@@ -546,24 +635,44 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     </div>
                   )}
 
-                  {/* Player chat bubble */}
-                  {(msg.type === 'village' || msg.type === 'wolf') && (
-                    <div className={`chat-player-bubble ${msg.senderId === me?.id ? 'mine' : 'others'} ${msg.type === 'wolf' ? 'wolf-msg' : ''}`}>
-                      {msg.senderId !== me?.id && (
-                        <div className="chat-sender-row">
-                          <span className="chat-sender-avatar">{msg.type === 'wolf' ? '🐺' : '👤'}</span>
-                          <span className="chat-sender-name">{msg.senderName}</span>
-                          <span className="chat-time">{msg.time}</span>
+                  {/* Player chat bubble — Zalo style */}
+                  {(msg.type === 'village' || msg.type === 'wolf') && (() => {
+                    const isMine = msg.senderId === me?.id;
+                    const senderPlayer = room.players.find(p => p.id === msg.senderId);
+                    const avatarSrc = senderPlayer?.avatar || '/icon-192.png';
+                    return (
+                      <div className={`chat-player-bubble ${isMine ? 'mine' : 'others'} ${msg.type === 'wolf' ? 'wolf-msg' : ''}`}>
+                        {/* Avatar trái — người khác */}
+                        {!isMine && (
+                          <img src={avatarSrc} className="chat-avatar-img" alt={msg.senderName}
+                               onError={e => { e.target.src = '/icon-192.png'; }} />
+                        )}
+                        <div className="chat-content-col">
+                          {/* Tên + thời gian (trên bubble) */}
+                          {!isMine && (
+                            <div className="chat-header-row">
+                              {msg.type === 'wolf' && <span className="wolf-tag">🐺</span>}
+                              <span className="chat-sender-name">{msg.senderName}</span>
+                              <span className="chat-time">{msg.time}</span>
+                            </div>
+                          )}
+                          {/* Bubble */}
+                          <div className="chat-bubble-body">
+                            <span className="chat-text">{msg.text}</span>
+                          </div>
+                          {/* Thời gian phía mình */}
+                          {isMine && (
+                            <span className="chat-time chat-time-mine">{msg.time}</span>
+                          )}
                         </div>
-                      )}
-                      <div className="chat-bubble-body">
-                        <span className="chat-text">{msg.text}</span>
+                        {/* Avatar phải — mình */}
+                        {isMine && (
+                          <img src={me?.avatar || '/icon-192.png'} className="chat-avatar-img" alt="Bạn"
+                               onError={e => { e.target.src = '/icon-192.png'; }} />
+                        )}
                       </div>
-                      {msg.senderId === me?.id && (
-                        <span className="chat-time chat-time-mine">{msg.time}</span>
-                      )}
-                    </div>
-                  )}
+                    );
+                  })()}
 
                 </div>
               ))}
