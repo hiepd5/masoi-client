@@ -517,13 +517,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                             </div>
                           </div>
                           {/* Nút hành động */}
-                          {g.wolfVictimId ? (
+                          {g.witchInfo?.victimId ? (
                             <p className="witch-victim-text">⚠️ Có người vừa bị tấn công!</p>
                           ) : (
                             <p className="witch-victim-text">😮‍💨 Đêm nay không ai bị cắn</p>
                           )}
                           <div className="witch-btn-row">
-                            {g.wolfVictimId && (
+                            {g.witchInfo?.victimId && (
                               <button className="btn-save" disabled={g.witchInfo?.usedSave} onClick={() => handleWitch(true, null)}>
                                 💚 Cứu
                               </button>
