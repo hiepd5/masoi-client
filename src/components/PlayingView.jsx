@@ -828,6 +828,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       {g.winner && g.history && (
         <EndGameRecap 
           history={g.history} 
+          awards={g.awards || []}
           isHost={me?.isHost} 
           onRestart={() => socketRef.current.emit("room:restart")}
           onAnimate={setRecapAnimation}

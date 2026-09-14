@@ -140,6 +140,9 @@ export default function PlayerCircle({
             case "witch_poison": recapClass = "anim-witch-poison"; recapIcon = "☠️"; break;
             case "hang": recapClass = "anim-hang"; recapIcon = "🪢"; break;
             case "seer": recapClass = "anim-seer"; recapIcon = "👁️"; break;
+            case "tough_guy_endured": recapClass = "anim-guard-shield"; recapIcon = "💪"; break;
+            case "cursed_transformed": recapClass = "anim-wolf-bite"; recapIcon = "🌑"; break;
+            case "death": recapClass = "anim-hang"; recapIcon = "💀"; break;
             default: break;
           }
         }

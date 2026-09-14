@@ -1,0 +1,854 @@
+﻿/* =========================================================
+   END GAME RECAP 2.0 CINEMA STYLES
+   ========================================================= */
+
+.recap-cinema-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(6, 9, 28, 0.94);
+  backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  animation: recap-fade-in 0.4s ease;
+}
+
+@keyframes recap-fade-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.recap-cinema-container {
+  max-width: 960px;
+  width: 100%;
+  background: rgba(18, 24, 54, 0.95);
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(99, 102, 241, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: 90vh;
+}
+
+/* --- CINEMA TOP BAR & TABS --- */
+.recap-top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recap-tabs-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-recap-tab {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-recap-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f1f5f9;
+}
+
+.btn-recap-tab.active {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+  color: #fff;
+  border-color: #818cf8;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+}
+
+.recap-quick-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-recap-tool {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+  transition: all 0.15s;
+}
+
+.btn-recap-tool:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+/* --- MAIN CONTENT AREA --- */
+.recap-content-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* =========================================================
+   TAB 1: WINNER HERO & CARD REVEALS
+   ========================================================= */
+.recap-winner-hero {
+  border-radius: 20px;
+  padding: 28px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid;
+  animation: hero-appear 0.6s ease;
+}
+
+@keyframes hero-appear {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.recap-winner-hero.wolf {
+  background: radial-gradient(circle at center, rgba(239, 68, 68, 0.25) 0%, rgba(15, 10, 25, 0.9) 100%);
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.recap-winner-hero.village {
+  background: radial-gradient(circle at center, rgba(34, 197, 94, 0.25) 0%, rgba(10, 25, 15, 0.9) 100%);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.recap-winner-hero.tanner {
+  background: radial-gradient(circle at center, rgba(236, 72, 153, 0.25) 0%, rgba(20, 10, 25, 0.9) 100%);
+  border-color: rgba(236, 72, 153, 0.5);
+}
+
+.recap-winner-emoji-big {
+  font-size: 4rem;
+  margin-bottom: 8px;
+  animation: bounce-trophy 1.2s infinite alternate ease-in-out;
+}
+
+@keyframes bounce-trophy {
+  from { transform: translateY(0) scale(1); }
+  to { transform: translateY(-6px) scale(1.06); }
+}
+
+.recap-winner-title-big {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0 0 6px 0;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.recap-winner-quote {
+  font-size: 1rem;
+  color: #cbd5e1;
+  margin: 0;
+  font-style: italic;
+}
+
+/* 3D Cards Grid */
+.recap-cards-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.recap-cards-heading h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recap-cards-grid-3d {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 14px;
+}
+
+.card-flip-item {
+  perspective: 900px;
+  height: 170px;
+  cursor: pointer;
+}
+
+.card-flip-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 16px;
+}
+
+.card-flip-item.flipped .card-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.card-flip-front,
+.card-flip-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.card-flip-front {
+  background: linear-gradient(135deg, #1e1b4b, #312e81);
+  border: 1.5px solid rgba(129, 140, 248, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.card-flip-front .back-pattern-icon {
+  font-size: 2.4rem;
+  opacity: 0.8;
+}
+
+.card-flip-front .back-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #c7d2fe;
+  margin-top: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.card-flip-back {
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  transform: rotateY(180deg);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  gap: 6px;
+}
+
+.card-flip-back.wolf {
+  border-color: #ef4444;
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.3);
+}
+
+.card-flip-back.village {
+  border-color: #3b82f6;
+}
+
+.card-flip-back.neutral {
+  border-color: #cbd5e1;
+}
+
+.card-flip-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.card-flip-role-badge {
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.card-flip-player-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f8fafc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.card-flip-status-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.card-flip-status-pill.alive {
+  color: #4ade80;
+}
+
+.card-flip-status-pill.dead {
+  color: #f87171;
+}
+
+/* =========================================================
+   TAB 2: NIGHT CLASH & DAY TRIBUNAL TIMELINE
+   ========================================================= */
+.recap-days-selector {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+
+.btn-day-pill {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: auto;
+  margin: 0;
+  transition: all 0.2s;
+}
+
+.btn-day-pill:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.btn-day-pill.active {
+  background: #6366f1;
+  color: #fff;
+  border-color: #a5b4fc;
+}
+
+/* Day Block */
+.recap-day-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Night Clash Card */
+.night-clash-card {
+  background: linear-gradient(135deg, rgba(20, 15, 45, 0.9), rgba(10, 12, 30, 0.95));
+  border: 1.5px solid rgba(99, 102, 241, 0.35);
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.night-clash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.night-clash-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #818cf8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clash-actions-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clash-action-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+
+.clash-action-icon {
+  font-size: 1.4rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.clash-action-desc {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #f1f5f9;
+  line-height: 1.4;
+}
+
+.clash-action-desc strong {
+  color: #ffd166;
+}
+
+.clash-outcome-banner {
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.clash-outcome-banner.saved {
+  background: rgba(34, 197, 94, 0.18);
+  border: 1.5px solid #22c55e;
+  color: #86efac;
+}
+
+.clash-outcome-banner.bloody {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1.5px solid #ef4444;
+  color: #fca5a5;
+}
+
+.clash-outcome-banner.peaceful {
+  background: rgba(59, 130, 246, 0.18);
+  border: 1.5px solid #3b82f6;
+  color: #93c5fd;
+}
+
+/* Day Tribunal Card */
+.day-tribunal-card {
+  background: linear-gradient(135deg, rgba(30, 25, 20, 0.9), rgba(15, 12, 10, 0.95));
+  border: 1.5px solid rgba(245, 158, 11, 0.35);
+  border-radius: 18px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.day-tribunal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.day-tribunal-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fbbf24;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tribunal-votes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.tribunal-vote-column {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tribunal-vote-column.hang {
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.tribunal-vote-column.spare {
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.vote-column-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vote-voters-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.voter-pill {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+}
+
+.tribunal-verdict-banner {
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.tribunal-verdict-banner.hanged-wolf {
+  background: rgba(34, 197, 94, 0.2);
+  border: 1.5px solid #22c55e;
+  color: #86efac;
+}
+
+.tribunal-verdict-banner.hanged-innocent {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1.5px solid #ef4444;
+  color: #fca5a5;
+}
+
+.tribunal-verdict-banner.spared {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1.5px solid #3b82f6;
+  color: #93c5fd;
+}
+
+/* =========================================================
+   TAB 3: HALL OF FAME & MVP
+   ========================================================= */
+.recap-awards-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mvp-hero-card {
+  background: linear-gradient(135deg, #451a03 0%, #78350f 50%, #1e1b4b 100%);
+  border: 2px solid #fbbf24;
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.mvp-hero-avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.mvp-hero-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid #fbbf24;
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
+}
+
+.mvp-crown-badge {
+  position: absolute;
+  top: -12px;
+  right: -6px;
+  font-size: 1.8rem;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.8));
+}
+
+.mvp-hero-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mvp-badge-tag {
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #fbbf24;
+}
+
+.mvp-hero-name {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0;
+  color: #fff;
+}
+
+.mvp-hero-desc {
+  font-size: 0.95rem;
+  color: #fef08a;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
+}
+
+.awards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.award-card-item {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+
+.award-card-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+}
+
+.award-player-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid;
+  flex-shrink: 0;
+}
+
+.award-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.award-title {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #f1f5f9;
+}
+
+.award-recipient {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.award-description {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+/* =========================================================
+   BOTTOM RECAP CONTROL BAR
+   ========================================================= */
+.recap-cinema-footer {
+  padding: 14px 20px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.recap-playback-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-playback {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-playback:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.btn-playback:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.recap-restart-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-recap-restart-master {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  padding: 10px 24px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  width: auto;
+  margin: 0;
+  transition: all 0.2s;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+}
+
+.btn-recap-restart-master:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+}
+
+/* =========================================================
+   MOBILE RESPONSIVE (< 768px)
+   ========================================================= */
+@media (max-width: 768px) {
+  .recap-cinema-overlay {
+    padding: 6px;
+  }
+
+  .recap-cinema-container {
+    max-height: 96vh;
+    border-radius: 16px;
+  }
+
+  .recap-top-nav {
+    padding: 8px 12px;
+  }
+
+  .btn-recap-tab {
+    font-size: 0.78rem;
+    padding: 6px 10px;
+  }
+
+  .recap-content-body {
+    padding: 14px;
+    gap: 14px;
+  }
+
+  .recap-winner-title-big {
+    font-size: 1.4rem;
+  }
+
+  .recap-winner-emoji-big {
+    font-size: 3rem;
+  }
+
+  .recap-cards-grid-3d {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .card-flip-item {
+    height: 140px;
+  }
+
+  .card-flip-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .card-flip-player-name {
+    font-size: 0.75rem;
+  }
+
+  .tribunal-votes-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mvp-hero-card {
+    flex-direction: column;
+    text-align: center;
+    padding: 16px;
+  }
+
+  .awards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .recap-cinema-footer {
+    padding: 10px 14px;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .recap-playback-buttons {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .recap-restart-wrapper {
+    width: 100%;
+  }
+
+  .btn-recap-restart-master {
+    width: 100%;
+  }
+}
