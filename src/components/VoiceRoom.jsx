@@ -1,31 +1,99 @@
-import { useEffect, useState, useCallback } from "react";
-import { LiveKitRoom, useTracks, useLocalParticipant, useRoomContext, AudioTrack } from "@livekit/components-react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import {
+  LiveKitRoom,
+  useTracks,
+  useLocalParticipant,
+  useRoomContext,
+  AudioTrack,
+  StartAudio,
+} from "@livekit/components-react";
 import { Track } from "livekit-client";
 import "@livekit/components-styles";
 import "./VoiceRoom.css";
 
-function VoiceParticipantManager({ isNight, myRole }) {
+// Quản lý trạng thái Micro theo Phase & Tình trạng Sống/Chết
+function VoiceParticipantManager({ isNight, myRole, isAlive, userMicPreference }) {
   const { localParticipant } = useLocalParticipant();
+
   useEffect(() => {
-    if (isNight && myRole !== "wolf") {
-      localParticipant?.setMicrophoneEnabled(false);
+    if (!localParticipant) return;
+
+    if (!isAlive) {
+      // Người chết bị tắt mic tuyệt đối
+      localParticipant.setMicrophoneEnabled(false);
+      return;
     }
-  }, [isNight, myRole, localParticipant]);
+
+    if (isNight) {
+      if (myRole === "wolf") {
+        // Sói được phép nói trong kênh bầy sói ban đêm
+        localParticipant.setMicrophoneEnabled(userMicPreference);
+      } else {
+        // Dân làng đang ngủ -> cưỡng chế tắt mic
+        localParticipant.setMicrophoneEnabled(false);
+      }
+    } else {
+      // Ban ngày: Khôi phục mic theo sở thích của người chơi còn sống
+      localParticipant.setMicrophoneEnabled(userMicPreference);
+    }
+  }, [isNight, myRole, isAlive, userMicPreference, localParticipant]);
+
   return null;
 }
 
-function CustomAudioRenderer({ isNight, myRole, wolfTeammates, volumeMap }) {
+// Xử lý chặn âm thanh tự phát (Autoplay Policy) của trình duyệt
+function AutoplayBlockNotice() {
+  const room = useRoomContext();
+  const [blocked, setBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!room) return;
+    const checkPlayback = () => {
+      setBlocked(!room.canPlaybackAudio);
+    };
+    checkPlayback();
+    room.on("audioPlaybackChanged", checkPlayback);
+    return () => {
+      room.off("audioPlaybackChanged", checkPlayback);
+    };
+  }, [room]);
+
+  if (!blocked) return null;
+
+  return (
+    <div className="voice-autoplay-notice" onClick={() => room.startAudio()}>
+      <span>🔊 Trình duyệt đang chặn âm thanh. <b>Bấm vào đây để nghe</b></span>
+    </div>
+  );
+}
+
+// Bộ lọc âm thanh theo luật chơi Ma Sói
+function CustomAudioRenderer({ isNight, myRole, isAlive, wolfTeammates, volumeMap }) {
   const tracks = useTracks([Track.Source.Microphone]);
+
   return (
     <>
       {tracks.map((trackRef) => {
         const identity = trackRef.participant.identity;
         if (trackRef.participant.isLocal) return null;
-        let shouldPlay = true;
+
+        let shouldPlay = false;
+
         if (isNight) {
-          shouldPlay = myRole === "wolf" && (wolfTeammates.includes(identity) || trackRef.participant.isLocal);
+          // Ban đêm: Chỉ Sói còn sống mới nghe thấy đồng đội Sói nói
+          if (myRole === "wolf" && isAlive) {
+            shouldPlay = wolfTeammates.includes(identity);
+          } else {
+            // Dân làng hoặc người chết không nghe thấy gì ban đêm
+            shouldPlay = false;
+          }
+        } else {
+          // Ban ngày: Mọi người (kể cả người chết đang theo dõi) đều nghe thấy những ai còn sống nói
+          shouldPlay = true;
         }
+
         if (!shouldPlay) return null;
+
         const vol = volumeMap[identity] ?? 1;
         return <AudioTrack key={identity} trackRef={trackRef} volume={vol} />;
       })}
@@ -33,86 +101,177 @@ function CustomAudioRenderer({ isNight, myRole, wolfTeammates, volumeMap }) {
   );
 }
 
-function VoicePanel({ isNight, myRole, wolfTeammates, volumeMap, setVolumeMap, onSpeakingChange }) {
+// Bảng điều khiển giao diện Voice
+function VoicePanel({
+  isNight,
+  myRole,
+  isAlive,
+  userMicPreference,
+  setUserMicPreference,
+  volumeMap,
+  setVolumeMap,
+  onSpeakingChange,
+}) {
   const tracks = useTracks([Track.Source.Microphone]);
-  const { localParticipant } = useLocalParticipant();
-  const [micOn, setMicOn] = useState(true);
+  const room = useRoomContext();
+
+  // Kiểm tra quyền được phép bật mic
+  const canSpeak = isAlive && (!isNight || myRole === "wolf");
 
   function toggleMic() {
-    const next = !micOn;
-    setMicOn(next);
-    localParticipant?.setMicrophoneEnabled(next);
+    if (!canSpeak) return;
+    setUserMicPreference((prev) => !prev);
   }
 
   function toggleMute(identity) {
-    setVolumeMap(prev => ({ ...prev, [identity]: prev[identity] === 0 ? 1 : 0 }));
+    setVolumeMap((prev) => ({
+      ...prev,
+      [identity]: prev[identity] === 0 ? 1 : 0,
+    }));
   }
 
-  // Detect who is speaking
+  // Phát hiện người đang phát âm thanh để highlight
   useEffect(() => {
     const speakers = tracks
-      .filter(t => t.participant.audioLevel > 0.05)
-      .map(t => t.participant.identity);
+      .filter((t) => (t.participant.audioLevel || 0) > 0.03)
+      .map((t) => t.participant.identity);
     onSpeakingChange?.(speakers);
   }, [tracks, onSpeakingChange]);
 
+  // Label trạng thái kênh
+  let channelLabel = "☀️ Kênh Chung";
+  if (!isAlive) {
+    channelLabel = "💀 Khán Giả (Chỉ nghe)";
+  } else if (isNight) {
+    channelLabel = myRole === "wolf" ? "🐺 Kênh Bầy Sói" : "🌙 Mọi người đang ngủ";
+  }
+
   return (
     <div className="voice-panel">
+      <AutoplayBlockNotice />
+
       <div className="voice-header">
-        <span className="voice-status-label">
-          {isNight ? (myRole === "wolf" ? "🐺 Kênh Bầy Sói" : "🌙 Mọi người đang ngủ") : "☀️ Kênh Chung"}
-        </span>
+        <span className="voice-status-label">{channelLabel}</span>
         <button
-          className={`btn-mic ${micOn ? 'mic-on' : 'mic-off'}`}
+          className={`btn-mic ${
+            !canSpeak ? "mic-disabled" : userMicPreference ? "mic-on" : "mic-off"
+          }`}
           onClick={toggleMic}
-          title={micOn ? 'Tắt mic' : 'Bật mic'}
+          disabled={!canSpeak}
+          title={
+            !isAlive
+              ? "Người chết phải giữ im lặng"
+              : isNight && myRole !== "wolf"
+              ? "Ban đêm dân làng phải ngủ"
+              : userMicPreference
+              ? "Tắt mic của bạn"
+              : "Bật mic của bạn"
+          }
         >
-          {micOn ? '🎤' : '🔇'}
+          {!canSpeak ? "🔒" : userMicPreference ? "🎤" : "🔇"}
+          <span className="mic-btn-text">
+            {!canSpeak
+              ? "Khóa mic"
+              : userMicPreference
+              ? "Đang bật mic"
+              : "Bật mic"}
+          </span>
         </button>
       </div>
 
+      {/* Danh sách người trong phòng voice */}
       <div className="voice-participants">
         {tracks
-          .filter(t => !t.participant.isLocal)
-          .map(trackRef => {
-            const identity = trackRef.participant.identity;
+          .filter((t) => !t.participant.isLocal)
+          .map((trackRef) => {
+            const participant = trackRef.participant;
+            const identity = participant.identity;
+            const displayName = participant.name || identity.slice(0, 8);
             const isMuted = volumeMap[identity] === 0;
-            const isSpeaking = trackRef.participant.audioLevel > 0.05;
+            const isSpeaking = (participant.audioLevel || 0) > 0.03;
+
             return (
-              <div key={identity} className={`voice-participant ${isSpeaking ? 'speaking' : ''}`}>
-                <span className="voice-participant-name">
-                  {isSpeaking ? '🔊 ' : ''}{identity.slice(0, 8)}
+              <div
+                key={identity}
+                className={`voice-participant ${isSpeaking ? "speaking" : ""}`}
+              >
+                <span className="voice-participant-name" title={displayName}>
+                  {isSpeaking ? "🔊 " : "🎙️ "}
+                  {displayName}
                 </span>
                 <button
-                  className={`btn-mute-player ${isMuted ? 'muted' : ''}`}
+                  className={`btn-mute-player ${isMuted ? "muted" : ""}`}
                   onClick={() => toggleMute(identity)}
-                  title={isMuted ? 'Bỏ tắt tiếng' : 'Tắt tiếng người này'}
+                  title={isMuted ? "Bỏ tắt tiếng người này" : "Tắt tiếng người này"}
                 >
-                  {isMuted ? '🔇' : '🔉'}
+                  {isMuted ? "🔇" : "🔉"}
                 </button>
               </div>
             );
           })}
+        {tracks.filter((t) => !t.participant.isLocal).length === 0 && (
+          <span className="voice-empty-hint">Chưa có ai khác bật mic</span>
+        )}
       </div>
     </div>
   );
 }
 
-export default function VoiceRoom({ socketRef, isNight, myRole, wolfTeammates, onSpeakingChange }) {
+export default function VoiceRoom({
+  socketRef,
+  isNight,
+  myRole,
+  isAlive = true,
+  myId,
+  wolfTeammates = [],
+  onSpeakingChange,
+}) {
   const [token, setToken] = useState(null);
   const [url, setUrl] = useState(null);
   const [error, setError] = useState(null);
   const [volumeMap, setVolumeMap] = useState({});
+  const [userMicPreference, setUserMicPreference] = useState(true);
 
-  useEffect(() => {
+  const fetchToken = useCallback(() => {
+    if (!socketRef?.current) return;
     socketRef.current.emit("livekit:token", {}, (res) => {
-      if (res.error) setError(res.error);
-      else { setToken(res.token); setUrl(res.url); }
+      if (res?.error) {
+        setError(res.error);
+      } else if (res?.token && res?.url) {
+        setToken(res.token);
+        setUrl(res.url);
+        setError(null);
+      }
     });
   }, [socketRef]);
 
-  if (error) return <div className="voice-error">🎤 Lỗi Voice: {error}</div>;
-  if (!token || !url) return <div className="voice-loading">🎤 Đang kết nối voice...</div>;
+  useEffect(() => {
+    fetchToken();
+
+    // Lắng nghe khi socket reconnect để làm mới token
+    const socket = socketRef?.current;
+    if (socket) {
+      socket.on("connect", fetchToken);
+      return () => {
+        socket.off("connect", fetchToken);
+      };
+    }
+  }, [fetchToken, socketRef]);
+
+  if (error) {
+    return (
+      <div className="voice-error">
+        <span>🎤 Lỗi Voice: {error}</span>
+        <button className="btn-retry-voice" onClick={fetchToken}>
+          🔄 Thử lại
+        </button>
+      </div>
+    );
+  }
+
+  if (!token || !url) {
+    return <div className="voice-loading">🎤 Đang kết nối kênh thoại...</div>;
+  }
 
   return (
     <LiveKitRoom
@@ -120,15 +279,29 @@ export default function VoiceRoom({ socketRef, isNight, myRole, wolfTeammates, o
       token={token}
       connect={true}
       video={false}
-      audio={false}
+      audio={true}
       className="livekit-custom"
+      onError={(err) => setError(err.message)}
     >
-      <VoiceParticipantManager isNight={isNight} myRole={myRole} />
-      <CustomAudioRenderer isNight={isNight} myRole={myRole} wolfTeammates={wolfTeammates} volumeMap={volumeMap} />
+      <VoiceParticipantManager
+        isNight={isNight}
+        myRole={myRole}
+        isAlive={isAlive}
+        userMicPreference={userMicPreference}
+      />
+      <CustomAudioRenderer
+        isNight={isNight}
+        myRole={myRole}
+        isAlive={isAlive}
+        wolfTeammates={wolfTeammates}
+        volumeMap={volumeMap}
+      />
       <VoicePanel
         isNight={isNight}
         myRole={myRole}
-        wolfTeammates={wolfTeammates}
+        isAlive={isAlive}
+        userMicPreference={userMicPreference}
+        setUserMicPreference={setUserMicPreference}
         volumeMap={volumeMap}
         setVolumeMap={setVolumeMap}
         onSpeakingChange={onSpeakingChange}

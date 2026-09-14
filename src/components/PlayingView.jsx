@@ -694,10 +694,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
               socketRef={socketRef} 
               isNight={isNight} 
               myRole={me?.role} 
+              isAlive={me?.alive}
+              myId={me?.id}
               wolfTeammates={g.wolfTeammates || []} 
               onSpeakingChange={setSpeakingIds}
             />
           )}
+
           
           <div className="mc-chat-panel">
             {/* Chat messages */}
