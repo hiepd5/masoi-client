@@ -24,7 +24,20 @@ export default function PlayerCircle({
   reactions = [],
 }) {
   const numPlayers = players.length;
-  const radius = 140;
+  const [isMobile, setIsMobile] = React.useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+
+  React.useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const radius = isMobile ? 130 : 175;
+
 
   // Màu glow theo vai — dùng để làm ring xung quanh avatar của chính mình
   const ROLE_COLORS = {

@@ -4,26 +4,22 @@
 
 body {
   margin: 0;
+  padding: 0;
   font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  background: linear-gradient(180deg, #0b0f2b 0%, #1a1f4a 100%);
+  background: #06091e;
   color: #f1f1f6;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 #root {
   min-height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-}
-
-#root:has(.playing-view-container) {
-  padding: 0;
-  width: 100%;
-}
-
-#root:not(:has(.playing-view-container)) {
-  padding: 24px 16px;
+  align-items: stretch;
 }
 
 .card {
@@ -31,10 +27,12 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
   padding: 28px;
-  width: 100%;
+  width: 92%;
   max-width: 420px;
+  margin: 40px auto;
   backdrop-filter: blur(6px);
 }
+
 
 h1 {
   font-size: 1.7rem;
