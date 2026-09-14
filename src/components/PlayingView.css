@@ -156,9 +156,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow: hidden;
+  overflow: visible;       /* cho phép avatar vòng tròn vượt biên */
+  overflow-y: hidden;      /* nhưng vẫn clip dọc */
   position: relative;
-  padding: 8px;
+  padding: 8px 36px;       /* padding ngang 36px để tránh cắt avatar 62px */
 }
 
 .game-right {
@@ -795,8 +796,8 @@
 }
 
 .avatar-img {
-  width: 62px;
-  height: 62px;
+  width: 56px;   /* 56px: radius 140px - offset 28px = 2px margin (an toàn) */
+  height: 56px;
   border-radius: 50%;
   border: 3px solid rgba(255,255,255,0.18);
   background: #2a2f5c;
@@ -804,10 +805,10 @@
   transition: box-shadow 0.3s ease, transform 0.2s ease;
 }
 @media (max-width: 700px), screen and (orientation: portrait) {
-  .avatar-img { width: 52px; height: 52px; }
+  .avatar-img { width: 48px; height: 48px; }
 }
 @media (max-width: 400px) {
-  .avatar-img { width: 46px; height: 46px; }
+  .avatar-img { width: 42px; height: 42px; }
 }
 
 .day-mode .avatar-img {
@@ -1452,6 +1453,7 @@ button.voted-dim:disabled {
   width: 100%;
   position: relative;
   z-index: 1;
+  overflow: visible;
 }
 .player-circle-container {
   transform: rotateX(10deg);
