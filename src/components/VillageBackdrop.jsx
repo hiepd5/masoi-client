@@ -1,4 +1,4 @@
-﻿export default function VillageBackdrop({ isNight }) {
+export default function VillageBackdrop({ isNight }) {
   return (
     <div
       className={`village-backdrop${isNight ? ' night' : ' day'}`}
@@ -8,7 +8,7 @@
         inset: 0,
         zIndex: 0,
         pointerEvents: 'none',
-        opacity: isNight ? 0.10 : 0.16,
+        opacity: isNight ? 0.07 : 0.12,
         transition: 'opacity 1.5s ease',
         overflow: 'hidden',
       }}
@@ -20,10 +20,10 @@
         preserveAspectRatio="xMidYMid slice"
       >
         {/* === ĐƯỜNG MÒN từ tâm ra 4 hướng === */}
-        <path d="M200 200 L200 30"   stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.4"/>
-        <path d="M200 200 L200 370" stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.4"/>
-        <path d="M200 200 L30 200"  stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.4"/>
-        <path d="M200 200 L370 200" stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.4"/>
+        <path d="M200 200 L200 30"   stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.2"/>
+        <path d="M200 200 L200 370" stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.2"/>
+        <path d="M200 200 L30 200"  stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.2"/>
+        <path d="M200 200 L370 200" stroke={isNight?'#8899aa':'#6b7a5e'} strokeWidth="14" strokeLinecap="round" opacity="0.2"/>
 
         {/* === NHÀ GÓC TRÊN TRÁI === */}
         <g transform="translate(52, 48)">

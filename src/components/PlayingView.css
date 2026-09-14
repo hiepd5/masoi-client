@@ -8,10 +8,11 @@
   height: 100dvh;
   overflow: hidden;
   background: #0f0f1a;
-  color: white;
+  transition: background-color 1.5s ease, color 1.5s ease;
 }
 
 /* game-left backgrounds */
+
 .game-left.bg-day {
   background:
     radial-gradient(ellipse 80% 40% at 50% 0%, rgba(135,206,235,0.10) 0%, transparent 70%),
@@ -156,10 +157,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  overflow: visible;       /* cho phép avatar vòng tròn vượt biên */
-  overflow-y: hidden;      /* nhưng vẫn clip dọc */
+  overflow: visible;
+  overflow-y: hidden;
   position: relative;
-  padding: 8px 36px;       /* padding ngang 36px để tránh cắt avatar 62px */
+  padding: 8px;
 }
 
 .game-right {
@@ -293,8 +294,24 @@
   }
 }
 
-/* Landscape desktop: ẩn tab bar, show cả 2 cột bình thường */
-@media (min-width: 701px) and (orientation: landscape) {
+/* Landscape/tablet 701-900px: right panel nhỏ hơn để circle có đủ chỗ */
+@media (min-width: 701px) and (max-width: 900px) and (orientation: landscape) {
+  .mobile-tab-bar { display: none !important; }
+  .tab-hidden { display: flex !important; }
+  .game-layout { grid-template-columns: 1fr 260px; }
+  .game-right  { min-width: 260px; max-width: 260px; }
+}
+
+/* Landscape desktop 901-1099px */
+@media (min-width: 901px) and (max-width: 1099px) and (orientation: landscape) {
+  .mobile-tab-bar { display: none !important; }
+  .tab-hidden { display: flex !important; }
+  .game-layout { grid-template-columns: 1fr 320px; }
+  .game-right  { min-width: 320px; max-width: 320px; }
+}
+
+/* Landscape desktop ≥1100px — 3 columns (đã có ở cuối file) */
+@media (min-width: 1100px) {
   .mobile-tab-bar { display: none !important; }
   .tab-hidden { display: flex !important; }
   .game-layout { grid-template-columns: 1fr 340px; }
@@ -542,19 +559,8 @@
 .btn-save:hover:not(:disabled) { transform: scale(1.03); }
 .btn-kill:disabled, .btn-save:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-.playing-view-container {
-  position: relative;
-  width: 100%;
-  max-width: 900px;
-  min-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  border-radius: 16px;
-  transition: background-color 0.5s ease, color 0.5s ease;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-  overflow: hidden;
-}
+/* NOTE: playing-view-container defined at top of file (L5) — full screen, height: 100dvh */
+
 
 .night-mode {
   background-color: #06091e;
