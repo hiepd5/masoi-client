@@ -9,6 +9,7 @@ import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS } from '../config/roles.config.js';
+import VillageBackdrop from './VillageBackdrop.jsx';
 
 
 const PHASE_LABELS = {
@@ -424,6 +425,16 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
       </div>
 
+      {/* Timer progress bar */}
+      {g.phaseEndsAt && (
+        <div className="timer-progress-bar">
+          <div
+            className="timer-progress-fill"
+            style={{ width: `${Math.max(0, Math.min(100, (Math.max(0, Math.floor((g.phaseEndsAt - Date.now()) / 1000)) / 60) * 100))}%` }}
+          />
+        </div>
+      )}
+
       {/* Action Banner — hướng dẫn ngữ cảnh */}
       {actionBanner && !g.winner && (
         <div
@@ -445,7 +456,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           className={`tab-btn ${mobileTab === 'game' ? 'active' : ''}`}
           onClick={() => setMobileTab('game')}
         >
-          🎮 Trò Chơi
+          🎮 Vòng Tròn
+        </button>
+        <button
+          className={`tab-btn ${mobileTab === 'action' ? 'active' : ''}`}
+          onClick={() => setMobileTab('action')}
+        >
+          🎭 Hành Động
         </button>
         <button
           className={`tab-btn ${mobileTab === 'chat' ? 'active' : ''}`}
@@ -464,15 +481,19 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           if (!touchStartXRef.current) return;
           const dx = e.changedTouches[0].clientX - touchStartXRef.current;
           if (Math.abs(dx) > 60) {
-            if (dx < 0) { setMobileTab('chat'); setUnreadCount(0); setNewMsgCount(0); }
-            else { setMobileTab('game'); }
+            const tabs = ['game', 'action', 'chat'];
+            const cur = tabs.indexOf(mobileTab);
+            if (dx < 0 && cur < tabs.length - 1) { const next = tabs[cur + 1]; setMobileTab(next); if (next === 'chat') { setUnreadCount(0); setNewMsgCount(0); } }
+            else if (dx > 0 && cur > 0) { setMobileTab(tabs[cur - 1]); }
           }
           touchStartXRef.current = null;
         }}
+
       >
         
         {/* LEFT: Player circle + actions */}
-        <div className={`game-left ${mobileTab === 'game' ? 'tab-active' : 'tab-hidden'} ${isNight ? 'bg-night' : 'bg-day'}`} style={{ position: 'relative' }}>
+        <div className={`game-left ${(mobileTab === 'game' || mobileTab === 'action') ? 'tab-active' : 'tab-hidden'} ${isNight ? 'bg-night' : 'bg-day'} ${mobileTab === 'action' ? 'action-tab-mode' : ''}`} style={{ position: 'relative' }}>
+          <VillageBackdrop isNight={isNight} />
           <ParticleBackground isNight={isNight} />
           <PlayerCircle 
             players={room.players} 
