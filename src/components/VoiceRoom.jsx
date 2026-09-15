@@ -5,9 +5,8 @@ import {
   useLocalParticipant,
   useRoomContext,
   AudioTrack,
-  StartAudio,
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { Track, Room, RoomEvent } from "livekit-client";
 import "@livekit/components-styles";
 import "./VoiceRoom.css";
 
@@ -19,21 +18,17 @@ function VoiceParticipantManager({ isNight, myRole, isAlive, userMicPreference }
     if (!localParticipant) return;
 
     if (!isAlive) {
-      // Người chết bị tắt mic tuyệt đối
       localParticipant.setMicrophoneEnabled(false);
       return;
     }
 
     if (isNight) {
       if (myRole === "wolf") {
-        // Sói được phép nói trong kênh bầy sói ban đêm
         localParticipant.setMicrophoneEnabled(userMicPreference);
       } else {
-        // Dân làng đang ngủ -> cưỡng chế tắt mic
         localParticipant.setMicrophoneEnabled(false);
       }
     } else {
-      // Ban ngày: Khôi phục mic theo sở thích của người chơi còn sống
       localParticipant.setMicrophoneEnabled(userMicPreference);
     }
   }, [isNight, myRole, isAlive, userMicPreference, localParticipant]);
@@ -48,14 +43,10 @@ function AutoplayBlockNotice() {
 
   useEffect(() => {
     if (!room) return;
-    const checkPlayback = () => {
-      setBlocked(!room.canPlaybackAudio);
-    };
+    const checkPlayback = () => setBlocked(!room.canPlaybackAudio);
     checkPlayback();
-    room.on("audioPlaybackChanged", checkPlayback);
-    return () => {
-      room.off("audioPlaybackChanged", checkPlayback);
-    };
+    room.on(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
+    return () => room.off(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
   }, [room]);
 
   if (!blocked) return null;
@@ -78,17 +69,11 @@ function CustomAudioRenderer({ isNight, myRole, isAlive, wolfTeammates, volumeMa
         if (trackRef.participant.isLocal) return null;
 
         let shouldPlay = false;
-
         if (isNight) {
-          // Ban đêm: Chỉ Sói còn sống mới nghe thấy đồng đội Sói nói
           if (myRole === "wolf" && isAlive) {
             shouldPlay = wolfTeammates.includes(identity);
-          } else {
-            // Dân làng hoặc người chết không nghe thấy gì ban đêm
-            shouldPlay = false;
           }
         } else {
-          // Ban ngày: Mọi người (kể cả người chết đang theo dõi) đều nghe thấy những ai còn sống nói
           shouldPlay = true;
         }
 
@@ -111,11 +96,11 @@ function VoicePanel({
   volumeMap,
   setVolumeMap,
   onSpeakingChange,
+  onLeaveVoice,
 }) {
   const tracks = useTracks([Track.Source.Microphone]);
   const room = useRoomContext();
 
-  // Kiểm tra quyền được phép bật mic
   const canSpeak = isAlive && (!isNight || myRole === "wolf");
 
   function toggleMic() {
@@ -130,7 +115,6 @@ function VoicePanel({
     }));
   }
 
-  // Phát hiện người đang phát âm thanh để highlight
   useEffect(() => {
     const speakers = tracks
       .filter((t) => (t.participant.audioLevel || 0) > 0.03)
@@ -138,7 +122,6 @@ function VoicePanel({
     onSpeakingChange?.(speakers);
   }, [tracks, onSpeakingChange]);
 
-  // Label trạng thái kênh
   let channelLabel = "☀️ Kênh Chung";
   if (!isAlive) {
     channelLabel = "💀 Khán Giả (Chỉ nghe)";
@@ -152,34 +135,43 @@ function VoicePanel({
 
       <div className="voice-header">
         <span className="voice-status-label">{channelLabel}</span>
-        <button
-          className={`btn-mic ${
-            !canSpeak ? "mic-disabled" : userMicPreference ? "mic-on" : "mic-off"
-          }`}
-          onClick={toggleMic}
-          disabled={!canSpeak}
-          title={
-            !isAlive
-              ? "Người chết phải giữ im lặng"
-              : isNight && myRole !== "wolf"
-              ? "Ban đêm dân làng phải ngủ"
-              : userMicPreference
-              ? "Tắt mic của bạn"
-              : "Bật mic của bạn"
-          }
-        >
-          {!canSpeak ? "🔒" : userMicPreference ? "🎤" : "🔇"}
-          <span className="mic-btn-text">
-            {!canSpeak
-              ? "Khóa mic"
-              : userMicPreference
-              ? "Đang bật mic"
-              : "Bật mic"}
-          </span>
-        </button>
+        <div className="voice-header-actions">
+          <button
+            className={`btn-mic ${
+              !canSpeak ? "mic-disabled" : userMicPreference ? "mic-on" : "mic-off"
+            }`}
+            onClick={toggleMic}
+            disabled={!canSpeak}
+            title={
+              !isAlive
+                ? "Người chết phải giữ im lặng"
+                : isNight && myRole !== "wolf"
+                ? "Ban đêm dân làng phải ngủ"
+                : userMicPreference
+                ? "Tắt mic của bạn"
+                : "Bật mic của bạn"
+            }
+          >
+            {!canSpeak ? "🔒" : userMicPreference ? "🎤" : "🔇"}
+            <span className="mic-btn-text">
+              {!canSpeak
+                ? "Khóa mic"
+                : userMicPreference
+                ? "Đang bật"
+                : "Bật mic"}
+            </span>
+          </button>
+          {/* OPT 2: Nút rời voice — disconnect khỏi LiveKit để tiết kiệm phút */}
+          <button
+            className="btn-leave-voice"
+            onClick={onLeaveVoice}
+            title="Rời kênh voice (tiết kiệm dữ liệu)"
+          >
+            📵
+          </button>
+        </div>
       </div>
 
-      {/* Danh sách người trong phòng voice */}
       <div className="voice-participants">
         {tracks
           .filter((t) => !t.participant.isLocal)
@@ -217,6 +209,9 @@ function VoicePanel({
   );
 }
 
+// ============================================================
+// MAIN COMPONENT — VoiceRoom với 4 tối ưu tiết kiệm phút
+// ============================================================
 export default function VoiceRoom({
   socketRef,
   isNight,
@@ -232,31 +227,66 @@ export default function VoiceRoom({
   const [volumeMap, setVolumeMap] = useState({});
   const [userMicPreference, setUserMicPreference] = useState(true);
 
+  // OPT 1: Lazy connect — mặc định chưa tham gia, chờ người dùng bấm nút
+  const [hasJoined, setHasJoined] = useState(false);
+  // Theo dõi token đã được fetch chưa (để skip reconnect nếu còn valid)
+  const tokenFetchedRef = useRef(false);
+
+  // OPT 4: Chỉ fetch token khi chưa có token (tránh spam reconnect)
   const fetchToken = useCallback(() => {
     if (!socketRef?.current) return;
+    // OPT 4 FIX: Nếu đã có token hợp lệ và chưa có lỗi thì không fetch lại
+    if (tokenFetchedRef.current && token && !error) return;
+
     socketRef.current.emit("livekit:token", {}, (res) => {
       if (res?.error) {
         setError(res.error);
+        tokenFetchedRef.current = false;
       } else if (res?.token && res?.url) {
         setToken(res.token);
         setUrl(res.url);
         setError(null);
+        tokenFetchedRef.current = true;
       }
     });
-  }, [socketRef]);
+  }, [socketRef, token, error]);
 
   useEffect(() => {
+    // Chỉ fetch token khi người dùng đã chọn tham gia voice
+    if (!hasJoined) return;
     fetchToken();
 
-    // Lắng nghe khi socket reconnect để làm mới token
+    // Lắng nghe khi socket reconnect — chỉ fetch lại nếu chưa có token
     const socket = socketRef?.current;
     if (socket) {
       socket.on("connect", fetchToken);
-      return () => {
-        socket.off("connect", fetchToken);
-      };
+      return () => socket.off("connect", fetchToken);
     }
-  }, [fetchToken, socketRef]);
+  }, [fetchToken, socketRef, hasJoined]);
+
+  // OPT 3: Người chết → tự động disconnect khỏi LiveKit
+  const prevAliveRef = useRef(isAlive);
+  useEffect(() => {
+    if (prevAliveRef.current === true && isAlive === false) {
+      // Vừa chết → rời voice để tiết kiệm phút
+      if (hasJoined) {
+        setHasJoined(false);
+        setToken(null);
+        setUrl(null);
+        tokenFetchedRef.current = false;
+      }
+    }
+    prevAliveRef.current = isAlive;
+  }, [isAlive, hasJoined]);
+
+  // OPT 2: Hàm rời voice thủ công (nút 📵 trong VoicePanel)
+  const handleLeaveVoice = useCallback(() => {
+    setHasJoined(false);
+    setToken(null);
+    setUrl(null);
+    setError(null);
+    tokenFetchedRef.current = false;
+  }, []);
 
   const friendlyError = useMemo(() => {
     if (!error) return null;
@@ -271,12 +301,46 @@ export default function VoiceRoom({
     return `🎤 Voice lỗi: ${error}`;
   }, [error]);
 
+  // ---- Render ----
+
+  // OPT 1: Chưa join → hiển thị nút mời tham gia
+  if (!hasJoined) {
+    return (
+      <div className="voice-room-wrapper">
+        {friendlyError && (
+          <div className="voice-error-banner">
+            <span>{friendlyError}</span>
+            <button className="voice-error-close" onClick={() => setError(null)} title="Đóng">✕</button>
+          </div>
+        )}
+        <div className="voice-join-prompt">
+          <div className="voice-join-icon">🎙️</div>
+          <div className="voice-join-text">
+            {!isAlive
+              ? "Bạn đã chết. Tham gia để nghe (chỉ nghe, không nói)."
+              : "Tham gia kênh Voice để nói chuyện với mọi người."}
+          </div>
+          <button
+            className="btn-join-voice"
+            onClick={() => {
+              setHasJoined(true);
+              setError(null);
+            }}
+          >
+            🎙️ Tham gia Voice
+          </button>
+          <span className="voice-join-hint">Không tham gia thì game vẫn chạy bình thường</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="voice-room-wrapper">
       {friendlyError && (
         <div className="voice-error-banner">
           <span>{friendlyError}</span>
-          <button className="voice-error-close" onClick={() => setError(null)} title="Đóng">✕</button>
+          <button className="voice-error-close" onClick={() => { setError(null); setHasJoined(false); }} title="Đóng">✕</button>
         </div>
       )}
 
@@ -290,7 +354,18 @@ export default function VoiceRoom({
           video={false}
           audio={true}
           className="livekit-custom"
-          onError={(err) => setError(err.message)}
+          onError={(err) => {
+            setError(err.message);
+            tokenFetchedRef.current = false;
+          }}
+          onDisconnected={() => {
+            // Nếu bị disconnect không chủ ý, reset token để reconnect đúng cách
+            if (hasJoined) {
+              tokenFetchedRef.current = false;
+              setToken(null);
+              setUrl(null);
+            }
+          }}
         >
           <VoiceParticipantManager
             isNight={isNight}
@@ -314,6 +389,7 @@ export default function VoiceRoom({
             volumeMap={volumeMap}
             setVolumeMap={setVolumeMap}
             onSpeakingChange={onSpeakingChange}
+            onLeaveVoice={handleLeaveVoice}
           />
         </LiveKitRoom>
       )}
