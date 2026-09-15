@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   LiveKitRoom,
   useTracks,
@@ -258,54 +258,65 @@ export default function VoiceRoom({
     }
   }, [fetchToken, socketRef]);
 
-  if (error) {
-    return (
-      <div className="voice-error">
-        <span>🎤 Lỗi Voice: {error}</span>
-        <button className="btn-retry-voice" onClick={fetchToken}>
-          🔄 Thử lại
-        </button>
-      </div>
-    );
-  }
-
-  if (!token || !url) {
-    return <div className="voice-loading">🎤 Đang kết nối kênh thoại...</div>;
-  }
+  const friendlyError = useMemo(() => {
+    if (!error) return null;
+    if (
+      error === "LIVEKIT_QUOTA_EXCEEDED" ||
+      /429|quota|connection minutes/i.test(error) ||
+      /could not establish signal/i.test(error) ||
+      /websocket error/i.test(error)
+    ) {
+      return "🎙️ Kênh thoại tạm thời không khả dụng (hạn mức miễn phí tháng này đã hết). Bạn vẫn chat văn bản và nghe MC bình thường!";
+    }
+    return `🎤 Voice lỗi: ${error}`;
+  }, [error]);
 
   return (
-    <LiveKitRoom
-      serverUrl={url}
-      token={token}
-      connect={true}
-      video={false}
-      audio={true}
-      className="livekit-custom"
-      onError={(err) => setError(err.message)}
-    >
-      <VoiceParticipantManager
-        isNight={isNight}
-        myRole={myRole}
-        isAlive={isAlive}
-        userMicPreference={userMicPreference}
-      />
-      <CustomAudioRenderer
-        isNight={isNight}
-        myRole={myRole}
-        isAlive={isAlive}
-        wolfTeammates={wolfTeammates}
-        volumeMap={volumeMap}
-      />
-      <VoicePanel
-        isNight={isNight}
-        myRole={myRole}
-        isAlive={isAlive}
-        userMicPreference={userMicPreference}
-        setUserMicPreference={setUserMicPreference}
-        volumeMap={volumeMap}
-        setVolumeMap={setVolumeMap}
-        onSpeakingChange={onSpeakingChange}
-      />
-    </LiveKitRoom>
+    <div className="voice-room-wrapper">
+      {friendlyError && (
+        <div className="voice-error-banner">
+          <span>{friendlyError}</span>
+          <button className="voice-error-close" onClick={() => setError(null)} title="Đóng">✕</button>
+        </div>
+      )}
+
+      {!token || !url ? (
+        !friendlyError && <div className="voice-loading">🎤 Đang kết nối kênh thoại...</div>
+      ) : (
+        <LiveKitRoom
+          serverUrl={url}
+          token={token}
+          connect={true}
+          video={false}
+          audio={true}
+          className="livekit-custom"
+          onError={(err) => setError(err.message)}
+        >
+          <VoiceParticipantManager
+            isNight={isNight}
+            myRole={myRole}
+            isAlive={isAlive}
+            userMicPreference={userMicPreference}
+          />
+          <CustomAudioRenderer
+            isNight={isNight}
+            myRole={myRole}
+            isAlive={isAlive}
+            wolfTeammates={wolfTeammates}
+            volumeMap={volumeMap}
+          />
+          <VoicePanel
+            isNight={isNight}
+            myRole={myRole}
+            isAlive={isAlive}
+            userMicPreference={userMicPreference}
+            setUserMicPreference={setUserMicPreference}
+            volumeMap={volumeMap}
+            setVolumeMap={setVolumeMap}
+            onSpeakingChange={onSpeakingChange}
+          />
+        </LiveKitRoom>
+      )}
+    </div>
   );
 }

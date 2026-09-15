@@ -138,30 +138,42 @@
   font-style: italic;
 }
 
-.voice-error {
-  color: #ef4444;
-  font-size: 12px;
-  padding: 6px 10px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 8px;
+/* Compact non-blocking error banner */
+.voice-room-wrapper {
+  display: contents;
+}
+
+.voice-error-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #fca5a5;
+  line-height: 1.4;
+  margin-bottom: 4px;
 }
 
-.btn-retry-voice {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: white;
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
+.voice-error-banner span {
+  flex: 1;
 }
-.btn-retry-voice:hover {
-  background: rgba(255, 255, 255, 0.2);
+
+.voice-error-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.voice-error-close:hover {
+  color: white;
 }
 
 .voice-loading {
