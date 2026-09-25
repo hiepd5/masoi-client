@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const SERVER_URL = import.meta.env.PROD
-  ? "https://masoi-server-production.up.railway.app"
+  ? "https://masoi-server-2eca.onrender.com"
   : "http://localhost:3001";
 
 // Each browser tab gets a unique key so sessions don't cross-contaminate
