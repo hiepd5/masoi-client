@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useSocket, clearSession } from "./hooks/useSocket.js";
 import Lobby from "./components/Lobby.jsx";
 import Room from "./components/Room.jsx";
+import DevSandbox from "./components/DevSandbox.jsx";
 
 export default function App() {
   const { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus, kicked, clearKicked } = useSocket();
@@ -52,12 +53,15 @@ export default function App() {
   }
 
   return roomCode ? (
-    <Room 
-      socketRef={socketRef} 
-      roomCode={roomCode} 
-      roomData={roomData}
-      onLeave={handleLeave} 
-    />
+    <>
+      <Room 
+        socketRef={socketRef} 
+        roomCode={roomCode} 
+        roomData={roomData}
+        onLeave={handleLeave} 
+      />
+      {import.meta.env.DEV && <DevSandbox socketRef={socketRef} room={roomData} />}
+    </>
   ) : (
     <Lobby socketRef={socketRef} onJoined={handleJoined} />
   );

@@ -1,0 +1,210 @@
+.dev-sandbox-root {
+  position: fixed;
+  bottom: 14px;
+  left: 14px;
+  z-index: 9999;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.dev-sandbox-pill {
+  width: auto !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1.5px solid rgba(245, 158, 11, 0.65);
+  color: #fde68a;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.dev-sandbox-pill:hover {
+  transform: translateY(-2px);
+  border-color: #fbbf24;
+}
+
+.dev-pill-badge {
+  background: rgba(245, 158, 11, 0.22);
+  color: #fef08a;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.dev-sandbox-panel {
+  width: 316px;
+  max-width: calc(100vw - 28px);
+  max-height: 82vh;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1.5px solid rgba(245, 158, 11, 0.55);
+  border-radius: 16px;
+  padding: 12px;
+  color: #f8fafc;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dev-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dev-panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fde68a;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dev-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dev-btn {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.dev-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.dev-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dev-btn-close {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.dev-btn-autobot.on {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.55);
+  color: #86efac;
+}
+
+.dev-btn-autobot.off {
+  background: rgba(148, 163, 184, 0.15);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #cbd5e1;
+}
+
+.dev-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dev-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.dev-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dev-roles-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.dev-role-chip {
+  width: 100% !important;
+  padding: 5px 4px;
+  font-size: 11.5px;
+  border-radius: 8px;
+}
+
+.dev-role-chip.active {
+  background: rgba(245, 158, 11, 0.28);
+  border-color: #f59e0b;
+  color: #fef08a;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+}
+
+.dev-btn-skip {
+  width: 100% !important;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border-color: #fbbf24;
+  color: #0f172a;
+  font-weight: 800;
+  font-size: 12.5px;
+}
+
+.dev-btn-skip:hover:not(:disabled) {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+
+.dev-btn-accent {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.5);
+  color: #c7d2fe;
+}
+
+.dev-btn-danger {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fecaca;
+}
+
+.dev-btn-success {
+  background: rgba(34, 197, 94, 0.22);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #bbf7d0;
+}
+
+.dev-toast {
+  font-size: 11.5px;
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  padding: 5px 8px;
+  text-align: center;
+}
