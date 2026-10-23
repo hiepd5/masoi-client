@@ -11,80 +11,112 @@ import {
   EXTERIOR_ASSET_CATALOG,
   buildDefaultVillageNodes,
 } from "../editor/defaultVillageLayout.js";
+import {
+  CINEMATIC_SHARED_UNIFORMS,
+  createMoonlitSkyDomeMaterial,
+  createVolumetricFireMaterial,
+  getDriftingMistTexture,
+  getSoftGlowHaloTexture,
+} from "../shaders/villageCinematicShaders.js";
 
-// Bảng màu Khí Quyển 4 Buổi chuẩn PBR Điện Ảnh (kết hợp Hemisphere + PMREM IBL + Moon Rim)
+// Bảng màu Khí Quyển 4 Buổi chuẩn Concept Bắc Âu Điện Ảnh (Dù Ban Ngày vẫn giữ chất Chạng Vạng Sương Rừng ấm-lạnh mướt mắt!)
 const ATMOSPHERE_PALETTES = {
   night: {
-    bg: "#050a18",
-    fog: "#081126",
-    fogNear: 17,
-    fogFar: 55,
+    bg: "#040915",
+    skyZenith: "#030712",
+    skyMid: "#0a1930",
+    skyHorizon: "#162d4c",
+    cloudTint: "#5b83b3",
+    fog: "#0c1b31",
+    fogNear: 12.5,
+    fogFar: 46,
     hemiSky: "#60a5fa",
-    hemiGround: "#2b1c12",
-    hemiIntensity: 0.56,
+    hemiGround: "#2e1c10",
+    hemiIntensity: 0.54,
     dirColor: "#bae6fd",
-    dirIntensity: 1.05,
-    dirPos: [-10, 16, -11],
+    dirIntensity: 1.08,
+    dirPos: [-7, 17, -18],
     rimColor: "#38bdf8",
-    rimIntensity: 0.42,
-    envIntensity: 0.52,
-    groundTint: "#8fa89b",
+    rimIntensity: 0.48,
+    envIntensity: 0.62,
+    groundTint: "#6e8580",
     plazaTint: "#94a3b8",
     starOpacity: 0.92,
+    mistOpacity: 0.34,
+    warmGlow: 1.55,
   },
   dawn: {
-    bg: "#1f1932",
-    fog: "#2b1f38",
-    fogNear: 19,
-    fogFar: 60,
+    bg: "#120f24",
+    skyZenith: "#0b0a1a",
+    skyMid: "#221a3a",
+    skyHorizon: "#442c4a",
+    cloudTint: "#b084ab",
+    fog: "#251c36",
+    fogNear: 14.5,
+    fogFar: 52,
     hemiSky: "#f9a8d4",
     hemiGround: "#3b2316",
-    hemiIntensity: 0.72,
+    hemiIntensity: 0.66,
     dirColor: "#fdba74",
-    dirIntensity: 1.38,
-    dirPos: [12, 11, -9],
+    dirIntensity: 1.24,
+    dirPos: [10, 13, -15],
     rimColor: "#f472b6",
-    rimIntensity: 0.35,
-    envIntensity: 0.68,
-    groundTint: "#b8b0a4",
-    plazaTint: "#cbd5e1",
-    starOpacity: 0.22,
+    rimIntensity: 0.4,
+    envIntensity: 0.72,
+    groundTint: "#8f8a88",
+    plazaTint: "#b8c4d4",
+    starOpacity: 0.34,
+    mistOpacity: 0.28,
+    warmGlow: 1.28,
   },
   day: {
-    bg: "#1b3344",
-    fog: "#1d352d",
-    fogNear: 24,
-    fogFar: 68,
-    hemiSky: "#e0f2fe",
-    hemiGround: "#3f2e1e",
-    hemiIntensity: 0.92,
-    dirColor: "#fff7ed",
-    dirIntensity: 1.62,
-    dirPos: [11, 17, 9],
+    // Chạng Vạng Sương Rừng Bắc Âu (Xóa nền phẳng #1b3344 xám xịt; giữ ánh trăng mây bạc + đèn cửa sổ ấm nhẹ đúng Concept!)
+    bg: "#0b1728",
+    skyZenith: "#081221",
+    skyMid: "#142842",
+    skyHorizon: "#25415e",
+    cloudTint: "#7fa3c7",
+    fog: "#16293f",
+    fogNear: 15.5,
+    fogFar: 54,
+    hemiSky: "#bfdbfe",
+    hemiGround: "#3c2918",
+    hemiIntensity: 0.74,
+    dirColor: "#e0f2fe",
+    dirIntensity: 1.28,
+    dirPos: [-6, 18, -16],
     rimColor: "#93c5fd",
-    rimIntensity: 0.28,
-    envIntensity: 0.82,
-    groundTint: "#cbd5c0",
-    plazaTint: "#e2e8f0",
-    starOpacity: 0.0,
+    rimIntensity: 0.38,
+    envIntensity: 0.78,
+    groundTint: "#859990",
+    plazaTint: "#aebdcb",
+    starOpacity: 0.38,
+    mistOpacity: 0.26,
+    warmGlow: 1.18,
   },
   dusk_trial: {
-    bg: "#210d16",
-    fog: "#2b111b",
-    fogNear: 17,
-    fogFar: 54,
+    bg: "#170811",
+    skyZenith: "#0e040a",
+    skyMid: "#290e1c",
+    skyHorizon: "#4c1b29",
+    cloudTint: "#bd6b7d",
+    fog: "#29101b",
+    fogNear: 13,
+    fogFar: 47,
     hemiSky: "#fda4af",
     hemiGround: "#2e1518",
-    hemiIntensity: 0.62,
+    hemiIntensity: 0.58,
     dirColor: "#fb7185",
-    dirIntensity: 1.32,
-    dirPos: [-9, 12, -13],
+    dirIntensity: 1.25,
+    dirPos: [-8, 14, -17],
     rimColor: "#f97316",
-    rimIntensity: 0.48,
-    envIntensity: 0.6,
-    groundTint: "#b59ca4",
-    plazaTint: "#cbd5e1",
-    starOpacity: 0.36,
+    rimIntensity: 0.52,
+    envIntensity: 0.65,
+    groundTint: "#8c7780",
+    plazaTint: "#b6adb8",
+    starOpacity: 0.48,
+    mistOpacity: 0.32,
+    warmGlow: 1.48,
   },
 };
 
@@ -157,7 +189,76 @@ async function probeSkyTexture(candidates, reloadToken) {
 }
 
 /**
- * 1. HỆ THỐNG BẦU TRỜI & CHIẾU SÁNG PBR ĐIỆN ẢNH SIÊU NHẸ (PMREM IBL + Hemisphere + Moon Rim + Fog)
+ * Vành Đai Núi Sương Mờ & Rừng Thông Xa Chân Trời (2 draw calls siêu nhẹ ở R = 48m..56m, lấp kín 100% khe hở chân trời đúng Concept!)
+ */
+function DistantMountainAndPineHorizonRing() {
+  const { mountainGeo, distantPineGeo } = useMemo(() => {
+    const buildRidgeCylinder = (radius, segs, baseH, peakFn) => {
+      const geo = new THREE.CylinderGeometry(radius, radius, 1, segs, 1, true);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+        const z = pos.getZ(i);
+        if (y > 0) {
+          const ang = Math.atan2(x, z);
+          pos.setY(i, peakFn(ang));
+        } else {
+          pos.setY(i, baseH);
+        }
+      }
+      geo.computeVertexNormals();
+      return geo;
+    };
+
+    // Lớp 1 (Xa R=56m): Dãy núi đá Bắc Âu cao trập trùng ẩn trong mây sương
+    const mGeo = buildRidgeCylinder(56, 96, -1.5, (a) => {
+      const ridge =
+        11.5 +
+        Math.sin(a * 3.0 + 0.4) * 3.8 +
+        Math.cos(a * 7.0 - 0.8) * 2.1 +
+        Math.sin(a * 13.0 + 1.2) * 1.1;
+      return Math.max(6.5, ridge);
+    });
+
+    // Lớp 2 (Trung gian R=46m): Đường viền ngọn rừng thông răng cưa dày đặc bao quanh thung lũng
+    const pGeo = buildRidgeCylinder(46, 160, -1.2, (a) => {
+      const spire = Math.pow(0.5 + 0.5 * Math.sin(a * 42.0), 1.6) * 3.4;
+      const cluster = 6.2 + Math.sin(a * 5.0 + 1.1) * 1.8 + Math.cos(a * 11.0) * 1.1;
+      return cluster + spire;
+    });
+
+    return { mountainGeo: mGeo, distantPineGeo: pGeo };
+  }, []);
+
+  return (
+    <group>
+      <mesh raycast={NOOP_RAYCAST} geometry={mountainGeo}>
+        <meshBasicMaterial
+          color="#0d1b2e"
+          side={THREE.BackSide}
+          transparent
+          opacity={0.78}
+          depthWrite={false}
+          fog={false}
+        />
+      </mesh>
+      <mesh raycast={NOOP_RAYCAST} geometry={distantPineGeo}>
+        <meshBasicMaterial
+          color="#07111f"
+          side={THREE.BackSide}
+          transparent
+          opacity={0.88}
+          depthWrite={false}
+          fog={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * 1. HỆ THỐNG BẦU TRỜI MÂY TRĂNG BẮC ÂU & CHIẾU SÁNG PBR ĐIỆN ẢNH SIÊU NHẸ
  */
 function AtmosphereAndSky3D({
   moodKey,
@@ -173,6 +274,8 @@ function AtmosphereAndSky3D({
   const starsMatRef = useRef(null);
 
   const [skyTextures, setSkyTextures] = useState({ night: null, day: null });
+  const skyDomeMat = useMemo(() => createMoonlitSkyDomeMaterial(), []);
+  const moonHaloTex = useMemo(() => getSoftGlowHaloTexture(), []);
 
   const targetBgColor = useMemo(() => new THREE.Color(), []);
   const targetFogColor = useMemo(() => new THREE.Color(), []);
@@ -181,13 +284,17 @@ function AtmosphereAndSky3D({
   const targetDirColor = useMemo(() => new THREE.Color(), []);
   const targetDirPos = useMemo(() => new THREE.Vector3(), []);
   const targetRimColor = useMemo(() => new THREE.Color(), []);
+  const targetZenith = useMemo(() => new THREE.Color(), []);
+  const targetMidSky = useMemo(() => new THREE.Color(), []);
+  const targetHorizon = useMemo(() => new THREE.Color(), []);
+  const targetCloud = useMemo(() => new THREE.Color(), []);
 
   useEffect(() => {
     const envTex = getOrCreateDarkFantasyEnvMap(gl);
     if (envTex) {
       scene.environment = envTex;
       if ("environmentIntensity" in scene) {
-        scene.environmentIntensity = 0.58;
+        scene.environmentIntensity = 0.65;
       }
     }
   }, [gl, scene]);
@@ -207,12 +314,12 @@ function AtmosphereAndSky3D({
   }, [reloadToken]);
 
   const starPositions = useMemo(() => {
-    const count = 280;
+    const count = 260;
     const arr = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
       const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI * 0.44 + 0.04;
-      const r = 49 + Math.random() * 4;
+      const phi = Math.random() * Math.PI * 0.42 + 0.04;
+      const r = 60 + Math.random() * 4;
       arr[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
       arr[i * 3 + 1] = Math.cos(phi) * r;
       arr[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
@@ -224,10 +331,10 @@ function AtmosphereAndSky3D({
     const pal = ATMOSPHERE_PALETTES[moodKey] || ATMOSPHERE_PALETTES.day;
     const speed = Math.min(1, delta * 2.8);
 
-    // Khi bật D5 Architect Mode ở ban đêm, đẩy sương mù xa ra 95m & tăng nhẹ sáng môi trường để Kiến trúc sư thấy rõ cả khu rừng!
-    const fogNearGoal = architectMode ? 38 : pal.fogNear;
-    const fogFarGoal = architectMode ? 96 : pal.fogFar;
-    const hemiGoal = architectMode ? Math.max(pal.hemiIntensity, 0.85) : pal.hemiIntensity;
+    // Khi bật D5 Architect Mode, đẩy sương mù xa ra 96m & tăng sáng nhẹ để Kiến trúc sư thấy rõ cả khu rừng!
+    const fogNearGoal = architectMode ? 40 : pal.fogNear;
+    const fogFarGoal = architectMode ? 98 : pal.fogFar;
+    const hemiGoal = architectMode ? Math.max(pal.hemiIntensity, 0.88) : pal.hemiIntensity;
 
     targetBgColor.set(pal.bg);
     targetFogColor.set(pal.fog);
@@ -236,6 +343,15 @@ function AtmosphereAndSky3D({
     targetDirColor.set(pal.dirColor);
     targetDirPos.set(pal.dirPos[0], pal.dirPos[1], pal.dirPos[2]);
     targetRimColor.set(pal.rimColor);
+    targetZenith.set(pal.skyZenith || pal.bg);
+    targetMidSky.set(pal.skyMid || pal.fog);
+    targetHorizon.set(pal.skyHorizon || pal.fog);
+    targetCloud.set(pal.cloudTint || "#6488b4");
+
+    skyDomeMat.uniforms.uZenithColor.value.lerp(targetZenith, speed);
+    skyDomeMat.uniforms.uMidSkyColor.value.lerp(targetMidSky, speed);
+    skyDomeMat.uniforms.uHorizonColor.value.lerp(targetHorizon, speed);
+    skyDomeMat.uniforms.uCloudTint.value.lerp(targetCloud, speed);
 
     if (!scene.background || !(scene.background instanceof THREE.Color)) {
       scene.background = new THREE.Color(pal.bg);
@@ -245,8 +361,8 @@ function AtmosphereAndSky3D({
 
     if ("environmentIntensity" in scene) {
       scene.environmentIntensity = THREE.MathUtils.lerp(
-        scene.environmentIntensity ?? 0.58,
-        architectMode ? Math.max(pal.envIntensity, 0.78) : pal.envIntensity,
+        scene.environmentIntensity ?? 0.65,
+        architectMode ? Math.max(pal.envIntensity, 0.82) : pal.envIntensity,
         speed
       );
     }
@@ -292,16 +408,18 @@ function AtmosphereAndSky3D({
   });
 
   const activePanorama = isNightActive ? skyTextures.night : skyTextures.day;
+  const moonColor = moodKey === "dusk_trial" ? "#fda4af" : "#f0f9ff";
+  const moonGlowColor = moodKey === "dusk_trial" ? "#fb7185" : "#7dd3fc";
 
   return (
     <group>
-      <fog attach="fog" args={["#081126", 17, 55]} />
-      <hemisphereLight ref={hemiRef} args={["#60a5fa", "#2b1c12", 0.56]} />
+      <fog attach="fog" args={["#0c1b31", 13, 48]} />
+      <hemisphereLight ref={hemiRef} args={["#60a5fa", "#2e1c10", 0.56]} />
 
       <directionalLight
         ref={dirLightRef}
-        position={[-10, 16, -11]}
-        intensity={1.05}
+        position={[-7, 17, -18]}
+        intensity={1.08}
         color="#bae6fd"
         castShadow
         shadow-mapSize-width={isLowPowerDevice ? 512 : 1024}
@@ -315,14 +433,22 @@ function AtmosphereAndSky3D({
         shadow-camera-bottom={-15}
       />
 
-      <directionalLight ref={rimLightRef} position={[14, 11, 14]} intensity={0.42} color="#38bdf8" />
+      <directionalLight ref={rimLightRef} position={[14, 11, 14]} intensity={0.45} color="#38bdf8" />
 
-      {activePanorama && (
+      {/* Vòm Trời Mây Trôi Bắc Âu Shader (hoặc Panorama nếu có) */}
+      {activePanorama ? (
         <mesh raycast={NOOP_RAYCAST} scale={[-1, 1, 1]}>
-          <sphereGeometry args={[64, 36, 24]} />
+          <sphereGeometry args={[72, 36, 24]} />
           <meshBasicMaterial map={activePanorama} side={THREE.BackSide} fog={false} />
         </mesh>
+      ) : (
+        <mesh raycast={NOOP_RAYCAST} material={skyDomeMat}>
+          <sphereGeometry args={[72, 36, 24]} />
+        </mesh>
       )}
+
+      {/* Vành đai Núi Mờ & Rừng Thông Xa 360° ôm trọn chân trời */}
+      <DistantMountainAndPineHorizonRing />
 
       <points raycast={NOOP_RAYCAST}>
         <bufferGeometry>
@@ -336,32 +462,42 @@ function AtmosphereAndSky3D({
         <pointsMaterial
           ref={starsMatRef}
           color="#e2e8f0"
-          size={0.28}
+          size={0.26}
           sizeAttenuation
           transparent
-          opacity={0.85}
+          opacity={0.75}
           fog={false}
         />
       </points>
 
-      <group position={isNightActive ? [-14, 21, -29] : moodKey === "dusk_trial" ? [-12, 13, -30] : [16, 23, -27]}>
+      {/* Vầng Trăng Sáng & Quầng Tán Xạ Sương Bạc nằm ngay góc nhìn Bắc (cạnh Tháp Chuông & Đài Treo Cổ y hệt Ảnh Concept!) */}
+      <group position={[-5.4, 17.6, -42]}>
         <mesh raycast={NOOP_RAYCAST}>
-          <sphereGeometry args={[isNightActive ? 2.3 : 2.0, 24, 24]} />
-          <meshBasicMaterial
-            color={isNightActive ? "#e0f2fe" : moodKey === "dusk_trial" ? "#fb7185" : "#fef08a"}
-            fog={false}
-          />
+          <sphereGeometry args={[2.15, 24, 24]} />
+          <meshBasicMaterial color={moonColor} fog={false} />
         </mesh>
-        <mesh raycast={NOOP_RAYCAST}>
-          <sphereGeometry args={[isNightActive ? 4.2 : 3.4, 20, 20]} />
-          <meshBasicMaterial
-            color={isNightActive ? "#60a5fa" : moodKey === "dusk_trial" ? "#f43f5e" : "#fde047"}
+        <sprite raycast={NOOP_RAYCAST} scale={[16.5, 16.5, 1]}>
+          <spriteMaterial
+            map={moonHaloTex}
+            color={moonGlowColor}
             transparent
-            opacity={0.16}
-            fog={false}
+            opacity={isNightActive ? 0.58 : 0.36}
+            blending={THREE.AdditiveBlending}
             depthWrite={false}
+            fog={false}
           />
-        </mesh>
+        </sprite>
+        <sprite raycast={NOOP_RAYCAST} scale={[32, 24, 1]}>
+          <spriteMaterial
+            map={moonHaloTex}
+            color="#38bdf8"
+            transparent
+            opacity={isNightActive ? 0.22 : 0.12}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            fog={false}
+          />
+        </sprite>
       </group>
     </group>
   );
@@ -485,16 +621,16 @@ function CourtyardPlazaContent({
     const count = 28;
     return Array.from({ length: count }, (_, i) => {
       const a = (i / count) * Math.PI * 2;
-      if (Math.abs(a - Math.PI) < 0.14) return null;
-      const r = plazaRadius - 0.05 + (i % 2) * 0.06;
+      if (Math.abs(a - Math.PI) < 0.16) return null;
+      const r = plazaRadius - 0.08 + (i % 2) * 0.06;
       return {
         id: i,
         x: Math.sin(a) * r,
         z: Math.cos(a) * r,
         yaw: a + (i % 3) * 0.2,
-        sx: 0.42 + (i % 3) * 0.09,
-        sy: 0.075 + (i % 2) * 0.025,
-        sz: 0.28 + (i % 2) * 0.06,
+        sx: 0.44 + (i % 3) * 0.09,
+        sy: 0.09 + (i % 2) * 0.03,
+        sz: 0.32 + (i % 2) * 0.06,
       };
     }).filter(Boolean);
   }, [plazaRadius]);
@@ -585,18 +721,22 @@ function ProceduralCampfirePit() {
 }
 
 function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
-  const flameOuterRef = useRef(null);
-  const flameMidRef = useRef(null);
-  const flameCoreRef = useRef(null);
+  const heroFlameRef = useRef(null);
+  const emberBedMatRef = useRef(null);
   const fireLightRef = useRef(null);
   const embersMeshRef = useRef(null);
 
+  const fireMatA = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 0.0, opacityScale: 0.95 }), []);
+  const fireMatB = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 2.1, opacityScale: 0.85 }), []);
+  const fireMatC = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 4.3, opacityScale: 0.8 }), []);
+  const fireHaloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+
   const emberSeeds = useMemo(
     () =>
-      Array.from({ length: 18 }, (_, i) => ({
-        angle: (i / 18) * Math.PI * 2 + Math.random() * 0.4,
-        radius: 0.08 + Math.random() * 0.28,
-        speed: 0.45 + Math.random() * 0.55,
+      Array.from({ length: 24 }, (_, i) => ({
+        angle: (i / 24) * Math.PI * 2 + Math.random() * 0.4,
+        radius: 0.06 + Math.random() * 0.3,
+        speed: 0.42 + Math.random() * 0.58,
         offset: Math.random(),
       })),
     []
@@ -605,31 +745,31 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
-    const pulse = 1 + Math.sin(t * 7.8) * 0.09 + Math.cos(t * 13.5) * 0.04;
 
-    if (flameOuterRef.current) {
-      flameOuterRef.current.scale.set(pulse, 0.96 + Math.sin(t * 9.2) * 0.14, pulse);
-      flameOuterRef.current.rotation.y = t * 0.9;
+    // Lưỡi lửa chính luôn xoay mặt trục Y hướng về Camera để góc nhìn nào cũng dày dặn 3D!
+    if (heroFlameRef.current) {
+      const cam = state.camera.position;
+      heroFlameRef.current.rotation.y = Math.atan2(cam.x, cam.z);
     }
-    if (flameMidRef.current) {
-      flameMidRef.current.scale.set(1.04 - (pulse - 1), 0.94 + Math.cos(t * 11.4) * 0.15, 1.04);
-      flameMidRef.current.rotation.y = -t * 1.1;
+
+    if (emberBedMatRef.current) {
+      emberBedMatRef.current.emissiveIntensity = 1.85 + Math.sin(t * 7.2) * 0.35;
     }
-    if (flameCoreRef.current) {
-      flameCoreRef.current.scale.set(1, 0.92 + Math.sin(t * 14) * 0.18, 1);
-    }
+
     if (fireLightRef.current) {
-      fireLightRef.current.intensity = (isNightActive ? 4.1 : 1.75) + Math.sin(t * 10.5) * 0.38;
+      const baseInt = isNightActive ? 4.8 : 3.35;
+      fireLightRef.current.intensity =
+        baseInt + Math.sin(t * 9.6) * 0.36 + Math.cos(t * 15.2) * 0.18;
     }
 
     if (embersMeshRef.current) {
       emberSeeds.forEach((eb, i) => {
         const life = (t * eb.speed + eb.offset) % 1;
-        const y = 0.28 + life * 2.15;
-        const swayR = eb.radius + Math.sin(t * 3 + i) * 0.08 + life * 0.16;
-        const a = eb.angle + life * 1.8;
-        const s = (1 - life) * 0.032 + 0.006;
-        dummy.position.set(Math.cos(a) * swayR, y, Math.sin(a) * swayR);
+        const y = 0.24 + life * 2.35;
+        const swayR = eb.radius + Math.sin(t * 2.8 + i) * 0.09 + life * 0.22;
+        const a = eb.angle + life * 1.9;
+        const s = (1 - life) * 0.028 + 0.005;
+        dummy.position.set(Math.cos(a) * swayR + life * 0.14, y, Math.sin(a) * swayR + life * 0.08);
         dummy.scale.setScalar(s);
         dummy.updateMatrix();
         embersMeshRef.current.setMatrixAt(i, dummy.matrix);
@@ -644,11 +784,19 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
 
   return (
     <group>
-      <ContactShadowDisc radius={1.25 * fireScale} opacity={0.68} position={[0, 0.006, fireZOffset]} />
+      <ContactShadowDisc radius={1.32 * fireScale} opacity={0.74} position={[0, 0.006, fireZOffset]} />
 
-      <mesh raycast={NOOP_RAYCAST} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, fireZOffset]}>
-        <ringGeometry args={[0.92 * fireScale, 1.08 * fireScale, 36]} />
-        <meshBasicMaterial color="#ea580c" transparent opacity={isNightActive ? 0.38 : 0.14} />
+      {/* Quầng hắt sáng ấm mềm dưới chân bếp đá (thay thế vòng ring cứng cũ) */}
+      <mesh raycast={NOOP_RAYCAST} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, fireZOffset]}>
+        <planeGeometry args={[4.4 * fireScale, 4.4 * fireScale]} />
+        <meshBasicMaterial
+          map={fireHaloTex}
+          color="#fb923c"
+          transparent
+          opacity={isNightActive ? 0.42 : 0.28}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
       </mesh>
 
       <SmartPropGLB
@@ -658,20 +806,44 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
         fallback={<ProceduralCampfirePit />}
       />
 
+      {/* Lõi Than Hồng & Ngọn Lửa Volumetric FBM Shader Đa Lớp (Xóa sạch khối nón ConeGeometry thô!) */}
       <group position={[0, fireYOffset, fireZOffset]} scale={fireScale}>
-        <mesh raycast={NOOP_RAYCAST} ref={flameOuterRef} position={[0, 0.48, 0]}>
-          <coneGeometry args={[0.32, 0.68, 7]} />
-          <meshBasicMaterial color="#ea580c" transparent opacity={0.82} depthWrite={false} />
-        </mesh>
-        <mesh raycast={NOOP_RAYCAST} ref={flameMidRef} position={[0, 0.42, 0]}>
-          <coneGeometry args={[0.22, 0.5, 6]} />
-          <meshBasicMaterial color="#fb923c" transparent opacity={0.88} depthWrite={false} />
-        </mesh>
-        <mesh raycast={NOOP_RAYCAST} ref={flameCoreRef} position={[0, 0.35, 0]}>
-          <coneGeometry args={[0.12, 0.34, 6]} />
-          <meshBasicMaterial color="#fef08a" depthWrite={false} />
+        {/* Nền than củi đỏ rực nằm lọt trong lòng giếng đá */}
+        <mesh raycast={NOOP_RAYCAST} position={[0, 0.22, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.42, 20]} />
+          <meshStandardMaterial
+            ref={emberBedMatRef}
+            color="#2b0904"
+            emissive="#ea580c"
+            emissiveIntensity={1.9}
+            roughness={0.85}
+          />
         </mesh>
 
+        {/* 3 mặt phẳng lửa đan chéo + 1 lưỡi lửa trung tâm hướng Camera */}
+        <mesh raycast={NOOP_RAYCAST} ref={heroFlameRef} position={[0, 0.66, 0]} material={fireMatA}>
+          <planeGeometry args={[0.96, 1.18, 1, 10]} />
+        </mesh>
+        <mesh raycast={NOOP_RAYCAST} position={[0, 0.62, 0]} rotation={[0, Math.PI / 3, 0]} material={fireMatB}>
+          <planeGeometry args={[0.88, 1.06, 1, 8]} />
+        </mesh>
+        <mesh raycast={NOOP_RAYCAST} position={[0, 0.6, 0]} rotation={[0, (Math.PI * 2) / 3, 0]} material={fireMatC}>
+          <planeGeometry args={[0.84, 1.02, 1, 8]} />
+        </mesh>
+
+        {/* Quầng Halo lửa mềm bao quanh ngọn lửa */}
+        <sprite raycast={NOOP_RAYCAST} position={[0, 0.56, 0]} scale={[2.15, 2.15, 1]}>
+          <spriteMaterial
+            map={fireHaloTex}
+            color="#f97316"
+            transparent
+            opacity={isNightActive ? 0.44 : 0.32}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
+
+        {/* Tàn lửa bay theo gió rừng */}
         <instancedMesh raycast={NOOP_RAYCAST} ref={embersMeshRef} args={[null, null, emberSeeds.length]}>
           <octahedronGeometry args={[1, 0]} />
           <meshBasicMaterial color="#fde047" />
@@ -679,11 +851,11 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
 
         <pointLight
           ref={fireLightRef}
-          position={[0, 0.98, 0]}
+          position={[0, 1.05, 0]}
           color="#fb923c"
-          intensity={isNightActive ? 4.1 : 1.75}
-          distance={17}
-          decay={1.5}
+          intensity={isNightActive ? 4.8 : 3.35}
+          distance={19}
+          decay={1.45}
           castShadow
         />
       </group>
@@ -1024,29 +1196,48 @@ function EditableExteriorNode({
             reloadToken={reloadToken}
           />
           {windowGlow && (
-            <pointLight
-              position={[0, 5.6, 2.3]}
-              color="#fbbf24"
-              intensity={2.7}
-              distance={17}
-              decay={1.5}
-            />
+            <>
+              <pointLight
+                position={[0, 5.2, 2.2]}
+                color="#fbbf24"
+                intensity={isNightActive ? 3.1 : 2.1}
+                distance={18}
+                decay={1.5}
+              />
+              <sprite raycast={NOOP_RAYCAST} position={[0, 2.6, 1.35]} scale={[2.4, 2.4, 1]}>
+                <spriteMaterial
+                  map={getSoftGlowHaloTexture()}
+                  color="#fb923c"
+                  transparent
+                  opacity={isNightActive ? 0.34 : 0.22}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </sprite>
+            </>
           )}
         </group>
       )}
 
       {(node.type === "house_cottage_a" || node.type === "house_cottage_b") && (
         <group>
-          <ContactShadowDisc radius={3.1} scaleXZ={[1.1, 0.95]} opacity={0.7} />
+          <ContactShadowDisc radius={3.1} scaleXZ={[1.1, 0.95]} opacity={0.72} />
           <SmartPropGLB
             propKey={node.type}
             calib={propCalib?.[node.type]}
             reloadToken={reloadToken}
           />
           {windowGlow && (
-            <mesh raycast={NOOP_RAYCAST} position={[0, 0.02, 2.15]} rotation={[-Math.PI / 2, 0, 0]}>
-              <circleGeometry args={[1.45, 16]} />
-              <meshBasicMaterial color="#f59e0b" transparent opacity={0.2} depthWrite={false} />
+            <mesh raycast={NOOP_RAYCAST} position={[0, 0.022, 2.1]} rotation={[-Math.PI / 2, 0, 0]}>
+              <planeGeometry args={[4.2, 3.2]} />
+              <meshBasicMaterial
+                map={getSoftGlowHaloTexture()}
+                color="#f59e0b"
+                transparent
+                opacity={isNightActive ? 0.32 : 0.2}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
             </mesh>
           )}
         </group>
@@ -1054,13 +1245,39 @@ function EditableExteriorNode({
 
       {node.type === "prop_lantern" && (
         <group>
-          <ContactShadowDisc radius={0.55} opacity={0.55} />
+          <ContactShadowDisc radius={0.55} opacity={0.58} />
           <SmartPropGLB
             propKey="prop_lantern"
             calib={propCalib?.prop_lantern}
             reloadToken={reloadToken}
             fallback={<StylizedIronLanternFallback windowGlow={windowGlow} />}
           />
+          {windowGlow && (
+            <>
+              {/* Quầng sáng sương ấm tỏa ra từ bầu đèn lồng sắt y hệt Ảnh Concept (0 tải GPU Shadow!) */}
+              <sprite raycast={NOOP_RAYCAST} position={[0, 2.12, 0.14]} scale={[1.55, 1.55, 1]}>
+                <spriteMaterial
+                  map={getSoftGlowHaloTexture()}
+                  color="#fbbf24"
+                  transparent
+                  opacity={isNightActive ? 0.62 : 0.44}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </sprite>
+              <mesh raycast={NOOP_RAYCAST} position={[0, 0.018, 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
+                <planeGeometry args={[2.5, 2.5]} />
+                <meshBasicMaterial
+                  map={getSoftGlowHaloTexture()}
+                  color="#f59e0b"
+                  transparent
+                  opacity={isNightActive ? 0.28 : 0.18}
+                  blending={THREE.AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+            </>
+          )}
         </group>
       )}
 
@@ -1175,7 +1392,8 @@ function DynamicOctantCulledSceneGraph({
 
   const frustum = useMemo(() => new THREE.Frustum(), []);
   const projScreenMatrix = useMemo(() => new THREE.Matrix4(), []);
-  const windowGlow = isNightActive || moodKey === "dusk_trial" || moodKey === "dawn";
+  // Chuẩn Concept Điện Ảnh Mọi Lúc: Cửa sổ nhà gỗ & đèn lồng luôn ấm áp cả Chạng Vạng Ban Ngày lẫn Đêm Trăng Sâu!
+  const windowGlow = true;
 
   // Tự động phân loại Thực thể trung tâm (luôn vẽ) vs Thực thể 8 Múi góc ngoại vi + Tính lại Cầu Bao Frustum động!
   const { centerNodes, sectorBuckets, sectorSpheres } = useMemo(() => {
@@ -1339,18 +1557,102 @@ function DynamicOctantCulledSceneGraph({
 }
 
 /**
- * 6. HẠT ĐOM ĐÓM ĐÊM BAY QUANH SÂN LÀNG
+ * 6. DẢI SƯƠNG MÙ BẠC BAY LÀ LÀ MẶT ĐẤT GIỮA HÀNG RÀO, CHÂN NHÀ & RỪNG THÔNG (Đúng 100% Ảnh Concept!)
+ */
+function DriftingGroundMistLayers({
+  circleRadius,
+  moodKey,
+  architectMode = false,
+  isLowPowerDevice = false,
+}) {
+  const mistGroupRef = useRef(null);
+  const mistTex = useMemo(() => getDriftingMistTexture(), []);
+
+  const mistWisps = useMemo(() => {
+    const count = isLowPowerDevice ? 12 : 26;
+    return Array.from({ length: count }, (_, i) => {
+      const ring = i % 2; // Lớp 0: quanh hàng rào & chân nhà (11.5..16.5m) | Lớp 1: bìa rừng thông (18..25.5m)
+      const baseAngle = (i / count) * Math.PI * 2 + (ring ? 0.19 : 0);
+      const radius =
+        ring === 0
+          ? Math.max(10.8, circleRadius + 6.4) + (i % 4) * 1.35
+          : Math.max(17.8, circleRadius + 13.2) + (i % 5) * 1.65;
+      return {
+        baseAngle,
+        radius,
+        y: ring === 0 ? 0.85 + (i % 3) * 0.28 : 1.55 + (i % 4) * 0.42,
+        scaleX: ring === 0 ? 7.8 + (i % 3) * 1.8 : 12.2 + (i % 4) * 2.4,
+        scaleY: ring === 0 ? 2.1 + (i % 2) * 0.55 : 3.4 + (i % 3) * 0.75,
+        driftSpeed: (0.018 + (i % 4) * 0.006) * (i % 2 === 0 ? 1 : -1),
+        bobSpeed: 0.45 + (i % 5) * 0.12,
+        phase: i * 1.13,
+      };
+    });
+  }, [circleRadius, isLowPowerDevice]);
+
+  useFrame((state) => {
+    if (!mistGroupRef.current) return;
+    const t = state.clock.elapsedTime;
+    const pal = ATMOSPHERE_PALETTES[moodKey] || ATMOSPHERE_PALETTES.day;
+    const baseOpacity = architectMode ? 0.06 : pal.mistOpacity ?? 0.28;
+    const children = mistGroupRef.current.children;
+
+    for (let i = 0; i < children.length; i++) {
+      const sp = children[i];
+      const w = mistWisps[i];
+      if (!sp || !w) continue;
+      const a = w.baseAngle + t * w.driftSpeed;
+      const r = w.radius + Math.sin(t * 0.28 + w.phase) * 0.75;
+      sp.position.set(
+        Math.sin(a) * r,
+        w.y + Math.sin(t * w.bobSpeed + w.phase) * 0.16,
+        Math.cos(a) * r
+      );
+      if (sp.material) {
+        const waveAlpha = 0.72 + 0.28 * Math.sin(t * 0.55 + w.phase);
+        sp.material.opacity = baseOpacity * waveAlpha;
+      }
+    }
+  });
+
+  const mistColor =
+    moodKey === "dusk_trial" ? "#fda4af" : moodKey === "dawn" ? "#d8b4fe" : "#93c5fd";
+
+  return (
+    <group ref={mistGroupRef}>
+      {mistWisps.map((w, idx) => (
+        <sprite
+          key={`mist-wisp-${idx}`}
+          raycast={NOOP_RAYCAST}
+          position={[Math.sin(w.baseAngle) * w.radius, w.y, Math.cos(w.baseAngle) * w.radius]}
+          scale={[w.scaleX, w.scaleY, 1]}
+        >
+          <spriteMaterial
+            map={mistTex}
+            color={mistColor}
+            transparent
+            opacity={0.26}
+            depthWrite={false}
+          />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * 7. HẠT ĐOM ĐÓM ĐÊM & BỤI SƯƠNG RỪNG BAY THEO GIÓ
  */
 function NightFirefliesSwarm({ circleRadius, isNightActive }) {
   const firefliesRef = useRef(null);
   const flyDummy = useMemo(() => new THREE.Object3D(), []);
 
   const fireflySeeds = useMemo(() => {
-    return Array.from({ length: 34 }, (_, i) => ({
-      angle: (i / 34) * Math.PI * 2,
-      radius: circleRadius + 1.8 + (i % 6) * 1.45,
-      yBase: 0.65 + (i % 5) * 0.42,
-      speed: 0.35 + (i % 4) * 0.14,
+    return Array.from({ length: 36 }, (_, i) => ({
+      angle: (i / 36) * Math.PI * 2,
+      radius: circleRadius + 1.8 + (i % 6) * 1.55,
+      yBase: 0.65 + (i % 5) * 0.45,
+      speed: 0.32 + (i % 4) * 0.14,
       phase: i * 0.77,
     }));
   }, [circleRadius]);
@@ -1359,14 +1661,17 @@ function NightFirefliesSwarm({ circleRadius, isNightActive }) {
     if (!firefliesRef.current) return;
     const t = state.clock.elapsedTime;
     fireflySeeds.forEach((f, i) => {
-      if (!isNightActive) {
+      // Ban đêm hiện đủ 36 đom đóm; Chạng vạng ban ngày hiện 14 hạt bụi phấn vàng lơ lửng trong sương
+      if (!isNightActive && i >= 14) {
         flyDummy.position.set(0, -10, 0);
         flyDummy.scale.setScalar(0.001);
       } else {
-        const a = f.angle + Math.sin(t * f.speed + f.phase) * 0.22;
-        const r = f.radius + Math.cos(t * 0.7 + f.phase) * 0.55;
-        const y = f.yBase + Math.sin(t * 1.6 + f.phase) * 0.32;
-        const pulse = 0.024 + (0.5 + 0.5 * Math.sin(t * 3.8 + f.phase)) * 0.026;
+        const a = f.angle + Math.sin(t * f.speed + f.phase) * 0.24 + t * 0.025;
+        const r = f.radius + Math.cos(t * 0.7 + f.phase) * 0.6;
+        const y = f.yBase + Math.sin(t * 1.5 + f.phase) * 0.34;
+        const pulse =
+          (isNightActive ? 0.024 : 0.016) +
+          (0.5 + 0.5 * Math.sin(t * 3.6 + f.phase)) * (isNightActive ? 0.026 : 0.014);
         flyDummy.position.set(Math.sin(a) * r, y, Math.cos(a) * r);
         flyDummy.scale.setScalar(pulse);
       }
@@ -1379,13 +1684,13 @@ function NightFirefliesSwarm({ circleRadius, isNightActive }) {
   return (
     <instancedMesh raycast={NOOP_RAYCAST} ref={firefliesRef} args={[null, null, fireflySeeds.length]}>
       <sphereGeometry args={[1, 6, 6]} />
-      <meshBasicMaterial color="#bef264" />
+      <meshBasicMaterial color={isNightActive ? "#bef264" : "#fde68a"} />
     </instancedMesh>
   );
 }
 
 /**
- * TỔNG HỢP KHÔNG GIAN LÀNG MA SÓI 3D (CHUẨN D5 SCENE GRAPH + PBR TERRAIN + 8-SECTOR FRUSTUM CULLING)
+ * TỔNG HỢP KHÔNG GIAN LÀNG MA SÓI 3D (CHUẨN D5 SCENE GRAPH + GPU WIND SWAY + LAYERED MIST + 8-SECTOR CULLING)
  */
 export default function VillageEnvironment3D({
   circleRadius = 4.2,
@@ -1420,9 +1725,43 @@ export default function VillageEnvironment3D({
     [activeNodes]
   );
 
+  const primaryCampfire = useMemo(
+    () => activeNodes.find((n) => n.type === "prop_campfire") || null,
+    [activeNodes]
+  );
+
+  // ĐIỂM CẬP NHẬT DUY NHẤT (~0.002ms CPU/frame) điều khiển đồng bộ Gió Rừng 2 Chiều, Cửa Sổ Ấm & Sân Đá Ẩm!
+  useFrame((state, delta) => {
+    CINEMATIC_SHARED_UNIFORMS.uTime.value = state.clock.elapsedTime;
+    const isTrial = phase === "day_defense" || phase === "day_final_vote";
+    const windGoal = architectMode ? 0.22 : isNightActive ? 1.18 : isTrial ? 1.32 : 0.95;
+    CINEMATIC_SHARED_UNIFORMS.uWindStrength.value = THREE.MathUtils.lerp(
+      CINEMATIC_SHARED_UNIFORMS.uWindStrength.value,
+      windGoal,
+      Math.min(1, delta * 2.5)
+    );
+    CINEMATIC_SHARED_UNIFORMS.uWarmGlowIntensity.value = THREE.MathUtils.lerp(
+      CINEMATIC_SHARED_UNIFORMS.uWarmGlowIntensity.value,
+      pal.warmGlow ?? 1.25,
+      Math.min(1, delta * 2.5)
+    );
+    CINEMATIC_SHARED_UNIFORMS.uNightFactor.value = THREE.MathUtils.lerp(
+      CINEMATIC_SHARED_UNIFORMS.uNightFactor.value,
+      isNightActive ? 1.0 : 0.58,
+      Math.min(1, delta * 2.5)
+    );
+    if (primaryCampfire?.position) {
+      CINEMATIC_SHARED_UNIFORMS.uFireWorldPos.value.set(
+        primaryCampfire.position[0] || 0,
+        0.48,
+        primaryCampfire.position[2] || 0
+      );
+    }
+  });
+
   return (
     <group>
-      {/* 1. Bầu trời, PMREM IBL, HemisphereLight & Moon Rim Light */}
+      {/* 1. Bầu trời Mây Trăng Bắc Âu, Núi Thông Chân Trời, PMREM IBL & Moon Rim Light */}
       <AtmosphereAndSky3D
         moodKey={moodKey}
         isNightActive={isNightActive}
@@ -1466,7 +1805,15 @@ export default function VillageEnvironment3D({
         onVisibleSectorsChange={onVisibleSectorsChange}
       />
 
-      {/* 5. Đom Đóm Đêm */}
+      {/* 5. Dải Sương Mù Bạc Là Là Chân Nhà, Hàng Rào & Rừng Thông */}
+      <DriftingGroundMistLayers
+        circleRadius={circleRadius}
+        moodKey={moodKey}
+        architectMode={architectMode}
+        isLowPowerDevice={isLowPowerDevice}
+      />
+
+      {/* 6. Đom Đóm Đêm & Hạt Sương Vàng */}
       <NightFirefliesSwarm circleRadius={circleRadius} isNightActive={isNightActive} />
     </group>
   );

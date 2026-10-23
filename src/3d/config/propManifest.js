@@ -4,7 +4,7 @@
  * - Đợt 2 (6 món mở rộng): Sân đá cổ ngữ, Thông cao, Thông tán rộng, Cây khô vặn xoắn, Cột đèn lồng, Hàng rào đá rêu.
  */
 
-export const ASSET_SYNC_VERSION = 6;
+export const ASSET_SYNC_VERSION = 8;
 export const SKY_ENABLED = false;
 
 export const PROP_MANIFEST = {
@@ -97,7 +97,7 @@ export const PROP_MANIFEST = {
     fileName: "plaza_cobblestone.glb",
     url: "/models/props/plaza_cobblestone.glb",
     targetHeight: 0.12,
-    flushTopSurface: true, // Căn theo đường kính ngang & ép mặt trên sát y = 0 để không lún chân ghế!
+    flushTopSurface: true,
     defaultDiameter: 11.2,
     maxSlabThickness: 0.14,
     defaultYawDeg: 0,

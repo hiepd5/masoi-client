@@ -51,18 +51,18 @@ function ProceduralOakChair() {
   );
 }
 
-// Bảng màu áo Dân Làng ban ngày (biến tấu tự động để các ghế không trùng màu nhau)
+// Bảng màu Vải Dạ Trung Cổ Trầm Sang (10 sắc độ tách biệt rõ từng ghế nhưng ăn nhập 100% với lửa trại & gỗ đá Bắc Âu!)
 const VILLAGER_TUNIC_PALETTE = [
-  "#3b82f6", // Xanh lam
-  "#d97706", // Cam đất
-  "#059669", // Xanh ngọc lục
-  "#7c3aed", // Tím chàm
-  "#db2777", // Hồng sẫm
-  "#0891b2", // Xanh biển
-  "#65a30d", // Xanh rêu
-  "#b45309", // Nâu hổ phách
-  "#4f46e5", // Chàm
-  "#be123c", // Đỏ rượu
+  "#7f2936", // Đỏ Rượu Burgundy Cổ
+  "#284b63", // Xanh Thép Bắc Âu
+  "#8a5224", // Nâu Hổ Phách Da Thuộc
+  "#264e36", // Xanh Rừng Thông Sẫm
+  "#4b3869", // Tím Chàm Hoàng Gia
+  "#6b5b2b", // Vàng Rêu Ô-liu Cổ
+  "#22575e", // Xanh Đá Phiến Biển Bắc
+  "#6e3426", // Đỏ Đồng Nung
+  "#2d3a66", // Chàm Đêm Sương Mù
+  "#662c4b", // Tím Dâu Rừng Sẫm
 ];
 
 /**
@@ -136,9 +136,14 @@ export default function GreyboxActor({
     return VILLAGER_TUNIC_PALETTE[seatTransform.seatIdx % VILLAGER_TUNIC_PALETTE.length];
   }, [isDead, authorizedWolfForm, hasWinner, player.role, seatTransform.seatIdx]);
 
-  const skinColor = isDead ? "#7dd3fc" : authorizedWolfForm ? "#374151" : "#f1c27d";
-  const pantsColor = isDead ? "#0284c7" : authorizedWolfForm ? "#1f2937" : "#334155";
-  const opacity = isDead ? 0.36 : 1;
+  const skinColor = isDead ? "#7dd3fc" : authorizedWolfForm ? "#27272a" : "#d9a97c";
+  const pantsColor = isDead ? "#0369a1" : authorizedWolfForm ? "#18181b" : "#222933";
+  const cloakTrimColor = useMemo(() => {
+    const c = new THREE.Color(tunicColor);
+    c.multiplyScalar(0.68);
+    return `#${c.getHexString()}`;
+  }, [tunicColor]);
+  const opacity = isDead ? 0.38 : 1;
 
   // Ngủ gục ban đêm nếu không phải Sói đang thức và không phải lượt vai của chính mình
   const isMyActiveNightRole =
@@ -342,7 +347,7 @@ export default function GreyboxActor({
         </group>
       )}
 
-      {/* ============ 3. NHÂN VẬT KHỐI HỘP CÓ KHỚP (GREYBOX RIG — KHÓA CỨNG KHI BẬT D5 ARCHITECT) ============ */}
+      {/* ============ 3. DÂN LÀNG ÁO CHOÀNG MŨ TRÙM TRUNG CỔ (MEDIEVAL HOODED CLOAK — KHÓA CỨNG TRONG D5 MODE) ============ */}
       <group
         onClick={architectMode ? undefined : handlePointerClick}
         onPointerOver={
@@ -365,123 +370,245 @@ export default function GreyboxActor({
               }
         }
       >
-        {/* Hai chân đang ngồi trên ghế (Hips -> Thigh -> Calf) */}
+        {/* Hai chân quần vải thô & Ủng da cổ cao ngồi chuẩn trên mặt ghế gỗ y = 0.48m */}
         <group position={[0, SEAT_TOP_Y, 0]}>
-          {[-0.11, 0.11].map((lx, idx) => (
+          {/* Vạt áo choàng rủ mềm che đùi trên mặt ghế */}
+          <mesh position={[0, 0.045, 0.085]} rotation={[0.18, 0, 0]} castShadow={!isDead}>
+            <cylinderGeometry args={[0.16, 0.21, 0.14, 12]} />
+            <meshStandardMaterial
+              color={cloakTrimColor}
+              transparent={isDead}
+              opacity={opacity}
+              roughness={0.9}
+            />
+          </mesh>
+
+          {[-0.105, 0.105].map((lx, idx) => (
             <group key={idx} position={[lx, 0.04, 0.08]}>
-              {/* Đùi nằm ngang trên mặt ghế */}
-              <mesh position={[0, 0, 0.08]} castShadow={!isDead}>
-                <boxGeometry args={[0.13, 0.12, 0.34]} />
-                <meshStandardMaterial color={pantsColor} transparent={isDead} opacity={opacity} roughness={0.75} />
+              {/* Đùi tròn nằm ngang trên mặt ghế */}
+              <mesh position={[0, 0, 0.085]} rotation={[Math.PI / 2, 0, 0]} castShadow={!isDead}>
+                <cylinderGeometry args={[0.062, 0.072, 0.32, 10]} />
+                <meshStandardMaterial color={pantsColor} transparent={isDead} opacity={opacity} roughness={0.86} />
               </mesh>
-              {/* Bắp chân thả vuông góc xuống đất */}
-              <mesh position={[0, -0.22, 0.22]} castShadow={!isDead}>
-                <boxGeometry args={[0.11, 0.42, 0.12]} />
-                <meshStandardMaterial color={pantsColor} transparent={isDead} opacity={opacity} roughness={0.75} />
+              {/* Khớp gối tròn */}
+              <mesh position={[0, -0.01, 0.23]}>
+                <sphereGeometry args={[0.062, 10, 10]} />
+                <meshStandardMaterial color={pantsColor} transparent={isDead} opacity={opacity} roughness={0.86} />
               </mesh>
-              {/* Giày chạm sàn y = 0 */}
-              <mesh position={[0, -0.43, 0.26]}>
-                <boxGeometry args={[0.12, 0.08, 0.2]} />
-                <meshStandardMaterial color="#1e293b" transparent={isDead} opacity={opacity} />
+              {/* Ống chân & cổ ủng da thả xuống sàn */}
+              <mesh position={[0, -0.22, 0.23]} castShadow={!isDead}>
+                <cylinderGeometry args={[0.056, 0.048, 0.4, 10]} />
+                <meshStandardMaterial
+                  color={isDead ? pantsColor : "#271c15"}
+                  transparent={isDead}
+                  opacity={opacity}
+                  roughness={0.82}
+                />
+              </mesh>
+              {/* Viền cổ ủng gập */}
+              <mesh position={[0, -0.1, 0.23]}>
+                <cylinderGeometry args={[0.064, 0.06, 0.055, 10]} />
+                <meshStandardMaterial
+                  color={isDead ? cloakTrimColor : "#3b281d"}
+                  transparent={isDead}
+                  opacity={opacity}
+                  roughness={0.85}
+                />
+              </mesh>
+              {/* Mũi ủng da chạm sàn y = 0 */}
+              <mesh position={[0, -0.43, 0.275]} scale={[1, 0.72, 1.45]}>
+                <sphereGeometry args={[0.062, 10, 10]} />
+                <meshStandardMaterial
+                  color={isDead ? "#0284c7" : "#1c140f"}
+                  transparent={isDead}
+                  opacity={opacity}
+                  roughness={0.78}
+                />
               </mesh>
             </group>
           ))}
         </group>
 
-        {/* Cụm Xương Sống & Thân Trên (Spine Group — tâm tại mặt ghế y = 0.48m) */}
+        {/* Cụm Xương Sống & Thân Áo Choàng (Spine Group — tâm tại mặt ghế y = 0.48m) */}
         <group ref={spineRef} position={[0, SEAT_TOP_Y, 0]}>
-          {/* Thân áo (Torso) */}
-          <mesh position={[0, 0.31, -0.02]} castShadow={!isDead}>
-            <boxGeometry args={[authorizedWolfForm ? 0.44 : 0.36, 0.48, 0.23]} />
+          {/* Thân Áo Choàng Dạ Vát Mềm (Tapered Medieval Robe/Tunic) */}
+          <mesh
+            position={[0, 0.29, -0.015]}
+            scale={[authorizedWolfForm ? 1.24 : 1.04, 1, 0.84]}
+            castShadow={!isDead}
+          >
+            <cylinderGeometry args={[0.155, 0.215, 0.5, 14]} />
             <meshStandardMaterial
               color={tunicColor}
               emissive={isDead ? "#0ea5e9" : isWolfVictim ? "#ef4444" : "#000000"}
-              emissiveIntensity={isDead ? 0.35 : isWolfVictim ? 0.45 : 0}
+              emissiveIntensity={isDead ? 0.38 : isWolfVictim ? 0.45 : 0}
               transparent={isDead}
               opacity={opacity}
-              roughness={0.65}
+              roughness={0.88}
             />
           </mesh>
 
-          {/* Cụm Đầu & Cổ (Head Group — có LookAt xoay tự nhiên) */}
-          <group ref={headRef} position={[0, 0.62, -0.01]}>
-            {/* Khối Đầu */}
-            <mesh position={[0, 0.12, 0]} castShadow={!isDead}>
-              <boxGeometry args={[0.26, 0.26, 0.26]} />
+          {/* Choàng Vai Ngắn Trung Cổ (Shoulder Mantle / Capelet) */}
+          <mesh
+            position={[0, 0.46, -0.02]}
+            scale={[authorizedWolfForm ? 1.28 : 1.08, 1, 0.88]}
+            castShadow={!isDead}
+          >
+            <cylinderGeometry args={[0.125, 0.245, 0.19, 14]} />
+            <meshStandardMaterial
+              color={authorizedWolfForm ? "#290d0e" : cloakTrimColor}
+              emissive={isDead ? "#0284c7" : "#000000"}
+              emissiveIntensity={isDead ? 0.25 : 0}
+              transparent={isDead}
+              opacity={opacity}
+              roughness={0.92}
+            />
+          </mesh>
+
+          {/* Đai Lưng Da & Khóa Đồng Bắt Sáng Lửa (Ẩn khi hóa Linh hồn) */}
+          {!isDead && (
+            <group position={[0, 0.19, -0.01]}>
+              <mesh scale={[authorizedWolfForm ? 1.22 : 1.04, 1, 0.85]}>
+                <cylinderGeometry args={[0.192, 0.198, 0.055, 14]} />
+                <meshStandardMaterial color="#231710" roughness={0.75} />
+              </mesh>
+              <mesh position={[0, 0, 0.168]}>
+                <boxGeometry args={[0.065, 0.062, 0.022]} />
+                <meshStandardMaterial color="#d97706" metalness={0.76} roughness={0.32} />
+              </mesh>
+            </group>
+          )}
+
+          {/* Cụm Đầu & Mũ Trùm Đầu Cổ Điển (Head Group — giữ nguyên 100% xoay cổ LookAt!) */}
+          <group ref={headRef} position={[0, 0.58, -0.01]}>
+            {/* Cổ áo choàng ôm gáy */}
+            <mesh position={[0, 0.03, -0.01]} scale={[1.05, 1, 0.95]}>
+              <cylinderGeometry args={[0.135, 0.155, 0.09, 12]} />
+              <meshStandardMaterial color={cloakTrimColor} transparent={isDead} opacity={opacity} roughness={0.9} />
+            </mesh>
+
+            {/* Khuôn mặt tròn ẩn nửa trong bóng mũ trùm */}
+            <mesh position={[0, 0.145, 0.015]} castShadow={!isDead}>
+              <sphereGeometry args={[0.122, 14, 14]} />
               <meshStandardMaterial
                 color={skinColor}
                 emissive={isDead ? "#38bdf8" : "#000000"}
-                emissiveIntensity={isDead ? 0.3 : 0}
+                emissiveIntensity={isDead ? 0.32 : 0}
                 transparent={isDead}
                 opacity={opacity}
-                roughness={0.6}
+                roughness={0.72}
               />
             </mesh>
 
-            {/* Mũ / Tóc định hướng phía trên đầu */}
-            <mesh position={[0, 0.26, -0.01]}>
-              <boxGeometry args={[0.28, 0.07, 0.28]} />
-              <meshStandardMaterial
-                color={authorizedWolfForm ? "#111827" : tunicColor}
-                transparent={isDead}
-                opacity={opacity}
-              />
-            </mesh>
+            {/* Vòm Mũ Trùm Đầu Trung Cổ (Medieval Cowl & Pointed Hood) */}
+            {!authorizedWolfForm && (
+              <group>
+                {/* Vòm trùm đầu chính */}
+                <mesh position={[0, 0.165, -0.015]} scale={[1.06, 1.12, 1.14]} castShadow={!isDead}>
+                  <sphereGeometry args={[0.142, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.76]} />
+                  <meshStandardMaterial
+                    color={tunicColor}
+                    emissive={isDead ? "#0ea5e9" : "#000000"}
+                    emissiveIntensity={isDead ? 0.28 : 0}
+                    transparent={isDead}
+                    opacity={opacity}
+                    roughness={0.9}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+                {/* Chóp nhọn mũ trùm rủ nhẹ ra phía sau kiểu Dark Fantasy */}
+                <mesh position={[0, 0.255, -0.095]} rotation={[-0.68, 0, 0]} castShadow={!isDead}>
+                  <coneGeometry args={[0.095, 0.22, 10]} />
+                  <meshStandardMaterial
+                    color={cloakTrimColor}
+                    transparent={isDead}
+                    opacity={opacity}
+                    roughness={0.92}
+                  />
+                </mesh>
+                {/* Vành mũ nhô nhẹ phía trán tạo bóng đổ bí ẩn */}
+                <mesh position={[0, 0.205, 0.055]} rotation={[0.32, 0, 0]} scale={[1.05, 0.55, 0.85]}>
+                  <torusGeometry args={[0.118, 0.024, 8, 16, Math.PI]} />
+                  <meshStandardMaterial color={cloakTrimColor} transparent={isDead} opacity={opacity} roughness={0.9} />
+                </mesh>
+              </group>
+            )}
 
-            {/* Hai mắt định hướng mặt trước (+Z) */}
+            {/* Hai mắt biểu cảm dưới vành mũ trùm (+Z) */}
             {!isSleeping && (
               <>
-                <mesh position={[-0.06, 0.13, 0.132]}>
-                  <boxGeometry args={[0.045, 0.035, 0.01]} />
-                  <meshBasicMaterial color={authorizedWolfForm ? "#ef4444" : isDead ? "#e0f2fe" : "#0f172a"} />
+                <mesh position={[-0.044, 0.152, 0.128]}>
+                  <sphereGeometry args={[authorizedWolfForm ? 0.022 : 0.017, 8, 8]} />
+                  <meshBasicMaterial
+                    color={authorizedWolfForm ? "#ef4444" : isDead ? "#e0f2fe" : "#1e293b"}
+                  />
                 </mesh>
-                <mesh position={[0.06, 0.13, 0.132]}>
-                  <boxGeometry args={[0.045, 0.035, 0.01]} />
-                  <meshBasicMaterial color={authorizedWolfForm ? "#ef4444" : isDead ? "#e0f2fe" : "#0f172a"} />
+                <mesh position={[0.044, 0.152, 0.128]}>
+                  <sphereGeometry args={[authorizedWolfForm ? 0.022 : 0.017, 8, 8]} />
+                  <meshBasicMaterial
+                    color={authorizedWolfForm ? "#ef4444" : isDead ? "#e0f2fe" : "#1e293b"}
+                  />
                 </mesh>
               </>
             )}
 
-            {/* Hình thái Người Sói Box: Mọc 2 tai nhọn + Mõm Sói! */}
+            {/* Hình thái Người Sói Hung Dữ Ban Đêm: Bờm lông đen đỏ + 2 Tai Sói Nhọn + Mõm Sói & Nanh Trắng! */}
             {authorizedWolfForm && (
-              <>
-                <mesh position={[-0.09, 0.31, -0.02]} rotation={[0, 0, 0.18]}>
-                  <coneGeometry args={[0.055, 0.15, 4]} />
-                  <meshStandardMaterial color="#450a0a" />
+              <group>
+                {/* Bờm lông đầu Sói */}
+                <mesh position={[0, 0.17, -0.03]} scale={[1.12, 1.08, 1.15]}>
+                  <dodecahedronGeometry args={[0.138, 1]} />
+                  <meshStandardMaterial color="#1f1214" roughness={0.95} flatShading />
                 </mesh>
-                <mesh position={[0.09, 0.31, -0.02]} rotation={[0, 0, -0.18]}>
-                  <coneGeometry args={[0.055, 0.15, 4]} />
-                  <meshStandardMaterial color="#450a0a" />
+                {/* Hai tai sói nhọn vểnh cao */}
+                <mesh position={[-0.088, 0.31, -0.02]} rotation={[-0.1, 0, 0.22]}>
+                  <coneGeometry args={[0.048, 0.16, 5]} />
+                  <meshStandardMaterial color="#3b0d11" roughness={0.9} />
                 </mesh>
-                <mesh position={[0, 0.08, 0.16]}>
-                  <boxGeometry args={[0.13, 0.1, 0.12]} />
-                  <meshStandardMaterial color="#1f2937" />
+                <mesh position={[0.088, 0.31, -0.02]} rotation={[-0.1, 0, -0.22]}>
+                  <coneGeometry args={[0.048, 0.16, 5]} />
+                  <meshStandardMaterial color="#3b0d11" roughness={0.9} />
                 </mesh>
-              </>
+                {/* Mõm sói nhô dài + chóp mũi đen + 2 nanh nhọn */}
+                <mesh position={[0, 0.11, 0.155]} rotation={[Math.PI / 2 - 0.12, 0, 0]}>
+                  <cylinderGeometry args={[0.038, 0.068, 0.14, 7]} />
+                  <meshStandardMaterial color="#27272a" roughness={0.85} />
+                </mesh>
+                <mesh position={[0, 0.125, 0.225]}>
+                  <sphereGeometry args={[0.02, 8, 8]} />
+                  <meshStandardMaterial color="#09090b" roughness={0.4} />
+                </mesh>
+                {[-0.026, 0.026].map((fx, fi) => (
+                  <mesh key={fi} position={[fx, 0.078, 0.19]} rotation={[Math.PI, 0, 0]}>
+                    <coneGeometry args={[0.009, 0.032, 5]} />
+                    <meshBasicMaterial color="#f8fafc" />
+                  </mesh>
+                ))}
+              </group>
             )}
           </group>
 
-          {/* Cánh tay Trái (Pivot tại vai trái) */}
-          <group ref={leftArmRef} position={[authorizedWolfForm ? 0.27 : 0.23, 0.5, 0]}>
-            <mesh position={[0, -0.18, 0]} castShadow={!isDead}>
-              <boxGeometry args={[0.1, 0.38, 0.1]} />
-              <meshStandardMaterial color={tunicColor} transparent={isDead} opacity={opacity} roughness={0.7} />
+          {/* Ống Tay Áo Choàng Trái Loe Nhẹ (Pivot tại vai trái) */}
+          <group ref={leftArmRef} position={[authorizedWolfForm ? 0.25 : 0.205, 0.48, 0]}>
+            <mesh position={[0, -0.17, 0]} castShadow={!isDead}>
+              <cylinderGeometry args={[0.046, 0.072, 0.36, 10]} />
+              <meshStandardMaterial color={tunicColor} transparent={isDead} opacity={opacity} roughness={0.88} />
             </mesh>
-            <mesh position={[0, -0.39, 0]}>
-              <boxGeometry args={[0.09, 0.09, 0.09]} />
-              <meshStandardMaterial color={skinColor} transparent={isDead} opacity={opacity} />
+            <mesh position={[0, -0.37, 0]}>
+              <sphereGeometry args={[0.044, 10, 10]} />
+              <meshStandardMaterial color={skinColor} transparent={isDead} opacity={opacity} roughness={0.72} />
             </mesh>
           </group>
 
-          {/* Cánh tay Phải (Pivot tại vai phải — giơ thẳng khi Chỉ tay đề cử!) */}
-          <group ref={rightArmRef} position={[authorizedWolfForm ? -0.27 : -0.23, 0.5, 0]}>
-            <mesh position={[0, -0.18, 0]} castShadow={!isDead}>
-              <boxGeometry args={[0.1, 0.38, 0.1]} />
-              <meshStandardMaterial color={tunicColor} transparent={isDead} opacity={opacity} roughness={0.7} />
+          {/* Ống Tay Áo Choàng Phải (Pivot tại vai phải — giơ thẳng khi Chỉ tay đề cử!) */}
+          <group ref={rightArmRef} position={[authorizedWolfForm ? -0.25 : -0.205, 0.48, 0]}>
+            <mesh position={[0, -0.17, 0]} castShadow={!isDead}>
+              <cylinderGeometry args={[0.046, 0.072, 0.36, 10]} />
+              <meshStandardMaterial color={tunicColor} transparent={isDead} opacity={opacity} roughness={0.88} />
             </mesh>
-            <mesh position={[0, -0.39, 0]}>
-              <boxGeometry args={[0.09, 0.09, 0.09]} />
-              <meshStandardMaterial color={skinColor} transparent={isDead} opacity={opacity} />
+            <mesh position={[0, -0.37, 0]}>
+              <sphereGeometry args={[0.044, 10, 10]} />
+              <meshStandardMaterial color={skinColor} transparent={isDead} opacity={opacity} roughness={0.72} />
             </mesh>
           </group>
         </group>

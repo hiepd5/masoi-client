@@ -167,7 +167,7 @@ export default function WerewolfScene3D({
     }, 3200);
   }, []);
 
-  // Tải bố cục từ client/public/config/village_layout.json (hoặc bản nháp chưa lưu nếu đang ở Dev)
+  // Tải bố cục từ client/public/config/village_layout.json (hoặc bản nháp localStorage nếu Dev đang xếp dở)
   useEffect(() => {
     let mounted = true;
     loadInitialVillageLayout().then((res) => {
@@ -224,6 +224,34 @@ export default function WerewolfScene3D({
   const handleBeginGizmoTransform = useCallback(() => {
     preDragSnapshotRef.current = layoutNodes;
   }, [layoutNodes]);
+
+  // Giữ Shift + Kéo trục/mặt phẳng Gizmo = Nhân bản ngay tại gốc và kéo bản sao mới trượt mượt theo trục (1 bước Ctrl+Z hoàn tác trọn gói!)
+  const handleBeginShiftCloneDrag = useCallback(
+    (sourceNode) => {
+      if (!sourceNode || sourceNode.deletable === false) return null;
+      const meta = EXTERIOR_ASSET_CATALOG[sourceNode.type];
+      const newId = `${sourceNode.type}-${Date.now().toString(36).slice(-5)}`;
+      const countSame = layoutNodes.filter((n) => n.type === sourceNode.type).length + 1;
+      const cloneNode = normalizeLayoutNode({
+        ...sourceNode,
+        id: newId,
+        label: `${meta?.shortLabel || sourceNode.label} #${countSame}`,
+        position: [...sourceNode.position],
+        rotation: [...sourceNode.rotation],
+        scale: [...sourceNode.scale],
+        allowCenterZone: false,
+        deletable: true,
+      });
+      if (!cloneNode) return null;
+
+      preDragSnapshotRef.current = layoutNodes;
+      setLayoutNodes((prev) => [...prev, cloneNode]);
+      setSelectedNodeId(cloneNode.id);
+      flashEditorBanner(`📋 Shift + Kéo trục: Đang nhân bản "${cloneNode.label}"!`);
+      return cloneNode;
+    },
+    [layoutNodes, flashEditorBanner]
+  );
 
   const handleCommitGizmoTransform = useCallback(
     (nodeId, patch) => {
@@ -440,7 +468,7 @@ export default function WerewolfScene3D({
     flashEditorBanner("↺ Đã khôi phục về bố cục mặc định (Bấm '💾 Lưu Cố Định' nếu muốn ghi đè file)!");
   }, [applyLayoutMutation, flashEditorBanner]);
 
-  // ================== CĂN CHỈNH MẪU GỐC .GLB (PROP TUNER) ==================
+  // ================== CĂN CHỈNH MẪU GỐC .GLB (PROP TUNER CŨ) ==================
   const updateSinglePropCalib = (propKey, patch) => {
     setPropCalib((prev) => {
       const current = prev[propKey] || { yawDeg: 0, scale: 1, yOffset: 0, zOffset: 0, showAuxRope: false };
@@ -1052,7 +1080,7 @@ export default function WerewolfScene3D({
           antialias: !isLowPowerDevice,
           powerPreference: "high-performance",
           toneMapping: THREE.ACESFilmicToneMapping,
-          toneMappingExposure: 1.06,
+          toneMappingExposure: 1.12,
         }}
         camera={{ fov: 50, near: 0.1, far: 175, position: [0, 2.2, circleRadius + 2] }}
       >
@@ -1116,6 +1144,7 @@ export default function WerewolfScene3D({
               lastGizmoDragEndMsRef={lastGizmoDragEndMsRef}
               onGizmoDraggingChange={setIsGizmoDragging}
               onBeginTransform={handleBeginGizmoTransform}
+              onBeginShiftCloneDrag={handleBeginShiftCloneDrag}
               onLiveTransformSample={setLiveTransformSample}
               onCommitTransform={handleCommitGizmoTransform}
             />
@@ -1196,6 +1225,22 @@ export default function WerewolfScene3D({
           );
         })}
       </Canvas>
+
+      {/* Lớp phủ Viền Tối Điện Ảnh (Cinematic Vignette — 0ms GPU, gom sáng vào đống lửa & vòng ghế đúng chất Concept; tự ẩn khi bật D5 Mode) */}
+      {!architectMode && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            zIndex: 4,
+            background: effectiveEnvironmentMood.isNight
+              ? "radial-gradient(ellipse at 50% 54%, rgba(4,9,20,0) 48%, rgba(3,7,18,0.42) 82%, rgba(2,5,14,0.72) 100%)"
+              : "radial-gradient(ellipse at 50% 54%, rgba(8,15,28,0) 54%, rgba(5,11,22,0.34) 84%, rgba(3,8,18,0.62) 100%)",
+          }}
+        />
+      )}
     </div>
   );
 }

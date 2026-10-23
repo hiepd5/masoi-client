@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAtMs": 1792767497623,
-  "updatedAtIso": "2026-10-23T14:58:17.623Z",
+  "updatedAtMs": 1792778118650,
+  "updatedAtIso": "2026-10-23T17:55:18.650Z",
   "note": "Bố cục không gian Làng Ma Sói 3D được dàn dựng bằng D5 Architect Studio (Không tác động ghế ngồi người chơi)",
-  "totalNodes": 78,
+  "totalNodes": 141,
   "nodes": [
     {
       "id": "plaza-main",
@@ -40,14 +40,14 @@
         0
       ],
       "rotation": [
-        0,
+        0.007,
         0,
         0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.85,
+        0.7,
+        1.85
       ],
       "seed": 0,
       "allowCenterZone": true,
@@ -69,9 +69,9 @@
         0
       ],
       "scale": [
-        1,
-        1,
-        1
+        0.8,
+        0.9,
+        0.8
       ],
       "seed": 0,
       "allowCenterZone": false,
@@ -117,9 +117,9 @@
         0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.15,
+        1.15,
+        1.15
       ],
       "seed": 0,
       "allowCenterZone": false,
@@ -137,7 +137,7 @@
       ],
       "rotation": [
         0,
-        1.371,
+        0.056,
         0
       ],
       "scale": [
@@ -185,13 +185,13 @@
       ],
       "rotation": [
         0,
-        -3.202,
+        1.57,
         0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.1,
+        1.1,
+        1.1
       ],
       "seed": 0,
       "allowCenterZone": false,
@@ -262,7 +262,7 @@
       ],
       "scale": [
         1,
-        1,
+        1.2,
         1
       ],
       "seed": 0,
@@ -281,7 +281,7 @@
       ],
       "rotation": [
         0,
-        0.436,
+        -1.182,
         0
       ],
       "scale": [
@@ -305,7 +305,7 @@
       ],
       "rotation": [
         0,
-        1.309,
+        -0.693,
         0
       ],
       "scale": [
@@ -329,7 +329,7 @@
       ],
       "rotation": [
         0,
-        2.356,
+        0.9,
         0
       ],
       "scale": [
@@ -352,9 +352,9 @@
         6.116
       ],
       "rotation": [
-        0,
-        -2.356,
-        0
+        -3.142,
+        0.882,
+        -3.142
       ],
       "scale": [
         1,
@@ -371,14 +371,14 @@
       "label": "Cột Đèn Lồng #5",
       "category": "props",
       "position": [
-        5.695,
+        8.142,
         0,
-        -2.666
+        -3.349
       ],
       "rotation": [
-        0,
-        -1.309,
-        0
+        -3.141,
+        -0.687,
+        -3.141
       ],
       "scale": [
         1,
@@ -400,9 +400,9 @@
         -7.84
       ],
       "rotation": [
-        0,
-        -0.436,
-        0
+        3.142,
+        -1.116,
+        3.142
       ],
       "scale": [
         1,
@@ -779,9 +779,9 @@
       "label": "Tảng Đá Rêu #15",
       "category": "props",
       "position": [
-        -11.178,
+        -12.393,
         0,
-        -0.694
+        0.245
       ],
       "rotation": [
         0,
@@ -890,366 +890,6 @@
         0.9
       ],
       "seed": 17.29,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-16",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #16",
-      "category": "forest",
-      "position": [
-        -19.383,
-        0,
-        -3.579
-      ],
-      "rotation": [
-        -0.032,
-        1.936,
-        0.032
-      ],
-      "scale": [
-        0.917,
-        0.917,
-        0.917
-      ],
-      "seed": 10.95,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-18",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #18",
-      "category": "forest",
-      "position": [
-        6.467,
-        0,
-        -18.753
-      ],
-      "rotation": [
-        0.026,
-        2.199,
-        0.023
-      ],
-      "scale": [
-        0.944,
-        0.944,
-        0.944
-      ],
-      "seed": 12.41,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-22",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #22",
-      "category": "forest",
-      "position": [
-        -9.826,
-        -0.69,
-        19.768
-      ],
-      "rotation": [
-        2.942,
-        -0.672,
-        2.822
-      ],
-      "scale": [
-        1.111,
-        1.111,
-        1.111
-      ],
-      "seed": 15.33,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-24",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #24",
-      "category": "forest",
-      "position": [
-        -17.389,
-        0,
-        13.665
-      ],
-      "rotation": [
-        0.001,
-        6.173,
-        0.027
-      ],
-      "scale": [
-        1.349,
-        1.349,
-        1.349
-      ],
-      "seed": 16.79,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-30",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #30",
-      "category": "forest",
-      "position": [
-        19.121,
-        0,
-        -11.451
-      ],
-      "rotation": [
-        0.012,
-        2.04,
-        0.031
-      ],
-      "scale": [
-        0.928,
-        0.928,
-        0.928
-      ],
-      "seed": 21.17,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-35",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #35",
-      "category": "forest",
-      "position": [
-        1.04,
-        0,
-        30.236
-      ],
-      "rotation": [
-        0.012,
-        5.768,
-        0.028
-      ],
-      "scale": [
-        1.308,
-        1.308,
-        1.308
-      ],
-      "seed": 24.82,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-36",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #36",
-      "category": "forest",
-      "position": [
-        13.543,
-        0,
-        -16.191
-      ],
-      "rotation": [
-        0.017,
-        1.838,
-        0.022
-      ],
-      "scale": [
-        0.907,
-        0.907,
-        0.907
-      ],
-      "seed": 25.55,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-39",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #39",
-      "category": "forest",
-      "position": [
-        -8.144,
-        0,
-        -17.635
-      ],
-      "rotation": [
-        0.019,
-        4.917,
-        0.032
-      ],
-      "scale": [
-        1.221,
-        1.221,
-        1.221
-      ],
-      "seed": 27.74,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-40",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #40",
-      "category": "forest",
-      "position": [
-        -17.986,
-        0,
-        19.127
-      ],
-      "rotation": [
-        -0.002,
-        0.775,
-        0.023
-      ],
-      "scale": [
-        0.799,
-        0.799,
-        0.799
-      ],
-      "seed": 28.47,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-51",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #51",
-      "category": "forest",
-      "position": [
-        16.181,
-        0,
-        14.544
-      ],
-      "rotation": [
-        -0.013,
-        0.803,
-        0.031
-      ],
-      "scale": [
-        0.917,
-        0.917,
-        0.917
-      ],
-      "seed": 36.5,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-54",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #54",
-      "category": "forest",
-      "position": [
-        17.968,
-        0,
-        0.817
-      ],
-      "rotation": [
-        -0.031,
-        2.939,
-        0.028
-      ],
-      "scale": [
-        1.019,
-        1.019,
-        1.019
-      ],
-      "seed": 38.69,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-55",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #55",
-      "category": "forest",
-      "position": [
-        -16.452,
-        0,
-        -8.776
-      ],
-      "rotation": [
-        0.022,
-        4.716,
-        0.022
-      ],
-      "scale": [
-        1.2,
-        1.2,
-        1.2
-      ],
-      "seed": 39.42,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-64",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #64",
-      "category": "forest",
-      "position": [
-        7.504,
-        0,
-        17.552
-      ],
-      "rotation": [
-        -0.017,
-        -0.463,
-        0.009
-      ],
-      "scale": [
-        1.087,
-        1.087,
-        1.087
-      ],
-      "seed": 45.99,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-69",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #69",
-      "category": "forest",
-      "position": [
-        -1.337,
-        0,
-        22.517
-      ],
-      "rotation": [
-        -0.019,
-        5.521,
-        0.022
-      ],
-      "scale": [
-        1.282,
-        1.282,
-        1.282
-      ],
-      "seed": 49.64,
-      "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "tree-71",
-      "type": "tree_dead_gnarled",
-      "label": "Cây Khô #71",
-      "category": "forest",
-      "position": [
-        -20.019,
-        -1.457,
-        4.609
-      ],
-      "rotation": [
-        2.606,
-        0.391,
-        -3.118
-      ],
-      "scale": [
-        1,
-        1,
-        1
-      ],
-      "seed": 51.1,
       "allowCenterZone": false,
       "deletable": true
     },
@@ -1750,7 +1390,7 @@
       ],
       "scale": [
         1,
-        1,
+        1.1,
         1
       ],
       "seed": 0,
@@ -1773,9 +1413,9 @@
         -0.003
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.15,
+        1.15,
+        1.15
       ],
       "seed": 0,
       "allowCenterZone": false,
@@ -1787,19 +1427,19 @@
       "label": "Nhà Gỗ Đá A #7",
       "category": "architecture",
       "position": [
-        15.29,
+        14.379,
         0,
-        7.036
+        18.016
       ],
       "rotation": [
         -3.141,
-        0.31,
-        -3.142
+        0.691,
+        3.141
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.2,
+        1.2,
+        1.2
       ],
       "seed": 0,
       "allowCenterZone": false,
@@ -1859,9 +1499,9 @@
       "label": "Nhà Mái Rơm B #6",
       "category": "architecture",
       "position": [
-        -12.988,
+        -12.686,
         0,
-        -6.788
+        -7.06
       ],
       "rotation": [
         0,
@@ -1872,6 +1512,1878 @@
         1,
         1,
         1
+      ],
+      "seed": 0,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-1",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #1",
+      "category": "forest",
+      "position": [
+        8.742,
+        -1.5,
+        -21.406
+      ],
+      "rotation": [
+        0,
+        0.868,
+        0
+      ],
+      "scale": [
+        0.957,
+        1.04,
+        0.957
+      ],
+      "seed": 0.4,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-2",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #2",
+      "category": "forest",
+      "position": [
+        -5.874,
+        0,
+        -20.005
+      ],
+      "rotation": [
+        0,
+        3.711,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 1.71,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-3",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #3",
+      "category": "forest",
+      "position": [
+        -12.994,
+        -1.5,
+        -17.628
+      ],
+      "rotation": [
+        0,
+        0.27,
+        0
+      ],
+      "scale": [
+        1.122,
+        1.22,
+        1.122
+      ],
+      "seed": 3.02,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-4",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #4",
+      "category": "forest",
+      "position": [
+        -16.855,
+        -1.5,
+        -15.576
+      ],
+      "rotation": [
+        0,
+        3.113,
+        0
+      ],
+      "scale": [
+        1.205,
+        1.31,
+        1.205
+      ],
+      "seed": 4.33,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-5",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #5",
+      "category": "forest",
+      "position": [
+        -15.939,
+        0,
+        -5.725
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-6",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #6",
+      "category": "forest",
+      "position": [
+        -20.406,
+        0,
+        -4.281
+      ],
+      "rotation": [
+        0,
+        2.515,
+        0
+      ],
+      "scale": [
+        1.04,
+        1.13,
+        1.04
+      ],
+      "seed": 6.95,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-7",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #7",
+      "category": "forest",
+      "position": [
+        -21.677,
+        0,
+        3.117
+      ],
+      "rotation": [
+        0,
+        5.358,
+        0
+      ],
+      "scale": [
+        1.122,
+        1.22,
+        1.122
+      ],
+      "seed": 8.26,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-8",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #8",
+      "category": "forest",
+      "position": [
+        -20.224,
+        0,
+        10.849
+      ],
+      "rotation": [
+        0,
+        1.917,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 9.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-9",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #9",
+      "category": "forest",
+      "position": [
+        -16.652,
+        0,
+        13.521
+      ],
+      "rotation": [
+        0,
+        4.76,
+        0
+      ],
+      "scale": [
+        0.957,
+        1.04,
+        0.957
+      ],
+      "seed": 10.88,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-10",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #10",
+      "category": "forest",
+      "position": [
+        -10.705,
+        0,
+        17.892
+      ],
+      "rotation": [
+        0,
+        1.32,
+        0
+      ],
+      "scale": [
+        1.04,
+        1.13,
+        1.04
+      ],
+      "seed": 12.19,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-11",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #11",
+      "category": "forest",
+      "position": [
+        -7.501,
+        0,
+        20.575
+      ],
+      "rotation": [
+        0,
+        4.162,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 13.5,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-12",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #12",
+      "category": "forest",
+      "position": [
+        0,
+        -1.5,
+        22.95
+      ],
+      "rotation": [
+        0,
+        0.722,
+        0
+      ],
+      "scale": [
+        1.205,
+        1.31,
+        1.205
+      ],
+      "seed": 14.81,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-13",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #13",
+      "category": "forest",
+      "position": [
+        7.347,
+        0,
+        20.152
+      ],
+      "rotation": [
+        0,
+        3.564,
+        0
+      ],
+      "scale": [
+        0.957,
+        1.04,
+        0.957
+      ],
+      "seed": 16.12,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-14",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #14",
+      "category": "forest",
+      "position": [
+        10.705,
+        0,
+        17.892
+      ],
+      "rotation": [
+        0,
+        0.124,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 17.43,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-15",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #15",
+      "category": "forest",
+      "position": [
+        17.001,
+        -1.138,
+        17.398
+      ],
+      "rotation": [
+        0,
+        2.967,
+        0
+      ],
+      "scale": [
+        1.122,
+        1.22,
+        1.122
+      ],
+      "seed": 18.74,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-16",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #16",
+      "category": "forest",
+      "position": [
+        20.224,
+        0,
+        10.849
+      ],
+      "rotation": [
+        0,
+        5.809,
+        0
+      ],
+      "scale": [
+        1.205,
+        1.31,
+        1.205
+      ],
+      "seed": 20.05,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-17",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #17",
+      "category": "forest",
+      "position": [
+        19.598,
+        0,
+        2.818
+      ],
+      "rotation": [
+        0,
+        2.369,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 21.36,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-18",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #18",
+      "category": "forest",
+      "position": [
+        20.406,
+        0,
+        -4.281
+      ],
+      "rotation": [
+        0,
+        5.212,
+        0
+      ],
+      "scale": [
+        1.04,
+        1.13,
+        1.04
+      ],
+      "seed": 22.67,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-19",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #19",
+      "category": "forest",
+      "position": [
+        20.202,
+        0,
+        -8.456
+      ],
+      "rotation": [
+        0,
+        1.771,
+        0
+      ],
+      "scale": [
+        1.122,
+        1.22,
+        1.122
+      ],
+      "seed": 23.98,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-20",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #20",
+      "category": "forest",
+      "position": [
+        16.855,
+        0,
+        -15.576
+      ],
+      "rotation": [
+        0,
+        4.614,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 25.29,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-21",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #21",
+      "category": "forest",
+      "position": [
+        12.727,
+        -1.5,
+        -17.266
+      ],
+      "rotation": [
+        0,
+        1.173,
+        0
+      ],
+      "scale": [
+        0.957,
+        1.04,
+        0.957
+      ],
+      "seed": 26.6,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-inner-22",
+      "type": "tree_pine_tall",
+      "label": "Thông Cổ Thụ #22",
+      "category": "forest",
+      "position": [
+        5.874,
+        -1.5,
+        -18.247
+      ],
+      "rotation": [
+        0,
+        4.016,
+        0
+      ],
+      "scale": [
+        1.04,
+        1.13,
+        1.04
+      ],
+      "seed": 27.91,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-1",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #1",
+      "category": "forest",
+      "position": [
+        -5.321,
+        -1.5,
+        -26.282
+      ],
+      "rotation": [
+        0,
+        2.268,
+        0
+      ],
+      "scale": [
+        1.09,
+        1.16,
+        1.09
+      ],
+      "seed": 30,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-2",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #2",
+      "category": "forest",
+      "position": [
+        -16.428,
+        0,
+        -25.994
+      ],
+      "rotation": [
+        0,
+        6.022,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 31.73,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-3",
+      "type": "tree_pine_wide",
+      "label": "Thông Viền Sương #3",
+      "category": "forest",
+      "position": [
+        -20.601,
+        0,
+        -18.74
+      ],
+      "rotation": [
+        0,
+        3.493,
+        0
+      ],
+      "scale": [
+        1.297,
+        1.38,
+        1.297
+      ],
+      "seed": 33.46,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-4",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #4",
+      "category": "forest",
+      "position": [
+        -31.041,
+        0,
+        -8.56
+      ],
+      "rotation": [
+        0,
+        0.964,
+        0
+      ],
+      "scale": [
+        1.401,
+        1.49,
+        1.401
+      ],
+      "seed": 35.19,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-5",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #5",
+      "category": "forest",
+      "position": [
+        -29.3,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        4.718,
+        0
+      ],
+      "scale": [
+        1.09,
+        1.16,
+        1.09
+      ],
+      "seed": 36.92,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-6",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #6",
+      "category": "forest",
+      "position": [
+        -27.041,
+        0,
+        7.457
+      ],
+      "rotation": [
+        0,
+        2.189,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 38.65,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-7",
+      "type": "tree_pine_wide",
+      "label": "Thông Viền Sương #7",
+      "category": "forest",
+      "position": [
+        -23.967,
+        0,
+        21.802
+      ],
+      "rotation": [
+        0,
+        5.943,
+        0
+      ],
+      "scale": [
+        1.297,
+        1.38,
+        1.297
+      ],
+      "seed": 40.38,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-8",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #8",
+      "category": "forest",
+      "position": [
+        -14.878,
+        0,
+        23.543
+      ],
+      "rotation": [
+        0,
+        3.414,
+        0
+      ],
+      "scale": [
+        1.401,
+        1.49,
+        1.401
+      ],
+      "seed": 42.11,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-9",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #9",
+      "category": "forest",
+      "position": [
+        -3.039,
+        0,
+        32.056
+      ],
+      "rotation": [
+        0,
+        0.885,
+        0
+      ],
+      "scale": [
+        1.09,
+        1.16,
+        1.09
+      ],
+      "seed": 43.84,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-10",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #10",
+      "category": "forest",
+      "position": [
+        5.088,
+        0,
+        28.855
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-11",
+      "type": "tree_pine_wide",
+      "label": "Thông Viền Sương #11",
+      "category": "forest",
+      "position": [
+        12.039,
+        0,
+        25.335
+      ],
+      "rotation": [
+        0,
+        2.11,
+        0
+      ],
+      "scale": [
+        1.297,
+        1.38,
+        1.297
+      ],
+      "seed": 47.3,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-12",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #12",
+      "category": "forest",
+      "position": [
+        24.327,
+        0,
+        18.808
+      ],
+      "rotation": [
+        0,
+        5.864,
+        0
+      ],
+      "scale": [
+        1.401,
+        1.49,
+        1.401
+      ],
+      "seed": 49.03,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-13",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #13",
+      "category": "forest",
+      "position": [
+        25.769,
+        0,
+        10.564
+      ],
+      "rotation": [
+        0,
+        3.335,
+        0
+      ],
+      "scale": [
+        1.09,
+        1.16,
+        1.09
+      ],
+      "seed": 50.76,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-14",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #14",
+      "category": "forest",
+      "position": [
+        32.097,
+        0,
+        -2.573
+      ],
+      "rotation": [
+        0,
+        0.806,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 52.49,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-15",
+      "type": "tree_pine_wide",
+      "label": "Thông Viền Sương #15",
+      "category": "forest",
+      "position": [
+        27.533,
+        0,
+        -10.021
+      ],
+      "rotation": [
+        0,
+        4.56,
+        0
+      ],
+      "scale": [
+        1.297,
+        1.38,
+        1.297
+      ],
+      "seed": 54.22,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-16",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #16",
+      "category": "forest",
+      "position": [
+        22.86,
+        0,
+        -16.255
+      ],
+      "rotation": [
+        0,
+        2.031,
+        0
+      ],
+      "scale": [
+        1.401,
+        1.49,
+        1.401
+      ],
+      "seed": 55.95,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-17",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #17",
+      "category": "forest",
+      "position": [
+        14.298,
+        0,
+        -27.224
+      ],
+      "rotation": [
+        0,
+        5.785,
+        0
+      ],
+      "scale": [
+        1.09,
+        1.16,
+        1.09
+      ],
+      "seed": 57.68,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "pine-outer-18",
+      "type": "tree_pine_tall",
+      "label": "Thông Viền Sương #18",
+      "category": "forest",
+      "position": [
+        5.929,
+        0,
+        -27.212
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-16",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #16",
+      "category": "forest",
+      "position": [
+        -24.093,
+        0,
+        -4.449
+      ],
+      "rotation": [
+        0,
+        0.65,
+        0
+      ],
+      "scale": [
+        0.68,
+        0.68,
+        0.68
+      ],
+      "seed": 10.95,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-22",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #22",
+      "category": "forest",
+      "position": [
+        -11.25,
+        0,
+        22.634
+      ],
+      "rotation": [
+        0,
+        2.02,
+        0
+      ],
+      "scale": [
+        0.725,
+        0.725,
+        0.725
+      ],
+      "seed": 15.33,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-30",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #30",
+      "category": "forest",
+      "position": [
+        21.866,
+        0,
+        -13.095
+      ],
+      "rotation": [
+        0,
+        3.39,
+        0
+      ],
+      "scale": [
+        0.77,
+        0.77,
+        0.77
+      ],
+      "seed": 21.17,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-36",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #36",
+      "category": "forest",
+      "position": [
+        15.719,
+        0,
+        -18.793
+      ],
+      "rotation": [
+        0,
+        4.76,
+        0
+      ],
+      "scale": [
+        0.815,
+        0.815,
+        0.815
+      ],
+      "seed": 25.55,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-40",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #40",
+      "category": "forest",
+      "position": [
+        -20.178,
+        0,
+        21.458
+      ],
+      "rotation": [
+        0,
+        6.13,
+        0
+      ],
+      "scale": [
+        0.68,
+        0.68,
+        0.68
+      ],
+      "seed": 28.47,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-54",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #54",
+      "category": "forest",
+      "position": [
+        24.475,
+        0,
+        1.113
+      ],
+      "rotation": [
+        0,
+        1.217,
+        0
+      ],
+      "scale": [
+        0.725,
+        0.725,
+        0.725
+      ],
+      "seed": 38.69,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-64",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #64",
+      "category": "forest",
+      "position": [
+        9.631,
+        0,
+        22.528
+      ],
+      "rotation": [
+        0,
+        2.587,
+        0
+      ],
+      "scale": [
+        0.77,
+        0.77,
+        0.77
+      ],
+      "seed": 45.99,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree-71",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô #71",
+      "category": "forest",
+      "position": [
+        -23.875,
+        0,
+        5.497
+      ],
+      "rotation": [
+        0,
+        3.957,
+        0
+      ],
+      "scale": [
+        0.815,
+        0.815,
+        0.815
+      ],
+      "seed": 51.1,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8b714",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #30",
+      "category": "forest",
+      "position": [
+        11.428,
+        -1.5,
+        -23.45
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8b8sz",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #31",
+      "category": "forest",
+      "position": [
+        -2.096,
+        0,
+        -33.751
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8b8y6",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #32",
+      "category": "forest",
+      "position": [
+        2.927,
+        0,
+        -37.974
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8b92y",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #33",
+      "category": "forest",
+      "position": [
+        -10.661,
+        0,
+        -31.196
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8b97c",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #34",
+      "category": "forest",
+      "position": [
+        8.782,
+        0,
+        -34.896
+      ],
+      "rotation": [
+        0,
+        3.256,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 59.41,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjdi",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #35",
+      "category": "forest",
+      "position": [
+        6.438,
+        0,
+        29.705
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjib",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #36",
+      "category": "forest",
+      "position": [
+        24.457,
+        0,
+        4.832
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjmy",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #37",
+      "category": "forest",
+      "position": [
+        27.75,
+        0,
+        -24.554
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjrf",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #38",
+      "category": "forest",
+      "position": [
+        0.633,
+        0,
+        35.758
+      ],
+      "rotation": [
+        1.69,
+        -0.907,
+        1.665
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjvr",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #39",
+      "category": "forest",
+      "position": [
+        11.838,
+        0,
+        33.105
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bjzy",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #40",
+      "category": "forest",
+      "position": [
+        -12.166,
+        0,
+        30.616
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bk4a",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #41",
+      "category": "forest",
+      "position": [
+        17.081,
+        -0.369,
+        23.76
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_tall-8bk8e",
+      "type": "tree_pine_tall",
+      "label": "Thông Cao #42",
+      "category": "forest",
+      "position": [
+        15.888,
+        0,
+        35.655
+      ],
+      "rotation": [
+        0,
+        4.639,
+        0
+      ],
+      "scale": [
+        1.194,
+        1.27,
+        1.194
+      ],
+      "seed": 45.57,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8c17u",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #12",
+      "category": "forest",
+      "position": [
+        14.287,
+        0,
+        1.196
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8c1ca",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #13",
+      "category": "forest",
+      "position": [
+        3.978,
+        0.393,
+        -13.233
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8c1he",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #14",
+      "category": "forest",
+      "position": [
+        -4.798,
+        0,
+        -12.766
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8c1lq",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #15",
+      "category": "forest",
+      "position": [
+        -10.894,
+        0.576,
+        -10.134
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8c1py",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #16",
+      "category": "forest",
+      "position": [
+        -14.334,
+        0,
+        0.295
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8ckka",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #17",
+      "category": "forest",
+      "position": [
+        9.278,
+        -0.379,
+        12.743
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8ckpc",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #18",
+      "category": "forest",
+      "position": [
+        -3.617,
+        0.094,
+        17.259
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8ckuf",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #19",
+      "category": "forest",
+      "position": [
+        -9.486,
+        0,
+        14.04
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8cky4",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #20",
+      "category": "forest",
+      "position": [
+        -13.854,
+        0,
+        8.101
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8cx7q",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #21",
+      "category": "forest",
+      "position": [
+        14.7,
+        0,
+        9.381
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8cxd4",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #22",
+      "category": "forest",
+      "position": [
+        16.896,
+        0,
+        -5.536
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-8cxhr",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #23",
+      "category": "forest",
+      "position": [
+        3.656,
+        0,
+        17.207
+      ],
+      "rotation": [
+        0,
+        5.956,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-90aez",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #8",
+      "category": "architecture",
+      "position": [
+        -5.628,
+        0,
+        -22.125
+      ],
+      "rotation": [
+        0,
+        -1.23,
+        0
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ],
+      "seed": 0,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-90jo0",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #9",
+      "category": "architecture",
+      "position": [
+        5.424,
+        0,
+        -23.612
+      ],
+      "rotation": [
+        3.142,
+        -1.288,
+        3.142
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ],
+      "seed": 0,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-90t5d",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #10",
+      "category": "architecture",
+      "position": [
+        23.109,
+        0,
+        0.382
+      ],
+      "rotation": [
+        -3.141,
+        -0.087,
+        -3.141
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ],
+      "seed": 0,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-918l5",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #11",
+      "category": "architecture",
+      "position": [
+        18.63,
+        0,
+        -12.439
+      ],
+      "rotation": [
+        -3.141,
+        -0.707,
+        -3.141
+      ],
+      "scale": [
+        1.15,
+        1.15,
+        1.15
+      ],
+      "seed": 0,
+      "allowCenterZone": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-91maw",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #12",
+      "category": "architecture",
+      "position": [
+        16.64,
+        0,
+        6.517
+      ],
+      "rotation": [
+        -3.141,
+        0.31,
+        -3.142
+      ],
+      "scale": [
+        1.2,
+        1.2,
+        1.2
       ],
       "seed": 0,
       "allowCenterZone": false,

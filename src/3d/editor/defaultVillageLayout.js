@@ -231,7 +231,7 @@ export const EXTERIOR_ASSET_CATALOG = {
     shortLabel: "Đĩa Sân Đá",
     category: "centerpiece",
     centerHeight: 0.12,
-    clickableIn3D: false, // Tránh click nhầm mặt sàn rộng R=5.7m; chỉnh qua tab '📑 Lớp' bên phải
+    clickableIn3D: false,
     aoRadius: 0,
     aoScaleXZ: [1, 1],
     aoOpacity: 0,
@@ -499,7 +499,7 @@ export async function loadInitialVillageLayout() {
   try {
     const layoutUrl = devAllowed
       ? `${PUBLIC_LAYOUT_URL}?t=${Date.now()}`
-      : `${PUBLIC_LAYOUT_URL}?v=${LAYOUT_SCHEMA_VERSION}_6`;
+      : `${PUBLIC_LAYOUT_URL}?v=${LAYOUT_SCHEMA_VERSION}_8`;
     const res = await fetch(layoutUrl, { cache: devAllowed ? "no-store" : "default" });
     if (res.ok) {
       const ctype = (res.headers.get("content-type") || "").toLowerCase();

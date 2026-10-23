@@ -196,6 +196,7 @@ export function ArchitectGizmo3D({
   lastGizmoDragEndMsRef = null,
   onGizmoDraggingChange,
   onBeginTransform,
+  onBeginShiftCloneDrag,
   onLiveTransformSample,
   onCommitTransform,
 }) {
@@ -219,6 +220,7 @@ export function ArchitectGizmo3D({
   latestRef.current = {
     selectedNode,
     targetObj,
+    nodeGroupRefs,
     meta,
     gizmoMode,
     effectiveSpace,
@@ -227,6 +229,7 @@ export function ArchitectGizmo3D({
     lastGizmoDragEndMsRef,
     onGizmoDraggingChange,
     onBeginTransform,
+    onBeginShiftCloneDrag,
     onLiveTransformSample,
     onCommitTransform,
   };
@@ -256,7 +259,9 @@ export function ArchitectGizmo3D({
   // Reset hover khi bỏ chọn hoặc đổi chế độ Gizmo
   useEffect(() => {
     setHoveredHandle(null);
-    setActiveHandle(null);
+    if (!dragSessionRef.current) {
+      setActiveHandle(null);
+    }
   }, [selectedNode?.id, gizmoMode]);
 
   // Capture-Phase Raycaster ưu tiên tuyệt đối cho Gizmo (xuyên tường nhà / tán thông, khóa OrbitControls ngay tức khắc!)
@@ -313,6 +318,7 @@ export function ArchitectGizmo3D({
         targetObj: obj,
         onGizmoDraggingChange: setDragging,
         onBeginTransform: beginTx,
+        onBeginShiftCloneDrag: beginShiftClone,
       } = latestRef.current;
       if (!sel || !obj || !gizmoRootRef.current) return;
 
@@ -320,6 +326,18 @@ export function ArchitectGizmo3D({
       ev.stopImmediatePropagation();
       ev.stopPropagation();
       ev.preventDefault();
+
+      // Chuẩn Kiến trúc sư D5 / 3ds Max: Giữ phím Shift + Kéo trục/mặt phẳng Di chuyển = Nhân bản tại chỗ & kéo bản sao mới trượt dọc trục!
+      const isMoveHandle = hid.startsWith("move_") || hid.startsWith("plane_");
+      let activeNodeId = sel.id;
+      let isShiftClone = false;
+      if (ev.shiftKey && isMoveHandle && sel.deletable !== false && typeof beginShiftClone === "function") {
+        const cloned = beginShiftClone(sel);
+        if (cloned?.id) {
+          activeNodeId = cloned.id;
+          isShiftClone = true;
+        }
+      }
 
       const rect = updateRay(ev.clientX, ev.clientY);
       const startPos = obj.position.clone();
@@ -381,7 +399,9 @@ export function ArchitectGizmo3D({
 
       dragSessionRef.current = {
         handleId: hid,
-        nodeId: sel.id,
+        nodeId: activeNodeId,
+        isShiftClone,
+        pendingClonePos: startPos.clone(),
         startClientX: ev.clientX,
         startClientY: ev.clientY,
         startPos,
@@ -404,16 +424,20 @@ export function ArchitectGizmo3D({
       setHoveredHandle(hid);
       document.body.style.cursor = "grabbing";
       setDragging?.(true);
-      beginTx?.();
+      if (!isShiftClone) {
+        beginTx?.();
+      }
 
       const onWindowMove = (moveEv) => {
         const sess = dragSessionRef.current;
         const cur = latestRef.current;
-        const liveObj = cur.targetObj;
-        if (!sess || !liveObj) return;
+        if (!sess) return;
+        const liveObj =
+          cur.nodeGroupRefs?.current?.[sess.nodeId] || (!sess.isShiftClone ? cur.targetObj : null);
 
         updateRay(moveEv.clientX, moveEv.clientY);
-        const snapOn = Boolean(cur.shiftSnap || moveEv.shiftKey);
+        // Phím Shift nay dành riêng cho Copy-Drag mượt không giật nấc; Snap chỉ kích hoạt khi bật nút 🧲 Snap hoặc giữ Alt!
+        const snapOn = Boolean(cur.shiftSnap || moveEv.altKey);
         const lockUniform = Boolean(cur.uniformScaleLock);
 
         if (sess.handleId === "move_x" || sess.handleId === "move_y" || sess.handleId === "move_z") {
@@ -429,7 +453,8 @@ export function ArchitectGizmo3D({
               nextPos.x = (nextPos.x / rXZ) * 66;
               nextPos.z = (nextPos.z / rXZ) * 66;
             }
-            liveObj.position.copy(nextPos);
+            sess.pendingClonePos = nextPos.clone();
+            if (liveObj) liveObj.position.copy(nextPos);
           }
         } else if (
           sess.handleId === "move_xz_center" ||
@@ -463,8 +488,11 @@ export function ArchitectGizmo3D({
               nextPos.x = (nextPos.x / rXZ) * 66;
               nextPos.z = (nextPos.z / rXZ) * 66;
             }
-            liveObj.position.copy(nextPos);
+            sess.pendingClonePos = nextPos.clone();
+            if (liveObj) liveObj.position.copy(nextPos);
           }
+        } else if (!liveObj) {
+          return;
         } else if (sess.handleId === "rot_x" || sess.handleId === "rot_y" || sess.handleId === "rot_z") {
           let rawTheta = 0;
           if (Math.abs(sess.camAxisDot) < 0.16) {
@@ -557,12 +585,23 @@ export function ArchitectGizmo3D({
         const now = performance.now();
         if (now - lastLiveEmitRef.current > 30) {
           lastLiveEmitRef.current = now;
-          cur.onLiveTransformSample?.({
-            id: sess.nodeId,
-            position: [round3(liveObj.position.x), round3(liveObj.position.y), round3(liveObj.position.z)],
-            rotation: [round3(liveObj.rotation.x), round3(liveObj.rotation.y), round3(liveObj.rotation.z)],
-            scale: [clampScale(liveObj.scale.x), clampScale(liveObj.scale.y), clampScale(liveObj.scale.z)],
-          });
+          if (liveObj) {
+            cur.onLiveTransformSample?.({
+              id: sess.nodeId,
+              position: [round3(liveObj.position.x), round3(liveObj.position.y), round3(liveObj.position.z)],
+              rotation: [round3(liveObj.rotation.x), round3(liveObj.rotation.y), round3(liveObj.rotation.z)],
+              scale: [clampScale(liveObj.scale.x), clampScale(liveObj.scale.y), clampScale(liveObj.scale.z)],
+            });
+          } else if (sess.isShiftClone && sess.pendingClonePos) {
+            cur.onLiveTransformSample?.({
+              id: sess.nodeId,
+              position: [
+                round3(sess.pendingClonePos.x),
+                round3(sess.pendingClonePos.y),
+                round3(sess.pendingClonePos.z),
+              ],
+            });
+          }
         }
       };
 
@@ -582,13 +621,24 @@ export function ArchitectGizmo3D({
         }
         cur.onGizmoDraggingChange?.(false);
 
-        const liveObj = cur.targetObj;
-        if (sess && liveObj) {
-          cur.onCommitTransform?.(sess.nodeId, {
-            position: [round3(liveObj.position.x), round3(liveObj.position.y), round3(liveObj.position.z)],
-            rotation: [round3(liveObj.rotation.x), round3(liveObj.rotation.y), round3(liveObj.rotation.z)],
-            scale: [clampScale(liveObj.scale.x), clampScale(liveObj.scale.y), clampScale(liveObj.scale.z)],
-          });
+        if (sess) {
+          const liveObj =
+            cur.nodeGroupRefs?.current?.[sess.nodeId] || (!sess.isShiftClone ? cur.targetObj : null);
+          if (liveObj) {
+            cur.onCommitTransform?.(sess.nodeId, {
+              position: [round3(liveObj.position.x), round3(liveObj.position.y), round3(liveObj.position.z)],
+              rotation: [round3(liveObj.rotation.x), round3(liveObj.rotation.y), round3(liveObj.rotation.z)],
+              scale: [clampScale(liveObj.scale.x), clampScale(liveObj.scale.y), clampScale(liveObj.scale.z)],
+            });
+          } else if (sess.isShiftClone && sess.pendingClonePos) {
+            cur.onCommitTransform?.(sess.nodeId, {
+              position: [
+                round3(sess.pendingClonePos.x),
+                round3(sess.pendingClonePos.y),
+                round3(sess.pendingClonePos.z),
+              ],
+            });
+          }
         }
       };
 
@@ -1199,10 +1249,9 @@ export function ArchitectOverlayHUD({
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Phím tắt chuẩn D5 Render (Tự bỏ qua khi đang gõ số trong ô Input!)
+  // Phím tắt chuẩn D5 Render / Tripo Studio (Giữ Shift + Kéo trục Di chuyển = Copy nhân bản mượt dọc trục)
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.key === "Shift") setShiftSnap(true);
       if (isTypingInInput(e.target)) return;
 
       const key = e.key.toLowerCase();
@@ -1251,20 +1300,13 @@ export function ArchitectOverlayHUD({
       }
     };
 
-    const onKeyUp = (e) => {
-      if (e.key === "Shift") setShiftSnap(false);
-    };
-
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
     };
   }, [
     selectedNode,
     setGizmoMode,
-    setShiftSnap,
     onUndo,
     onRedo,
     onDuplicateSelected,
@@ -1466,7 +1508,7 @@ export function ArchitectOverlayHUD({
               cursor: "pointer",
               whiteSpace: "nowrap",
             }}
-            title="Bật bắt dính bước 0.25m & góc 15° (hoặc giữ phím Shift khi kéo)"
+            title="Bật bắt dính bước 0.25m & góc 15° (hoặc giữ phím Alt khi kéo)"
           >
             🧲 Snap {shiftSnap ? "BẬT" : "TẮT"}
           </button>
@@ -1854,7 +1896,7 @@ export function ArchitectOverlayHUD({
           pointerEvents: "none",
         }}
       >
-        🎥 <b>Camera D5:</b> Phím <b>W·A·S·D</b> bay ngang • <b>E/Q</b> lên/xuống • <b>Shift</b> nhanh • Chuột trái Xoay • Chuột phải Trượt Pan • <b>F</b> Hội tụ vật chọn • 🔒 <i>Ghế người chơi đã khóa cứng</i>
+        🎥 <b>Camera D5:</b> <b>W·A·S·D</b> bay • <b>E/Q</b> lên/xuống • <b>Shift + Kéo trục</b> = Copy nhân bản • <b>Chuột phải</b> xoay nhìn • <b>Lăn chuột</b> Zoom • <b>F</b> Tới vật chọn
       </div>
 
       {/* ==================== 4. CỘT INSPECTOR & THƯ VIỆN BÊN PHẢI KIỂU D5 RENDER ==================== */}

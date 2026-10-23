@@ -7,6 +7,7 @@ import {
   PRELOAD_TIERS,
   PROP_MANIFEST,
 } from "../config/propManifest.js";
+import { enhancePropMaterialsForCinema } from "../shaders/villageCinematicShaders.js";
 
 let sharedGltfLoader = null;
 function getSharedGltfLoader() {
@@ -225,6 +226,7 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
       // Tối ưu GPU WebGL: Chỉ bật bóng động (castShadow) cho đạo cụ tâm sân (Ghế, Lửa trại, Đài treo cổ).
       // Toàn bộ Nhà & Rừng cây dùng bóng mềm ContactShadowDisc giúp giảm ~80% tải GPU Shadow Map trên Web & Mobile!
       const shouldCastShadow = Boolean(manifest.castDynamicShadow) && !manifest.flushTopSurface;
+      const maxAniso = manifest.flushTopSurface ? 4 : 2;
       const texSlots = ["map", "normalMap", "roughnessMap", "metalnessMap", "aoMap", "emissiveMap"];
       root.traverse((obj) => {
         if (obj.isMesh) {
@@ -235,7 +237,7 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
             texSlots.forEach((slot) => {
               const tex = mat?.[slot];
               if (tex && tex.isTexture) {
-                tex.anisotropy = Math.min(2, tex.anisotropy || 2);
+                tex.anisotropy = Math.min(maxAniso, tex.anisotropy || maxAniso);
               }
             });
           });
@@ -261,6 +263,9 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
       }
 
       box.getCenter(center);
+
+      // Tiêm GPU Shader Điện Ảnh (Gió Rừng 2 Chiều Y×XZ + Cửa Sổ/Đèn Lồng Tự Phát Sáng + Sân Đá Ẩm Ánh Lửa) 1 lần duy nhất!
+      enhancePropMaterialsForCinema(root, propKey, box, size, center);
 
       let autoYawRad = 0;
       let effectiveTargetHeight = manifest.targetHeight;
@@ -413,8 +418,9 @@ export default function SmartPropGLB({
     (entry.bounds.autoYawRad || 0) +
     THREE.MathUtils.degToRad((manifest.defaultYawDeg || 0) + userYawDeg);
 
-  // Chế độ đặc biệt Surface-Flush dành cho Đĩa Sân Đá (plaza_cobblestone.glb):
-  // Căn theo đường kính ngang vòng ghế, kẹp mỏng độ dày và đặt mặt trên sát y = 0.008m để chân ghế không bao giờ bị lún!
+  // Chế độ tấm phẳng chuyên biệt cho đĩa sân đá (plaza_cobblestone.glb):
+  // - Ép mặt trên cùng nằm khít y = 0.01m (ngay dưới chân ghế & bếp lửa)
+  // - Giới hạn độ dày tấm đá tối đa 14cm để Tripo có tạo bệ dày bên dưới cũng bị giấu sạch dưới lòng đất!
   if (manifest.flushTopSurface) {
     const desiredDiam = (targetDiameterOverride || manifest.defaultDiameter || 11.2) * userScale * scaleMultiplier;
     const rawSpanXZ = Math.max(0.1, Math.max(entry.bounds.sizeX, entry.bounds.sizeZ));
@@ -425,11 +431,10 @@ export default function SmartPropGLB({
     return (
       <group position={position} rotation={rotation}>
         <group
-          position={[0, 0.012 + userYOffset, userZOffset]}
+          position={[0, 0.01 + userYOffset, userZOffset]}
           rotation={[0, totalYawRad, 0]}
           scale={[scaleXZ, scaleY, scaleXZ]}
         >
-          {/* Neo đỉnh mặt trên maxY về 0 để mặt đá bằng khít chân ghế */}
           <primitive
             object={clonedScene}
             position={[-entry.bounds.centerX, -entry.bounds.maxY, -entry.bounds.centerZ]}
