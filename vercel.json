@@ -1,3 +1,37 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "headers": [
+    {
+      "source": "/models/props/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/config/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=60, stale-while-revalidate=86400"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!models/|config/|assets/|avatars/|audio/).*)",
+      "destination": "/index.html"
+    }
+  ]
 }

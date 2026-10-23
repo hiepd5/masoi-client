@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { saveSession } from "../hooks/useSocket.js";
 
 const RANDOM_NAMES = [
@@ -35,7 +35,7 @@ function suggestName() {
   return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
 }
 
-export default function Lobby({ socketRef, onJoined }) {
+export default function Lobby({ socketRef, onJoined, onOpenArchitectStudio = null }) {
   const [name, setName] = useState(() => sessionStorage.getItem('ws_name') || '');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
@@ -50,6 +50,19 @@ export default function Lobby({ socketRef, onJoined }) {
   // Rules modal
   const [showRules, setShowRules] = useState(false);
   const [rulesTab, setRulesTab] = useState('roles');
+
+  // Nạp ngầm trước Đợt 1 (Ghế, Bếp lửa, Sân đá, Đài treo cổ) trong lúc người chơi gõ tên để vào phòng 3D mượt tức thì!
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const idle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
+      idle(() => {
+        import("../3d/props/SmartPropGLB.jsx")
+          .then((mod) => mod.preloadVillagePropsInIdle?.({ includeOuterTiers: false }))
+          .catch(() => {});
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   function persistName(n) {
     sessionStorage.setItem('ws_name', n);
@@ -203,7 +216,7 @@ export default function Lobby({ socketRef, onJoined }) {
 
       {/* Main Lobby Card */}
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
           <h1 style={{ margin: 0 }}>🐺 Ma Sói Online</h1>
           <button
             onClick={() => setShowRules(true)}
@@ -217,12 +230,42 @@ export default function Lobby({ socketRef, onJoined }) {
               fontSize: 13,
               fontWeight: 600,
               whiteSpace: 'nowrap',
+              width: 'auto',
+              margin: 0,
             }}
           >
             📖 Luật Chơi
           </button>
         </div>
         <p className="subtitle">Chơi cùng bạn bè từ xa</p>
+
+        {/* Nút Cam Mở Trực Tiếp Studio Cảnh Quan D5 (Chỉ hiện ở Dev/Localhost — Ẩn 100% trên Production) */}
+        {onOpenArchitectStudio && (
+          <button
+            type="button"
+            onClick={onOpenArchitectStudio}
+            style={{
+              width: '100%',
+              margin: '0 0 14px 0',
+              padding: '10px 14px',
+              borderRadius: 11,
+              fontSize: 13.5,
+              fontWeight: 800,
+              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+              color: '#0f172a',
+              border: '1.5px solid #fde047',
+              boxShadow: '0 4px 16px rgba(245, 158, 11, 0.45)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+            title="Mở ngay không gian Làng 3D độc lập để sắp xếp 12 Model Tripo Pro bằng Gizmo 3 mũi tên kiểu D5 Render (không cần tạo phòng)"
+          >
+            🏗️ Mở Studio Cảnh Quan D5 (12/12 Model 3D)
+          </button>
+        )}
 
         <label>Tên của bạn</label>
         <input

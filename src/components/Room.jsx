@@ -1,11 +1,11 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
 import { ROLES_CONFIG, generateDefaultRoles } from "../config/roles.config.js";
 import "./Room.css";
 
 const ORDERED_ROLES = ["wolf", "guard", "witch", "seer", "tough_guy", "cursed", "tanner", "villager"];
 
-export default function Room({ socketRef, roomCode, roomData, onLeave }) {
+export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArchitectStudio = null }) {
   const room = roomData;
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
@@ -332,7 +332,30 @@ export default function Room({ socketRef, roomCode, roomData, onLeave }) {
           </div>
         </div>
 
-        <div className="lobby-header-actions">
+        <div className="lobby-header-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {onOpenArchitectStudio && (
+            <button
+              type="button"
+              onClick={onOpenArchitectStudio}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "7px 13px",
+                borderRadius: 9,
+                fontSize: "0.82rem",
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                color: "#0f172a",
+                border: "1px solid #fde047",
+                boxShadow: "0 3px 12px rgba(245, 158, 11, 0.45)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              title="Mở Studio Cảnh Quan D5 độc lập toàn màn hình (không cần bắt đầu ván)"
+            >
+              🏗️ Studio Cảnh Quan D5
+            </button>
+          )}
           <button className="btn-header-leave" onClick={handleLeave}>
             🚪 Rời phòng
           </button>

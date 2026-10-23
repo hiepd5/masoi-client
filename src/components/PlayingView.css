@@ -2363,3 +2363,275 @@ button.voted-dim:disabled {
 .player-circle-scene { position: relative; z-index: 1; }
 .village-backdrop { z-index: 0 !important; }
 
+/* ================================================================ */
+/* FLOATING GLASS PILL DOCK & CORNER EMOJI FAB (3D + 2D UNIFIED UX) */
+/* ================================================================ */
+.action-panel.compact-floating-dock {
+  position: relative;
+  z-index: 14;
+  width: auto;
+  max-width: min(88%, 540px);
+  min-height: 40px;
+  margin: 0 auto 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(8, 12, 26, 0.74);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.48);
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.compact-floating-dock .dock-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.compact-floating-dock .dock-hint {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.9);
+  line-height: 1.3;
+}
+.compact-floating-dock .dock-hint.dock-muted {
+  color: rgba(203, 213, 225, 0.68);
+  font-weight: 500;
+}
+.compact-floating-dock .dock-hint.dock-done {
+  color: #86efac;
+}
+.compact-floating-dock .dock-hint.dock-warn,
+.compact-floating-dock .dock-hint.dock-feedback {
+  color: #fde68a;
+}
+
+.compact-floating-dock .dock-target-label {
+  font-size: 12.5px;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+/* Ghi đè triệt để button { width: 100%; margin-bottom: 10px } từ index.css */
+.compact-floating-dock button.dock-btn {
+  width: auto !important;
+  min-height: 30px;
+  margin: 0 !important;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition: transform 0.14s ease, filter 0.14s ease, opacity 0.14s ease;
+}
+.compact-floating-dock button.dock-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+.dock-btn-confirm {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+.dock-btn-ghost {
+  background: rgba(255, 255, 255, 0.09);
+  color: #e2e8f0;
+}
+.dock-btn-warn {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.45) !important;
+  color: #fde68a;
+}
+.dock-btn-warn.active {
+  background: rgba(245, 158, 11, 0.36);
+  color: #fffbeb;
+}
+.dock-btn-save {
+  background: rgba(22, 163, 74, 0.28);
+  border-color: rgba(34, 197, 94, 0.55) !important;
+  color: #bbf7d0;
+}
+.dock-btn-poison {
+  background: rgba(124, 58, 237, 0.34);
+  border-color: rgba(167, 139, 250, 0.6) !important;
+  color: #ede9fe;
+}
+.dock-btn-kill {
+  background: rgba(220, 38, 38, 0.26);
+  border-color: rgba(239, 68, 68, 0.55) !important;
+  color: #fecaca;
+}
+.dock-btn-kill.voted-active {
+  background: #dc2626;
+  color: #ffffff;
+}
+.dock-btn-save.voted-active {
+  background: #16a34a;
+  color: #ffffff;
+}
+.dock-btn-kill.voted-dim,
+.dock-btn-save.voted-dim {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.compact-floating-dock button.dock-icon-close {
+  width: 24px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.dock-chip {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  white-space: nowrap;
+}
+.dock-chip.chip-danger {
+  background: rgba(220, 38, 38, 0.28);
+  color: #fecaca;
+  border: 1px solid rgba(239, 68, 68, 0.5);
+}
+.dock-chip.chip-info {
+  background: rgba(37, 99, 235, 0.28);
+  color: #bfdbfe;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+}
+.dock-chip.chip-muted {
+  opacity: 0.55;
+}
+
+/* Popover lịch sử Tiên Tri nổi phía trên Thanh Pill */
+.seer-popover-card {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 230px;
+  max-width: 290px;
+  background: rgba(10, 15, 32, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  border-radius: 14px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 25;
+}
+.seer-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ddd6fe;
+}
+.seer-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+/* Nút tròn 😊 góc dưới bên phải sân khấu (đối xứng với 🛠️ Dev góc trái) */
+.emoji-fab-wrap {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 16;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.emoji-fab-wrap button.emoji-fab-trigger {
+  width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.emoji-fab-wrap button.emoji-fab-trigger.active {
+  border-color: #f59e0b;
+}
+.emoji-popover-tray {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(10, 15, 32, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+.emoji-popover-tray button.emoji-btn-mini {
+  width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.emoji-popover-tray button.emoji-btn-mini:hover:not(.cooldown) {
+  transform: scale(1.18);
+  background: rgba(255, 255, 255, 0.2);
+}
+.emoji-popover-tray button.emoji-btn-mini.cooldown,
+.emoji-fab-wrap button.emoji-fab-trigger.cooldown {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+

@@ -2,3 +2,5 @@ node_modules/
 dist/
 .env
 *.log
+raw_models/
+public/config/*.backup.json

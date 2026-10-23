@@ -2,6 +2,7 @@ import React, { useRef } from "react";
 import "./PlayingView.css"; // We will add specific styles here or in index.css
 import Campfire from './Campfire.jsx';
 import ActionBeam from './ActionBeam.jsx';
+import { ROLE_COLORS } from '../config/roles.config.js';
 
 export default function PlayerCircle({
   players,
@@ -37,17 +38,6 @@ export default function PlayerCircle({
   }, []);
 
   const radius = isMobile ? 130 : 175;
-
-
-  // Màu glow theo vai — dùng để làm ring xung quanh avatar của chính mình
-  const ROLE_COLORS = {
-    wolf:     '#ef4444',
-    seer:     '#a855f7',
-    guard:    '#3b82f6',
-    witch:    '#22c55e',
-    tanner:   '#9ca3af',
-    villager: '#eab308',
-  };
 
   const sceneRef = useRef(null);
 

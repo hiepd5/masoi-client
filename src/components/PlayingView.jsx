@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
@@ -7,9 +7,14 @@ import ParticleBackground from "./ParticleBackground.jsx";
 import AmbientSound from "./AmbientSound.jsx";
 import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
+import { HudGameClock, HudPhaseCountdown, HudPhaseProgressBar } from "./HudTimer.jsx";
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS } from '../config/roles.config.js';
 import VillageBackdrop from './VillageBackdrop.jsx';
+import Scene3DErrorBoundary from '../3d/components/Scene3DErrorBoundary.jsx';
+import { isDevArchitectAllowed } from '../3d/editor/defaultVillageLayout.js';
+
+const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
 
 
 const PHASE_LABELS = {
@@ -52,8 +57,9 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [villageChatInput, setVillageChatInput] = useState("");
   const [localBubbleChatLog, setLocalBubbleChatLog] = useState({});
   const [hasActed, setHasActed] = useState(false);
-  const [gameTimeStr, setGameTimeStr] = useState("00:00");
-  const [phaseTimeStr, setPhaseTimeStr] = useState("");
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem("ws_view_mode") || "3d");
+  const [openArchitectCounter, setOpenArchitectCounter] = useState(0);
+  const canOpenArchitect = isDevArchitectAllowed();
   const [recapAnimation, setRecapAnimation] = useState(null);
   const [speakingIds, setSpeakingIds] = useState([]);
   // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
@@ -65,6 +71,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [reactions, setReactions] = useState([]);
   // Seer history log — nhớ kết quả soi qua các đêm
   const [seerHistory, setSeerHistory] = useState([]);
+  const [showSeerPopover, setShowSeerPopover] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState("");
   // Dead player overlay
   const [showDeadOverlay, setShowDeadOverlay] = useState(false);
   const prevAliveRef = useRef(true);
@@ -150,32 +158,21 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   }, [chatLog]);
 
 
-  // Timer cho game và phase
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      if (g.gameStartedAt) {
-        const elapsed = Math.floor((now - g.gameStartedAt) / 1000);
-        const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
-        const s = (elapsed % 60).toString().padStart(2, '0');
-        setGameTimeStr(`${m}:${s}`);
-      }
-
-      if (g.phaseEndsAt) {
-        const left = Math.max(0, Math.floor((g.phaseEndsAt - now) / 1000));
-        setPhaseTimeStr(left > 0 ? `${left}s` : "Hết giờ");
-      } else {
-        setPhaseTimeStr("");
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [g.gameStartedAt, g.phaseEndsAt]);
+  function toggleViewMode() {
+    setViewMode((prev) => {
+      const next = prev === "3d" ? "2d" : "3d";
+      localStorage.setItem("ws_view_mode", next);
+      return next;
+    });
+  }
 
   // Reset hasActed khi chuyển phase
   useEffect(() => {
     setHasActed(false);
     setSelectedId(null);
     setMySkipVote(false);
+    setShowSeerPopover(false);
+    setActionFeedback("");
   }, [g.nightDayPhase]);
 
   const isNight = g.nightDayPhase.startsWith("night_");
@@ -295,28 +292,69 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     };
   }, [socketRef]);
 
+  function flashActionFeedback(msg) {
+    setActionFeedback(msg);
+    setTimeout(() => {
+      setActionFeedback((prev) => (prev === msg ? "" : prev));
+    }, 2800);
+  }
+
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
 
     if (g.nightDayPhase === "night_guard") {
       SFX.vote();
-      socketRef.current.emit("action:guardProtect", { targetId: selectedId }, () => setHasActed(true));
+      socketRef.current.emit("action:guardProtect", { targetId: selectedId }, (res) => {
+        if (res?.error) {
+          flashActionFeedback(`⚠️ ${res.error}`);
+          return;
+        }
+        setHasActed(true);
+        setSelectedId(null);
+      });
     } else if (g.nightDayPhase === "night_wolf") {
       SFX.select();
-      socketRef.current.emit("action:wolfPick", { targetId: selectedId }); // Sói có thể đổi lại liên tục nên ko setHasActed
+      socketRef.current.emit("action:wolfPick", { targetId: selectedId }, (res) => {
+        if (res?.error) {
+          flashActionFeedback(`⚠️ ${res.error}`);
+          return;
+        }
+        setSelectedId(null); // Ẩn nút nổi sau khi chọn (vẫn click lại ghế khác để đổi mục tiêu được)
+      });
     } else if (g.nightDayPhase === "night_witch") {
       // Witch action is handled separately via specific buttons
     } else if (g.nightDayPhase === "night_seer") {
       SFX.select();
-      socketRef.current.emit("action:seerCheck", { targetId: selectedId }, () => setHasActed(true));
+      socketRef.current.emit("action:seerCheck", { targetId: selectedId }, (res) => {
+        if (res?.error) {
+          flashActionFeedback(`⚠️ ${res.error}`);
+          return;
+        }
+        setHasActed(true);
+        setSelectedId(null);
+      });
     } else if (g.nightDayPhase === "day_nominate") {
       SFX.vote();
-      socketRef.current.emit("action:nominationVote", { targetId: selectedId }, () => setHasActed(true));
+      socketRef.current.emit("action:nominationVote", { targetId: selectedId }, (res) => {
+        if (res?.error) {
+          flashActionFeedback(`⚠️ ${res.error}`);
+          return;
+        }
+        setHasActed(true);
+        setSelectedId(null);
+      });
     }
   }
 
   function handleWitch(save, poisonTargetId) {
-    socketRef.current.emit("action:witchDecide", { save, poisonTargetId }, () => setHasActed(true));
+    socketRef.current.emit("action:witchDecide", { save, poisonTargetId }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+        return;
+      }
+      setHasActed(true);
+      setSelectedId(null);
+    });
   }
 
   function handleWolfChat(e) {
@@ -349,32 +387,80 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     }, 4000);
   }
 
-  const showPhaseTimer = (!isNight || isMyTurn) && !g.winner; // Ngày ai cũng thấy, đêm chỉ ai đến lượt mới thấy
-
   // --- Computed: Action Banner ---
   const getActionBanner = () => {
     if (!me?.alive || g.winner) return null;
     const phase = g.nightDayPhase;
     if (isNight && !isMyTurn) return null; // đêm: chỉ hiện cho người đến lượt
     if (phase === 'night_witch') {
-      return g.wolfVictimId ? ACTION_BANNERS.night_witch : ACTION_BANNERS.night_witch_nd;
+      return g.witchInfo?.victimId ? ACTION_BANNERS.night_witch : ACTION_BANNERS.night_witch_nd;
     }
     return ACTION_BANNERS[phase] || null;
   };
   const actionBanner = getActionBanner();
 
-  // --- Computed: live Sói/Dân count ---
+  // --- Computed: live Sói/Dân count (Zero-Leak & không bị báo 0 cho Dân Làng) ---
   const alivePlayers = room.players.filter(p => p.alive);
-  const aliveWolfCount  = g.roleCounts ? Math.max(0,
-    alivePlayers.filter(p => g.wolfTeammates?.includes(p.id) || p.role === 'wolf').length
-  ) : (g.wolfTeammates?.filter(id => room.players.find(p => p.id===id)?.alive).length ?? '?');
-  const aliveVillageCount = alivePlayers.length - (typeof aliveWolfCount === 'number' ? aliveWolfCount : 0);
+  const canSeeExactWolves = me?.role === 'wolf' || Boolean(g.winner);
+  const aliveWolfCount = canSeeExactWolves
+    ? alivePlayers.filter(p => (p.id === me?.id && me?.role === 'wolf') || g.wolfTeammates?.includes(p.id) || p.role === 'wolf').length
+    : Math.max(1, (g.roleCounts?.wolf || 1) - (g.deadWolfCount || 0));
+  const hasCursedMystery = !canSeeExactWolves && (g.roleCounts?.cursed || 0) > 0;
+  const aliveVillageCount = Math.max(0, alivePlayers.length - aliveWolfCount);
 
   // --- Computed: final vote tally ---
   const hangCount  = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='hang').length  : 0;
   const spareCount = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='spare').length : 0;
   const totalAlive = alivePlayers.length;
   const hangNeeded = Math.floor(totalAlive / 2) + 1;
+  const skipVoteCount = g.skipDiscussVotes ? Object.keys(g.skipDiscussVotes).length : 0;
+
+  // --- Computed: Contextual Action cho cả nút nổi 3D [✓] lẫn Thanh Pill Kính Mờ sát đáy ---
+  const selectedPlayer = room.players.find((p) => p.id === selectedId) || null;
+  const selectedActionMeta = (() => {
+    if (!me?.alive || g.winner || !selectedPlayer || !selectedPlayer.alive) return null;
+    const phase = g.nightDayPhase;
+    const clearFn = () => setSelectedId(null);
+
+    if (phase === "night_guard" && isMyTurn && !hasActed) {
+      return { canConfirm: true, label: "🛡️ Bảo vệ", accent: "#2563eb", onConfirm: handleAction, onClear: clearFn };
+    }
+    if (phase === "night_wolf" && isMyTurn) {
+      const isFellowWolf = selectedPlayer.id === me?.id || (g.wolfTeammates || []).includes(selectedPlayer.id);
+      if (isFellowWolf) {
+        return { canConfirm: false, invalidReason: "Không thể cắn đồng bọn Sói", onClear: clearFn };
+      }
+      return { canConfirm: true, label: "🐺 Cắn", accent: "#dc2626", onConfirm: handleAction, onClear: clearFn };
+    }
+    if (phase === "night_witch" && isMyTurn && !hasActed && !g.witchInfo?.usedPoison) {
+      return {
+        canConfirm: true,
+        label: "☠️ Đầu độc",
+        accent: "#7c3aed",
+        onConfirm: () => handleWitch(false, selectedPlayer.id),
+        onClear: clearFn,
+      };
+    }
+    if (phase === "night_seer" && isMyTurn && !hasActed) {
+      if (selectedPlayer.id === me?.id) {
+        return { canConfirm: false, invalidReason: "Hãy chọn người khác để soi", onClear: clearFn };
+      }
+      return { canConfirm: true, label: "🔮 Soi", accent: "#4f46e5", onConfirm: handleAction, onClear: clearFn };
+    }
+    if (phase === "day_nominate") {
+      if (selectedPlayer.id === me?.id) {
+        return { canConfirm: false, invalidReason: "Không tự đề cử chính mình", onClear: clearFn };
+      }
+      return {
+        canConfirm: true,
+        label: hasActed ? "🗳️ Đổi đề cử" : "🗳️ Đề cử",
+        accent: "#d97706",
+        onConfirm: handleAction,
+        onClear: clearFn,
+      };
+    }
+    return null;
+  })();
 
 
   if (g.winner && !g.history) {
@@ -394,21 +480,69 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       {/* Top HUD bar */}
       <div className={`phase-header phase-${g.nightDayPhase ? g.nightDayPhase.split('_')[0] : 'default'}`}>
         <div className="hud-left">
-          <div className="game-time">⏱ {gameTimeStr}</div>
+          <HudGameClock gameStartedAt={g.gameStartedAt} />
           <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
         </div>
         <div className="hud-center">
           <span className="role-badge">
             {ROLE_EMOJIS[me?.role]} {me?.role ? ROLE_LABELS[me.role] : 'Chết'}
           </span>
-          {showPhaseTimer && phaseTimeStr && (
-            <span className="phase-timer">{phaseTimeStr}</span>
-          )}
+          <HudPhaseCountdown
+            phaseEndsAt={g.phaseEndsAt}
+            isNight={isNight}
+            isMyTurn={isMyTurn}
+            hasWinner={Boolean(g.winner)}
+          />
         </div>
         <div className="hud-right">
+          {/* Nút Cam Mở Chế Độ Dựng Cảnh D5 Ngay Trong Trận (Chỉ hiện ở Dev/Localhost) */}
+          {canOpenArchitect && (
+            <button
+              type="button"
+              className="btn-mc-voice"
+              onClick={() => {
+                if (viewMode !== '3d') {
+                  setViewMode('3d');
+                  localStorage.setItem('ws_view_mode', '3d');
+                }
+                setOpenArchitectCounter((c) => c + 1);
+              }}
+              title="Mở công cụ sắp xếp ngoại cảnh kiểu D5 Render (3 Mũi tên + Scale X·Y·Z)"
+              style={{
+                width: 'auto',
+                margin: 0,
+                fontWeight: 800,
+                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                borderColor: '#fde047',
+                color: '#0f172a',
+                boxShadow: '0 2px 10px rgba(245, 158, 11, 0.45)',
+              }}
+            >
+              🏗️ Dựng Cảnh D5
+            </button>
+          )}
+
+          {/* Công tắc chuyển tức thì 3D <-> 2D Lite (so sánh 1:1 & cứu máy yếu) */}
+          <button
+            type="button"
+            className="btn-mc-voice"
+            onClick={toggleViewMode}
+            title="Chuyển đổi tức thì giữa Sân khấu 3D và Vòng tròn 2D cổ điển"
+            style={{
+              width: 'auto',
+              margin: 0,
+              fontWeight: 700,
+              background: viewMode === '3d' ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255,255,255,0.08)',
+              borderColor: viewMode === '3d' ? 'rgba(245, 158, 11, 0.65)' : 'rgba(255,255,255,0.18)',
+              color: viewMode === '3d' ? '#fde68a' : '#e2e8f0',
+            }}
+          >
+            {viewMode === '3d' ? '🎮 3D' : '⚡ 2D'}
+          </button>
+
           {/* Live Sói/Dân counter */}
-          <div className="hud-score">
-            <span className="hud-wolf">🐺 {aliveWolfCount}</span>
+          <div className="hud-score" title={hasCursedMystery ? 'Có vai Kẻ Bị Nguyền trong ván (số Sói có thể tăng nếu bị cắn)' : 'Số Sói vs Dân ước tính còn sống'}>
+            <span className="hud-wolf">🐺 {aliveWolfCount}{hasCursedMystery ? '?' : ''}</span>
             <span className="hud-vs">vs</span>
             <span className="hud-village">👥 {aliveVillageCount}</span>
           </div>
@@ -425,30 +559,12 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
       </div>
 
-      {/* Timer progress bar */}
-      {g.phaseEndsAt && (
-        <div className="timer-progress-bar">
-          <div
-            className="timer-progress-fill"
-            style={{ width: `${Math.max(0, Math.min(100, (Math.max(0, Math.floor((g.phaseEndsAt - Date.now()) / 1000)) / 60) * 100))}%` }}
-          />
-        </div>
-      )}
-
-      {/* Action Banner — hướng dẫn ngữ cảnh */}
-      {actionBanner && !g.winner && (
-        <div
-          className={`action-banner ${hasActed ? 'action-banner-done' : ''}`}
-          style={{ '--banner-color': actionBanner.color }}
-        >
-          <span className="action-banner-icon">{actionBanner.icon}</span>
-          <span className="action-banner-text">
-            {hasActed
-              ? `✅ Đã ghi nhận lựa chọn! Đang chờ phase tiếp theo...`
-              : actionBanner.text}
-          </span>
-        </div>
-      )}
+      {/* Timer progress bar (chuẩn hóa thời lượng từng phase, không re-render toàn trang) */}
+      <HudPhaseProgressBar
+        phaseEndsAt={g.phaseEndsAt}
+        nightDayPhase={g.nightDayPhase}
+        hasWinner={Boolean(g.winner)}
+      />
 
       {/* Tab bar — chỉ hiện trên mobile portrait */}
       <div className="mobile-tab-bar">
@@ -491,198 +607,327 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
       >
         
-        {/* LEFT: Player circle + actions */}
+        {/* LEFT: 3D Stage (or 2D Lite fallback) + Floating Compact Glass Pill */}
         <div className={`game-left ${(mobileTab === 'game' || mobileTab === 'action') ? 'tab-active' : 'tab-hidden'} ${isNight ? 'bg-night' : 'bg-day'} ${mobileTab === 'action' ? 'action-tab-mode' : ''}`} style={{ position: 'relative' }}>
-          <VillageBackdrop isNight={isNight} />
-          <ParticleBackground isNight={isNight} />
-          <PlayerCircle 
-            players={room.players} 
-            me={me}
-            phase={g.nightDayPhase}
-            myRole={me?.role}
-            onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
-            selectedPlayerId={selectedId}
-            wolfVictimId={g.witchInfo?.victimId}
-            nightDeaths={g.nightDeaths}
-            wolfPicksVisible={g.wolfPicksVisible}
-            wolfChatLog={localBubbleChatLog}
-            seerLastResult={me?.role === "seer" ? g.seerLastResult : null}
-            nominationVotes={g.nominationVotes}
-            finalVotes={g.finalVotes}
-            defendantId={g.phase === "day_final_vote" ? g.hotSeatQueue[g.hotSeatIndex] : null}
-            recapAnimation={recapAnimation}
-            wolfTeammates={g.wolfTeammates || []}
-            speakingIds={speakingIds}
-            reactions={reactions}
-          />
-          
-          {/* Action buttons - moved here */}
-          {!g.winner && me?.alive && (
-            <div className="action-panel">
-              {/* Giao diện cho các Phase Ban Đêm */}
-              {isNight && (
-                isMyTurn ? (
-                  hasActed && g.nightDayPhase !== "night_wolf" ? (
-                    <div className="waiting-text">Đã ghi nhận lựa chọn! Đang chờ thời gian kết thúc...</div>
-                  ) : (
-                    <>
-                      {g.nightDayPhase === "night_witch" ? (
-                        <div className="witch-actions">
-                          {/* Trạng thái 2 bình */}
-                          <div className="witch-potion-status">
-                            <div className={`potion-badge ${g.witchInfo?.usedSave ? 'potion-used' : 'potion-available'}`}>
-                              {g.witchInfo?.usedSave ? '🔴' : '💚'} Bình Cứu: {g.witchInfo?.usedSave ? 'ĐÃ DÙNG' : 'CÒN'}
-                            </div>
-                            <div className={`potion-badge ${g.witchInfo?.usedPoison ? 'potion-used' : 'potion-available'}`}>
-                              {g.witchInfo?.usedPoison ? '🔴' : '☠️'} Bình Độc: {g.witchInfo?.usedPoison ? 'ĐÃ DÙNG' : 'CÒN'}
-                            </div>
-                          </div>
-                          {/* Nút hành động */}
-                          {g.witchInfo?.victimId ? (
-                            <p className="witch-victim-text">⚠️ Có người vừa bị tấn công!</p>
-                          ) : (
-                            <p className="witch-victim-text">😮‍💨 Đêm nay không ai bị cắn</p>
-                          )}
-                          <div className="witch-btn-row">
-                            {g.witchInfo?.victimId && (
-                              <button className="btn-save" disabled={g.witchInfo?.usedSave} onClick={() => handleWitch(true, null)}>
-                                💚 Cứu
-                              </button>
-                            )}
-                            <button className="btn-skip" onClick={() => handleWitch(false, null)}>
-                              ⏭️ Bỏ qua
-                            </button>
-                          </div>
-                          {!g.witchInfo?.usedPoison && (
-                            <button className="btn-poison" disabled={!selectedId} onClick={() => handleWitch(false, selectedId)}>
-                              ☠️ {selectedId ? 'Đầu độc người đã chọn' : 'Chọn 1 người để đầu độc'}
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <>
-                          <button className="btn-primary btn-action" disabled={!selectedId} onClick={handleAction}>
-                            Xác nhận hành động
-                          </button>
-                          {/* Seer: hiện kết quả vừa soi + lịch sử các đêm */}
-                          {g.nightDayPhase === "night_seer" && (
-                            <div className="seer-panel">
-                              {g.seerLastResult && (
-                                <div className={`seer-result-badge ${g.seerLastResult.result === 'wolf' ? 'seer-wolf' : 'seer-human'}`}>
-                                  {g.seerLastResult.result === 'wolf' ? '🔴 SÓI!' : '🔵 Người tốt'}
-                                </div>
-                              )}
-                              {seerHistory.length > 0 && (
-                                <div className="seer-history">
-                                  <div className="seer-history-title">🔮 Lịch sử soi:</div>
-                                  {seerHistory.map((h, i) => (
-                                    <div key={i} className={`seer-history-row ${h.result === 'wolf' ? 'sh-wolf' : 'sh-human'}`}>
-                                      <span className="sh-day">Đêm {h.day}</span>
-                                      <span className="sh-name">{h.targetName}</span>
-                                      <span className="sh-result">{h.result === 'wolf' ? '🔴 SÓI' : '🔵 Tốt'}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </>
-                      )}
+          {viewMode === '3d' ? (
+            <>
+              <Scene3DErrorBoundary
+                onFallback2D={() => {
+                  setViewMode("2d");
+                  localStorage.setItem("ws_view_mode", "2d");
+                }}
+              >
+                <Suspense
+                  fallback={
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: '14px' }}>
+                      🎮 Đang khởi tạo sân khấu 3D...
+                    </div>
+                  }
+                >
+                  <WerewolfScene3D
+                    players={room.players}
+                    me={me}
+                    phase={g.nightDayPhase}
+                    isNight={isNight}
+                    myRole={me?.role}
+                    hasWinner={Boolean(g.winner)}
+                    onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
+                    selectedPlayerId={selectedId}
+                    selectedActionMeta={selectedActionMeta}
+                    wolfVictimId={g.witchInfo?.victimId}
+                    wolfPicksVisible={g.wolfPicksVisible}
+                    wolfChatLog={localBubbleChatLog}
+                    seerLastResult={me?.role === "seer" ? g.seerLastResult : null}
+                    nominationVotes={g.nominationVotes}
+                    finalVotes={g.finalVotes}
+                    defendantId={(g.nightDayPhase === "day_defense" || g.nightDayPhase === "day_final_vote") ? g.hotSeatQueue?.[g.hotSeatIndex] : null}
+                    wolfTeammates={g.wolfTeammates || []}
+                    speakingIds={speakingIds}
+                    reactions={reactions}
+                    externalOpenArchitectCounter={openArchitectCounter}
+                  />
+                </Suspense>
+              </Scene3DErrorBoundary>
+              {/* Spacer đẩy thanh Pill kính mờ xuống sát đáy sân khấu 3D */}
+              <div style={{ flex: 1, pointerEvents: 'none' }} />
+            </>
+          ) : (
+            <>
+              <VillageBackdrop isNight={isNight} />
+              <ParticleBackground isNight={isNight} />
+              <PlayerCircle 
+                players={room.players} 
+                me={me}
+                phase={g.nightDayPhase}
+                myRole={me?.role}
+                onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
+                selectedPlayerId={selectedId}
+                wolfVictimId={g.witchInfo?.victimId}
+                nightDeaths={g.nightDeaths}
+                wolfPicksVisible={g.wolfPicksVisible}
+                wolfChatLog={localBubbleChatLog}
+                seerLastResult={me?.role === "seer" ? g.seerLastResult : null}
+                nominationVotes={g.nominationVotes}
+                finalVotes={g.finalVotes}
+                defendantId={(g.nightDayPhase === "day_defense" || g.nightDayPhase === "day_final_vote") ? g.hotSeatQueue?.[g.hotSeatIndex] : null}
+                recapAnimation={recapAnimation}
+                wolfTeammates={g.wolfTeammates || []}
+                speakingIds={speakingIds}
+                reactions={reactions}
+              />
+            </>
+          )}
 
-                    </>
-                  )
-                ) : (
-                  <div className="waiting-text">Màn đêm tĩnh lặng. Bạn đang ngủ...</div>
-                )
+          {/* Nút tròn thả cảm xúc 😊 thu gọn ở góc dưới bên phải sân khấu */}
+          {!g.winner && me?.alive && (
+            <EmojiReactions socketRef={socketRef} myName={me?.name} />
+          )}
+
+          {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Floating Glass Dock cho cả 3D & 2D) */}
+          {!g.winner && me?.alive && (
+            <div className="action-panel compact-floating-dock">
+              {/* Popover Lịch sử Tiên Tri (chỉ mở khi bấm nút 🔮 Đã soi) */}
+              {showSeerPopover && seerHistory.length > 0 && (
+                <div className="seer-popover-card">
+                  <div className="seer-popover-header">
+                    <span>🔮 Lịch sử soi các đêm</span>
+                    <button type="button" className="dock-icon-close" onClick={() => setShowSeerPopover(false)}>✕</button>
+                  </div>
+                  <div className="seer-popover-list">
+                    {seerHistory.map((h, i) => (
+                      <div key={i} className={`seer-history-row ${h.result === 'wolf' ? 'sh-wolf' : 'sh-human'}`}>
+                        <span className="sh-day">Đêm {h.day}</span>
+                        <span className="sh-name">{h.targetName}</span>
+                        <span className="sh-result">{h.result === 'wolf' ? '🔴 SÓI' : '🔵 Tốt'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
 
-              {/* Giao diện cho các Phase Ban Ngày (ai cũng thao tác được) */}
-              {!isNight && (
-                <>
+              {actionFeedback ? (
+                <span className="dock-hint dock-feedback">{actionFeedback}</span>
+              ) : isNight ? (
+                /* ================= BAN ĐÊM ================= */
+                isMyTurn ? (
+                  hasActed && g.nightDayPhase !== "night_wolf" ? (
+                    <div className="dock-row">
+                      <span className="dock-hint dock-done">✅ Đã ghi nhận lựa chọn! Chờ qua lượt...</span>
+                      {g.nightDayPhase === "night_seer" && g.seerLastResult && (
+                        <span className={`dock-chip ${g.seerLastResult.result === 'wolf' ? 'chip-danger' : 'chip-info'}`}>
+                          {g.seerLastResult.result === 'wolf' ? '🔴 SÓI!' : '🔵 Người tốt'}
+                        </span>
+                      )}
+                      {me?.role === "seer" && seerHistory.length > 0 && (
+                        <button
+                          type="button"
+                          className="dock-btn dock-btn-ghost"
+                          onClick={() => setShowSeerPopover((v) => !v)}
+                        >
+                          🔮 Đã soi ({seerHistory.length})
+                        </button>
+                      )}
+                    </div>
+                  ) : g.nightDayPhase === "night_witch" ? (
+                    <div className="dock-row">
+                      <span className="dock-hint">
+                        {g.witchInfo?.victimId ? "🩸 Có người bị cắn!" : "😮‍💨 Không ai bị cắn"}
+                      </span>
+                      {g.witchInfo?.victimId && (
+                        <button
+                          type="button"
+                          className="dock-btn dock-btn-save"
+                          disabled={g.witchInfo?.usedSave}
+                          onClick={() => handleWitch(true, null)}
+                          title={g.witchInfo?.usedSave ? "Đã dùng bình cứu" : "Cứu nạn nhân đêm nay"}
+                        >
+                          💚 {g.witchInfo?.usedSave ? "Hết cứu" : "Cứu"}
+                        </button>
+                      )}
+                      {!g.witchInfo?.usedPoison ? (
+                        selectedPlayer?.alive ? (
+                          <button
+                            type="button"
+                            className="dock-btn dock-btn-poison"
+                            onClick={() => handleWitch(false, selectedPlayer.id)}
+                          >
+                            ☠️ Độc {selectedPlayer.name}
+                          </button>
+                        ) : (
+                          <span className="dock-chip">☠️ Click ghế để độc</span>
+                        )
+                      ) : (
+                        <span className="dock-chip chip-muted">☠️ Hết độc</span>
+                      )}
+                      <button
+                        type="button"
+                        className="dock-btn dock-btn-ghost"
+                        onClick={() => handleWitch(false, null)}
+                      >
+                        ⏭️ Bỏ qua
+                      </button>
+                    </div>
+                  ) : (
+                    /* Lượt Bảo Vệ / Sói / Tiên Tri */
+                    <div className="dock-row">
+                      {selectedActionMeta?.canConfirm ? (
+                        <>
+                          <span className="dock-target-label">
+                            🎯 <strong>{selectedPlayer?.name}</strong>
+                          </span>
+                          <button
+                            type="button"
+                            className="dock-btn dock-btn-confirm"
+                            style={{ background: selectedActionMeta.accent }}
+                            onClick={selectedActionMeta.onConfirm}
+                          >
+                            ✓ {selectedActionMeta.label}
+                          </button>
+                          <button
+                            type="button"
+                            className="dock-icon-close"
+                            onClick={selectedActionMeta.onClear}
+                            title="Bỏ chọn"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      ) : selectedActionMeta?.invalidReason ? (
+                        <>
+                          <span className="dock-hint dock-warn">⚠️ {selectedActionMeta.invalidReason}</span>
+                          <button type="button" className="dock-icon-close" onClick={selectedActionMeta.onClear}>✕</button>
+                        </>
+                      ) : (
+                        <span className="dock-hint">
+                          {actionBanner ? `${actionBanner.icon} ${actionBanner.text}` : "Chọn 1 người trên vòng ghế"}
+                        </span>
+                      )}
+
+                      {me?.role === "seer" && seerHistory.length > 0 && (
+                        <button
+                          type="button"
+                          className="dock-btn dock-btn-ghost"
+                          onClick={() => setShowSeerPopover((v) => !v)}
+                        >
+                          🔮 Đã soi ({seerHistory.length})
+                        </button>
+                      )}
+                    </div>
+                  )
+                ) : (
+                  <span className="dock-hint dock-muted">🌙 Màn đêm tĩnh lặng — bạn đang ngủ...</span>
+                )
+              ) : (
+                /* ================= BAN NGÀY ================= */
+                <div className="dock-row">
                   {g.nightDayPhase === "day_discuss" && (
                     <>
-                      <button className="btn-secondary" onClick={() => socketRef.current.emit("action:voteExtendDiscussion", { wantExtend: true })}>
-                        +2 Phút Thảo Luận
+                      <span className="dock-hint">💬 Thảo luận tìm Sói</span>
+                      <button
+                        type="button"
+                        className="dock-btn dock-btn-ghost"
+                        onClick={() => socketRef.current.emit("action:voteExtendDiscussion", { wantExtend: true })}
+                      >
+                        ⏱️ +2 Phút
                       </button>
-                      {me?.alive && (
-                        <div className="skip-discuss-panel">
-                          <button
-                            className={`btn-skip-discuss ${mySkipVote ? 'skip-voted' : ''}`}
-                            onClick={() => {
-                              socketRef.current.emit('action:skipDiscussion', {}, (res) => {
-                                if (res?.ok) setMySkipVote(prev => !prev);
-                              });
-                            }}
-                          >
-                            {mySkipVote ? '⏭️ Rút phiếu' : '⏭️ Bỏ qua thảo luận'}
-                          </button>
-                          {g.skipDiscussVotes && (
-                            <span className="skip-progress">
-                              {Object.keys(g.skipDiscussVotes).length}/{room.players.filter(p => p.alive).length} đồng ý
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        className={`dock-btn dock-btn-warn ${mySkipVote ? "active" : ""}`}
+                        onClick={() => {
+                          socketRef.current.emit("action:skipDiscussion", {}, (res) => {
+                            if (res?.ok) setMySkipVote((prev) => !prev);
+                          });
+                        }}
+                      >
+                        {mySkipVote ? "⏭️ Rút bỏ qua" : "⏭️ Bỏ qua"} ({skipVoteCount}/{totalAlive})
+                      </button>
                     </>
                   )}
 
                   {g.nightDayPhase === "day_nominate" && (
-                    <button className="btn-primary" disabled={!selectedId} onClick={handleAction}>
-                      {hasActed ? "Đổi người đề cử" : "Bỏ phiếu đề cử"}
-                    </button>
+                    selectedActionMeta?.canConfirm ? (
+                      <>
+                        <span className="dock-target-label">
+                          🎯 <strong>{selectedPlayer?.name}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          className="dock-btn dock-btn-confirm"
+                          style={{ background: selectedActionMeta.accent }}
+                          onClick={selectedActionMeta.onConfirm}
+                        >
+                          ✓ {selectedActionMeta.label}
+                        </button>
+                        <button type="button" className="dock-icon-close" onClick={selectedActionMeta.onClear} title="Bỏ chọn">
+                          ✕
+                        </button>
+                      </>
+                    ) : selectedActionMeta?.invalidReason ? (
+                      <>
+                        <span className="dock-hint dock-warn">⚠️ {selectedActionMeta.invalidReason}</span>
+                        <button type="button" className="dock-icon-close" onClick={selectedActionMeta.onClear}>✕</button>
+                      </>
+                    ) : (
+                      <span className="dock-hint">
+                        {hasActed
+                          ? "✅ Đã đề cử (click ghế khác nếu muốn đổi phiếu)"
+                          : "🗳️ Click vào người đáng nghi trên vòng ghế để đề cử"}
+                      </span>
+                    )
                   )}
 
                   {g.nightDayPhase === "day_final_vote" && (
-                    <div className="final-vote-actions">
-                      <p className="vote-defendant">
-                        ⚖️ Phán xét: <strong>{room.players.find(p => p.id === g.hotSeatQueue[g.hotSeatIndex])?.name}</strong>
-                      </p>
-
-                      {/* Nút vote */}
-                      <div className="vote-btn-row">
-                        <button
-                          className={`btn-kill ${g.finalVotes?.[me.id] === 'hang' ? 'voted-active' : g.finalVotes?.[me.id] ? 'voted-dim' : ''}`}
-                          disabled={!!(g.finalVotes?.[me.id])}
-                          onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true)); }}
-                        >
-                          🪢 Treo Cổ {g.finalVotes?.[me.id] === 'hang' && '✓'}
-                        </button>
-                        <button
-                          className={`btn-save ${g.finalVotes?.[me.id] === 'spare' ? 'voted-active' : g.finalVotes?.[me.id] ? 'voted-dim' : ''}`}
-                          disabled={!!(g.finalVotes?.[me.id])}
-                          onClick={() => { SFX.vote(); socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true)); }}
-                        >
-                          🕊️ Tha {g.finalVotes?.[me.id] === 'spare' && '✓'}
-                        </button>
-                      </div>
-
-                      {/* Thanh tỉ lệ real-time */}
-                      {hangCount + spareCount > 0 && (
-                        <div className="vote-tally">
-                          <div className="vote-tally-row">
-                            <span className="tally-label tally-hang">🪢 {hangCount}</span>
-                            <div className="tally-bar-bg">
-                              <div className="tally-bar-hang"
-                                   style={{ width: `${(hangCount / (hangCount + spareCount)) * 100}%` }} />
-                            </div>
-                            <span className="tally-label tally-spare">{spareCount} 🕊️</span>
-                          </div>
-                          <div className="tally-hint">
-                            {hangCount >= hangNeeded
-                              ? '🪢 Đủ phiếu treo cổ!'
-                              : `Cần thêm ${hangNeeded - hangCount} phiếu Treo để xử tử`}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    <>
+                      <span className="dock-target-label">
+                        ⚖️ <strong>{room.players.find((p) => p.id === g.hotSeatQueue?.[g.hotSeatIndex])?.name}</strong>:
+                      </span>
+                      <button
+                        type="button"
+                        className={`dock-btn dock-btn-kill ${g.finalVotes?.[me.id] === "hang" ? "voted-active" : g.finalVotes?.[me.id] ? "voted-dim" : ""}`}
+                        disabled={Boolean(g.finalVotes?.[me.id])}
+                        onClick={() => {
+                          SFX.vote();
+                          socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true));
+                        }}
+                      >
+                        🪢 Treo ({hangCount})
+                      </button>
+                      <button
+                        type="button"
+                        className={`dock-btn dock-btn-save ${g.finalVotes?.[me.id] === "spare" ? "voted-active" : g.finalVotes?.[me.id] ? "voted-dim" : ""}`}
+                        disabled={Boolean(g.finalVotes?.[me.id])}
+                        onClick={() => {
+                          SFX.vote();
+                          socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true));
+                        }}
+                      >
+                        🕊️ Tha ({spareCount})
+                      </button>
+                      <span className="dock-chip">
+                        {hangCount >= hangNeeded ? "🪢 Đủ phiếu!" : `Cần ${hangNeeded} Treo`}
+                      </span>
+                    </>
                   )}
 
-                </>
+                  {(g.nightDayPhase === "day_reveal" ||
+                    g.nightDayPhase === "day_defense" ||
+                    g.nightDayPhase === "day_no_nomination") && (
+                    <span className="dock-hint">
+                      {actionBanner ? `${actionBanner.icon} ${actionBanner.text}` : ""}
+                    </span>
+                  )}
+
+                  {me?.role === "seer" && seerHistory.length > 0 && (
+                    <button
+                      type="button"
+                      className="dock-btn dock-btn-ghost"
+                      onClick={() => setShowSeerPopover((v) => !v)}
+                    >
+                      🔮 ({seerHistory.length})
+                    </button>
+                  )}
+                </div>
               )}
-
-              {/* Emoji Reactions */}
-              <EmojiReactions socketRef={socketRef} myName={me?.name} />
-
             </div>
           )}
         </div>
