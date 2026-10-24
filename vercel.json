@@ -1,11 +1,20 @@
 {
   "headers": [
     {
-      "source": "/models/props/(.*)",
+      "source": "/models/props/(.*)\\.glb",
       "headers": [
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/models/(.*)_manifest\\.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=60, stale-while-revalidate=86400"
         }
       ]
     },

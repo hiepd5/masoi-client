@@ -2634,4 +2634,34 @@ button.voted-dim:disabled {
   cursor: not-allowed;
 }
 
+/* =========================================================
+   END-GAME FULL-SCREEN 100VW 3D REPLAY CINEMA MODE
+   ========================================================= */
+.playing-view-container.replay-cinema-active > .phase-header,
+.playing-view-container.replay-cinema-active > .mobile-tab-bar {
+  display: none !important;
+}
+
+.playing-view-container.replay-cinema-active .game-left {
+  padding: 0 !important;
+}
+
+.game-layout.replay-fullscreen-mode {
+  grid-template-columns: 1fr !important;
+  grid-template-rows: 1fr !important;
+}
+
+.game-layout.replay-fullscreen-mode .game-right {
+  display: none !important;
+}
+
+.playing-view-container.replay-cinema-active .game-right {
+  padding-top: 56px;
+  padding-bottom: 138px;
+  background: rgba(8, 12, 26, 0.92);
+  backdrop-filter: blur(14px);
+  z-index: 880;
+}
+
+
 

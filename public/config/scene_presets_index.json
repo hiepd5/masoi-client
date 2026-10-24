@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "defaultPresetId": "nordic_village_v3",
+  "updatedAtIso": "2026-10-23T19:42:24.238Z",
+  "presets": [
+    {
+      "id": "nordic_village_v3",
+      "name": "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
+      "description": "Bối cảnh rừng thông Bắc Âu sương mù, nhà gỗ & lửa trại mặc định (Bản Lề V3)",
+      "url": "/config/village_layout.json",
+      "builtIn": true,
+      "nodeCount": 153,
+      "moodHint": "auto",
+      "updatedAtIso": "2026-10-23T19:42:24.236Z"
+    }
+  ]
+}

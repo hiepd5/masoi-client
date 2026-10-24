@@ -5,13 +5,28 @@
 // - TUYỆT ĐỐI KHÔNG ĐỤNG TỚI GHẾ NGỒI (prop_chair) & NGƯỜI CHƠI!
 // =============================================================================
 
+import {
+  ASSET_SYNC_VERSION,
+  PROP_MANIFEST,
+  fetchAndRegisterConceptProps,
+  subscribeConceptManifestChanges,
+} from "../config/propManifest.js";
+
 export const LAYOUT_SCHEMA_VERSION = 1;
 export const LAYOUT_REF_CIRCLE_RADIUS = 4.2;
 // Bán kính vùng cấm đặt công trình/cây đè lên ghế người chơi (bao trọn phòng tối đa 12 ghế = 5.4m + đệm 0.8m)
 export const NO_BUILD_SEAT_RADIUS = 6.2;
 
+export const DEFAULT_SCENE_PRESET_ID = "nordic_village_v3";
 export const LOCAL_DRAFT_STORAGE_KEY = "ws_d5_village_layout_draft_v1";
 export const PUBLIC_LAYOUT_URL = "/config/village_layout.json";
+export const SCENE_PRESETS_INDEX_URL = "/config/scene_presets_index.json";
+
+function getDraftStorageKey(presetId = DEFAULT_SCENE_PRESET_ID) {
+  const safeId = String(presetId || DEFAULT_SCENE_PRESET_ID).trim() || DEFAULT_SCENE_PRESET_ID;
+  if (safeId === DEFAULT_SCENE_PRESET_ID) return LOCAL_DRAFT_STORAGE_KEY;
+  return `ws_d5_preset_draft_v1_${safeId}`;
+}
 
 function getDevServerOrigin() {
   if (import.meta.env?.PROD) return "";
@@ -45,6 +60,7 @@ export function isDevArchitectAllowed() {
 
 export const EXTERIOR_CATEGORIES = [
   { id: "all", label: "Tất cả" },
+  { id: "concepts", label: "🌟 Concept Mới" },
   { id: "architecture", label: "🏰 Kiến trúc" },
   { id: "props", label: "🏮 Tiểu cảnh" },
   { id: "forest", label: "🌲 Rừng cây" },
@@ -254,6 +270,67 @@ export const SPAWNABLE_ASSET_TYPES = [
   "tree_dead_gnarled",
 ];
 
+/**
+ * Tự động đăng ký toàn bộ file .GLB từ thư mục "MODEL CONCEPT THEM" vào Catalog D5 Studio
+ */
+export function registerDynamicCatalogFromConcepts(items = []) {
+  const activeConceptTypes = new Set();
+
+  (items || []).forEach((it) => {
+    if (!it?.propKey) return;
+    const key = String(it.propKey);
+    if (EXTERIOR_ASSET_CATALOG[key] && !EXTERIOR_ASSET_CATALOG[key].isConcept) return;
+
+    activeConceptTypes.add(key);
+    EXTERIOR_ASSET_CATALOG[key] = {
+      type: key,
+      propKey: key,
+      isConcept: true,
+      batch: 3,
+      label: it.label || `🧩 ${key}`,
+      shortLabel: it.shortLabel || key,
+      sourceName: it.sourceName || `${key}.glb`,
+      sizeMB: Number(it.sizeMB || 0),
+      category: it.category || "props",
+      shaderProfile: it.shaderProfile || "standard",
+      centerHeight: Number(it.centerHeight) > 0 ? Number(it.centerHeight) : 1.1,
+      hitBoxSize: Array.isArray(it.hitBoxSize) ? it.hitBoxSize : [2.0, 2.2, 2.0],
+      aoRadius: Number.isFinite(Number(it.aoRadius)) ? Number(it.aoRadius) : 1.0,
+      aoScaleXZ: [1, 1],
+      aoOpacity: Number.isFinite(Number(it.aoOpacity)) ? Number(it.aoOpacity) : 0.6,
+      defaultSpawnRadius: Number.isFinite(Number(it.defaultSpawnRadius)) ? Number(it.defaultSpawnRadius) : 11.2,
+      defaultSpawnY: Number.isFinite(Number(it.defaultSpawnY)) ? Number(it.defaultSpawnY) : 0,
+      allowCenterZone: Boolean(it.allowCenterZone),
+      isSurfaceCandidate: Boolean(it.isSurfaceCandidate),
+      deletable: true,
+    };
+
+    if (!SPAWNABLE_ASSET_TYPES.includes(key)) {
+      // Đưa các model Concept mới lên đầu danh sách hoặc cuối tùy lọc, giữ dễ thấy ngay!
+      SPAWNABLE_ASSET_TYPES.unshift(key);
+    }
+  });
+
+  // Dọn các concept cũ đã xóa khỏi thư mục nguồn
+  for (let i = SPAWNABLE_ASSET_TYPES.length - 1; i >= 0; i--) {
+    const t = SPAWNABLE_ASSET_TYPES[i];
+    if (EXTERIOR_ASSET_CATALOG[t]?.isConcept && !activeConceptTypes.has(t)) {
+      delete EXTERIOR_ASSET_CATALOG[t];
+      SPAWNABLE_ASSET_TYPES.splice(i, 1);
+    }
+  }
+}
+
+subscribeConceptManifestChanges((items) => {
+  registerDynamicCatalogFromConcepts(items);
+});
+
+export async function ensureDynamicConceptCatalogLoaded({ bustCache = false } = {}) {
+  const items = await fetchAndRegisterConceptProps({ bustCache });
+  registerDynamicCatalogFromConcepts(items);
+  return items;
+}
+
 export function round3(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 0;
@@ -263,12 +340,40 @@ export function round3(v) {
 export function clampScale(v) {
   const n = Number(v);
   if (!Number.isFinite(n)) return 1;
-  return round3(Math.max(0.15, Math.min(6.0, n)));
+  return round3(Math.max(0.1, Math.min(12.0, n)));
 }
 
 export function normalizeLayoutNode(raw, index = 0) {
   if (!raw || typeof raw !== "object") return null;
-  const meta = EXTERIOR_ASSET_CATALOG[raw.type];
+  let meta = EXTERIOR_ASSET_CATALOG[raw.type];
+
+  // Chống mất dữ liệu nếu file JSON chứa model concept_* được nạp trước khi manifest kịp phản hồi
+  if (!meta && typeof raw.type === "string" && raw.type.startsWith("concept_")) {
+    const manifestEntry = PROP_MANIFEST[raw.type];
+    meta = {
+      type: raw.type,
+      propKey: raw.type,
+      isConcept: true,
+      batch: 3,
+      label: manifestEntry?.label || raw.label || `🧩 ${raw.type}`,
+      shortLabel: manifestEntry?.shortLabel || raw.label || raw.type,
+      category: manifestEntry?.category || raw.category || "props",
+      shaderProfile: manifestEntry?.shaderProfile || "standard",
+      centerHeight: manifestEntry?.centerHeight || 1.2,
+      hitBoxSize: manifestEntry?.hitBoxSize || [2.2, 2.4, 2.2],
+      aoRadius: manifestEntry?.aoRadius ?? 1.0,
+      aoScaleXZ: [1, 1],
+      aoOpacity: manifestEntry?.aoOpacity ?? 0.6,
+      allowCenterZone: Boolean(manifestEntry?.allowCenterZone ?? raw.allowCenterZone),
+      isSurfaceCandidate: Boolean(manifestEntry?.isSurfaceCandidate),
+      deletable: true,
+    };
+    EXTERIOR_ASSET_CATALOG[raw.type] = meta;
+    if (!SPAWNABLE_ASSET_TYPES.includes(raw.type)) {
+      SPAWNABLE_ASSET_TYPES.unshift(raw.type);
+    }
+  }
+
   if (!meta) return null;
 
   const pos = Array.isArray(raw.position) ? raw.position : [0, 0, 0];
@@ -289,6 +394,7 @@ export function normalizeLayoutNode(raw, index = 0) {
     scale: [clampScale(scl[0]), clampScale(scl[1]), clampScale(scl[2])],
     seed: round3(raw.seed ?? index * 0.73),
     allowCenterZone: Boolean(raw.allowCenterZone ?? meta.allowCenterZone),
+    lockClick: Boolean(raw.lockClick ?? false),
     deletable: raw.deletable !== undefined ? Boolean(raw.deletable) : Boolean(meta.deletable),
   };
 }
@@ -493,13 +599,100 @@ export function buildDefaultVillageNodes(baseRadius = LAYOUT_REF_CIRCLE_RADIUS) 
   return nodes.filter(Boolean);
 }
 
-export async function loadInitialVillageLayout() {
+/**
+ * Khởi tạo Bối Cảnh Sân Trống Chuẩn (Clean Courtyard Starter):
+ * - Chỉ giữ Đĩa Sân Đá 1.52MB (plaza_cobblestone) + Bếp Lửa Trại ở tâm [0,0,0]
+ * - Sạch 100% cây/nhà ngoại cảnh để Kiến trúc sư tự do bài trí Bối Cảnh Mới từ kho MODEL CONCEPT THEM!
+ */
+export function buildCleanCourtyardStarterNodes() {
+  return [
+    normalizeLayoutNode({
+      id: "plaza-main",
+      type: "plaza_cobblestone",
+      label: "Đĩa Sân Đá Cổ Ngữ",
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      allowCenterZone: true,
+      deletable: true,
+    }),
+    normalizeLayoutNode({
+      id: "campfire-main",
+      type: "prop_campfire",
+      label: "Bếp Lửa Trại Trung Tâm",
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      allowCenterZone: true,
+      deletable: false,
+    }),
+  ].filter(Boolean);
+}
+
+const FALLBACK_PRESETS_INDEX = {
+  schemaVersion: 1,
+  defaultPresetId: DEFAULT_SCENE_PRESET_ID,
+  presets: [
+    {
+      id: DEFAULT_SCENE_PRESET_ID,
+      name: "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
+      description: "Bối cảnh rừng thông Bắc Âu sương mù, nhà gỗ & lửa trại mặc định (Bản Lề V3)",
+      url: PUBLIC_LAYOUT_URL,
+      builtIn: true,
+      nodeCount: 141,
+      moodHint: "auto",
+    },
+  ],
+};
+
+export async function loadScenePresetsIndex({ bustCache = false } = {}) {
   const devAllowed = isDevArchitectAllowed();
+  const useNoStore = Boolean(bustCache || devAllowed);
+  const query = useNoStore
+    ? `?t=${Date.now()}`
+    : `?v=${LAYOUT_SCHEMA_VERSION}_${ASSET_SYNC_VERSION}`;
+
+  try {
+    const res = await fetch(`${SCENE_PRESETS_INDEX_URL}${query}`, {
+      cache: useNoStore ? "no-store" : "default",
+    });
+    if (res.ok) {
+      const ctype = (res.headers.get("content-type") || "").toLowerCase();
+      if (ctype.includes("json")) {
+        const parsed = await res.json();
+        if (Array.isArray(parsed?.presets) && parsed.presets.length > 0) {
+          return {
+            defaultPresetId: parsed.defaultPresetId || DEFAULT_SCENE_PRESET_ID,
+            presets: parsed.presets,
+          };
+        }
+      }
+    }
+  } catch {
+    // fallback below
+  }
+  return FALLBACK_PRESETS_INDEX;
+}
+
+export async function loadInitialVillageLayout(requestedPresetId = null) {
+  await ensureDynamicConceptCatalogLoaded();
+
+  const devAllowed = isDevArchitectAllowed();
+  const presetsIndex = await loadScenePresetsIndex();
+  const activePresetId =
+    requestedPresetId || presetsIndex.defaultPresetId || DEFAULT_SCENE_PRESET_ID;
+  const presetMeta =
+    presetsIndex.presets.find((p) => p.id === activePresetId) ||
+    presetsIndex.presets[0] ||
+    FALLBACK_PRESETS_INDEX.presets[0];
+
+  const targetUrl = presetMeta?.url || PUBLIC_LAYOUT_URL;
   let publicDoc = null;
+
   try {
     const layoutUrl = devAllowed
-      ? `${PUBLIC_LAYOUT_URL}?t=${Date.now()}`
-      : `${PUBLIC_LAYOUT_URL}?v=${LAYOUT_SCHEMA_VERSION}_8`;
+      ? `${targetUrl}?t=${Date.now()}`
+      : `${targetUrl}?v=${LAYOUT_SCHEMA_VERSION}_${ASSET_SYNC_VERSION}`;
     const res = await fetch(layoutUrl, { cache: devAllowed ? "no-store" : "default" });
     if (res.ok) {
       const ctype = (res.headers.get("content-type") || "").toLowerCase();
@@ -514,16 +707,20 @@ export async function loadInitialVillageLayout() {
     // fallback below
   }
 
-  // Nếu đang ở chế độ Dev Architect trên Localhost, kiểm tra bản nháp mới hơn trên trình duyệt chưa lưu cố định
+  // Nếu đang ở chế độ Dev Architect trên Localhost, kiểm tra bản nháp mới hơn của đúng Preset này
+  const draftKey = getDraftStorageKey(presetMeta.id);
   if (devAllowed && typeof window !== "undefined") {
     try {
-      const rawDraft = localStorage.getItem(LOCAL_DRAFT_STORAGE_KEY);
+      const rawDraft = localStorage.getItem(draftKey);
       if (rawDraft) {
         const draft = JSON.parse(rawDraft);
         const publicTime = Number(publicDoc?.updatedAtMs || 0);
         const draftTime = Number(draft?.updatedAtMs || 0);
         if (Array.isArray(draft?.nodes) && draft.nodes.length > 0 && draftTime > publicTime) {
           return {
+            presetId: presetMeta.id,
+            presetMeta,
+            presetsIndex,
             nodes: draft.nodes.map((n, i) => normalizeLayoutNode(n, i)).filter(Boolean),
             source: "draft",
             hasUnsavedDraft: true,
@@ -537,6 +734,9 @@ export async function loadInitialVillageLayout() {
 
   if (publicDoc) {
     return {
+      presetId: presetMeta.id,
+      presetMeta,
+      presetsIndex,
       nodes: publicDoc.nodes.map((n, i) => normalizeLayoutNode(n, i)).filter(Boolean),
       source: "file",
       hasUnsavedDraft: false,
@@ -544,37 +744,101 @@ export async function loadInitialVillageLayout() {
   }
 
   return {
+    presetId: presetMeta.id,
+    presetMeta,
+    presetsIndex,
     nodes: buildDefaultVillageNodes(),
     source: "default",
     hasUnsavedDraft: false,
   };
 }
 
-export function saveVillageDraftLocal(nodes) {
+export function saveVillageDraftLocal(nodes, presetId = DEFAULT_SCENE_PRESET_ID) {
   if (typeof window === "undefined") return;
   try {
     const payload = {
       schemaVersion: LAYOUT_SCHEMA_VERSION,
+      presetId,
       updatedAtMs: Date.now(),
       updatedAtIso: new Date().toISOString(),
       nodes,
     };
-    localStorage.setItem(LOCAL_DRAFT_STORAGE_KEY, JSON.stringify(payload));
+    localStorage.setItem(getDraftStorageKey(presetId), JSON.stringify(payload));
   } catch {
     // ignore quota errors
   }
 }
 
-export function clearVillageDraftLocal() {
+export function clearVillageDraftLocal(presetId = DEFAULT_SCENE_PRESET_ID) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.removeItem(LOCAL_DRAFT_STORAGE_KEY);
+    localStorage.removeItem(getDraftStorageKey(presetId));
   } catch {
     // ignore
   }
 }
 
-export async function saveVillageLayoutToProjectFile(nodes) {
+export async function saveScenePresetToServer({
+  presetId = DEFAULT_SCENE_PRESET_ID,
+  name = null,
+  description = null,
+  moodHint = "auto",
+  setAsDefault = false,
+  nodes = [],
+}) {
+  const cleanedNodes = nodes.map((n, idx) => normalizeLayoutNode(n, idx)).filter(Boolean);
+  const payload = {
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    presetId,
+    name,
+    description,
+    moodHint,
+    setAsDefault: Boolean(setAsDefault),
+    updatedAtMs: Date.now(),
+    updatedAtIso: new Date().toISOString(),
+    nodes: cleanedNodes,
+  };
+
+  const endpoint = `${getDevServerOrigin()}/api/dev/scene-presets`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `Lỗi lưu bối cảnh HTTP ${res.status}`);
+  }
+  clearVillageDraftLocal(data.preset?.id || presetId);
+  return data;
+}
+
+export async function deleteScenePresetOnServer(presetId) {
+  const endpoint = `${getDevServerOrigin()}/api/dev/scene-presets/${encodeURIComponent(presetId)}`;
+  const res = await fetch(endpoint, { method: "DELETE" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `Lỗi xóa bối cảnh HTTP ${res.status}`);
+  }
+  clearVillageDraftLocal(presetId);
+  return data;
+}
+
+export async function triggerSyncTripoConceptsOnServer() {
+  const endpoint = `${getDevServerOrigin()}/api/dev/sync-tripo-concepts`;
+  const res = await fetch(endpoint, { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.ok) {
+    throw new Error(data?.error || `Lỗi quét kho Tripo HTTP ${res.status}`);
+  }
+  const items = await ensureDynamicConceptCatalogLoaded({ bustCache: true });
+  return { ...data, items };
+}
+
+export async function saveVillageLayoutToProjectFile(nodes, presetId = DEFAULT_SCENE_PRESET_ID) {
+  if (presetId && presetId !== DEFAULT_SCENE_PRESET_ID) {
+    return saveScenePresetToServer({ presetId, nodes });
+  }
   const payload = {
     schemaVersion: LAYOUT_SCHEMA_VERSION,
     updatedAtMs: Date.now(),
@@ -593,6 +857,6 @@ export async function saveVillageLayoutToProjectFile(nodes) {
   if (!res.ok || !data?.ok) {
     throw new Error(data?.error || `Lỗi lưu file HTTP ${res.status}`);
   }
-  clearVillageDraftLocal();
+  clearVillageDraftLocal(DEFAULT_SCENE_PRESET_ID);
   return data;
 }

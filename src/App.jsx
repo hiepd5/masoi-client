@@ -73,6 +73,7 @@ export default function App() {
           >
             <WerewolfScene3D
               standaloneArchitect
+              scenePresetId={roomData?.scenePresetId || null}
               onExitStandalone={() => setStandaloneStudioOpen(false)}
             />
           </Suspense>

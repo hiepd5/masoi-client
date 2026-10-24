@@ -447,7 +447,7 @@ export function ArchitectGizmo3D({
             if (snapOn) delta = Math.round(delta / 0.25) * 0.25;
 
             const nextPos = sess.startPos.clone().addScaledVector(sess.axisWorld, delta);
-            nextPos.y = THREE.MathUtils.clamp(nextPos.y, -1.5, 24);
+            nextPos.y = THREE.MathUtils.clamp(nextPos.y, -8.0, 32.0);
             const rXZ = Math.hypot(nextPos.x, nextPos.z);
             if (rXZ > 66) {
               nextPos.x = (nextPos.x / rXZ) * 66;
@@ -482,7 +482,7 @@ export function ArchitectGizmo3D({
               }
               nextPos.z = Math.round(nextPos.z / 0.25) * 0.25;
             }
-            nextPos.y = THREE.MathUtils.clamp(nextPos.y, -1.5, 24);
+            nextPos.y = THREE.MathUtils.clamp(nextPos.y, -8.0, 32.0);
             const rXZ = Math.hypot(nextPos.x, nextPos.z);
             if (rXZ > 66) {
               nextPos.x = (nextPos.x / rXZ) * 66;
@@ -1226,6 +1226,17 @@ export function ArchitectOverlayHUD({
   totalGlbCount = 12,
   showPropTuner = false,
   onTogglePropTuner,
+  presetsIndex = null,
+  activePresetId = "nordic_village_v3",
+  onSelectPresetId,
+  onCreateCleanStarterPreset,
+  onCloneCurrentPreset,
+  onRenameActivePreset,
+  onSetDefaultPreset,
+  onDeleteActivePreset,
+  syncingTripoConcepts = false,
+  onSyncTripoConcepts,
+  conceptCount = 0,
   onSelectNodeId,
   onUpdateNodeFields,
   onDropToGround,
@@ -1246,8 +1257,19 @@ export function ArchitectOverlayHUD({
   const [rightTab, setRightTab] = useState("inspector"); // 'inspector' | 'library' | 'outliner'
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [libraryFilter, setLibraryFilter] = useState("all");
+  const [librarySearch, setLibrarySearch] = useState("");
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const fileInputRef = useRef(null);
+
+  const presetsList = presetsIndex?.presets || [];
+  const defaultPresetId = presetsIndex?.defaultPresetId || "nordic_village_v3";
+  const activePresetMeta =
+    presetsList.find((p) => p.id === activePresetId) || presetsList[0] || null;
+  const isBuiltInPreset = Boolean(
+    activePresetMeta?.builtIn || activePresetId === "nordic_village_v3"
+  );
+  const isDefaultPreset = defaultPresetId === activePresetId;
 
   // Phím tắt chuẩn D5 Render / Tripo Studio (Giữ Shift + Kéo trục Di chuyển = Copy nhân bản mượt dọc trục)
   useEffect(() => {
@@ -1331,11 +1353,42 @@ export function ArchitectOverlayHUD({
   const filteredOutlinerNodes = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return nodes.filter((n) => {
-      if (categoryFilter !== "all" && n.category !== categoryFilter) return false;
+      if (categoryFilter === "concepts") {
+        if (!EXTERIOR_ASSET_CATALOG[n.type]?.isConcept) return false;
+      } else if (categoryFilter !== "all" && n.category !== categoryFilter) {
+        return false;
+      }
       if (q && !n.label.toLowerCase().includes(q) && !n.id.toLowerCase().includes(q)) return false;
       return true;
     });
   }, [nodes, categoryFilter, searchQuery]);
+
+  const filteredLibraryItems = useMemo(() => {
+    const q = librarySearch.trim().toLowerCase();
+    const candidateTypes = [...SPAWNABLE_ASSET_TYPES];
+    if (!nodes.some((n) => n.type === "plaza_cobblestone") && !candidateTypes.includes("plaza_cobblestone")) {
+      candidateTypes.push("plaza_cobblestone");
+    }
+    return candidateTypes
+      .map((type) => EXTERIOR_ASSET_CATALOG[type])
+      .filter((item) => {
+        if (!item) return false;
+        if (libraryFilter === "concepts") {
+          if (!item.isConcept) return false;
+        } else if (libraryFilter !== "all" && item.category !== libraryFilter) {
+          return false;
+        }
+        if (
+          q &&
+          !item.label.toLowerCase().includes(q) &&
+          !(item.sourceName || "").toLowerCase().includes(q) &&
+          !item.type.toLowerCase().includes(q)
+        ) {
+          return false;
+        }
+        return true;
+      });
+  }, [libraryFilter, librarySearch, nodes, conceptCount]);
 
   const handleNumericAxisChange = (field, axisIdx, rawVal, isDegrees = false) => {
     if (!selectedNode) return;
@@ -1619,7 +1672,7 @@ export function ArchitectOverlayHUD({
             ↪
           </button>
 
-          {/* Lưu cố định 1-Click vào dự án */}
+          {/* Lưu cố định 1-Click vào dự án / Bối cảnh đang chọn */}
           <button
             type="button"
             disabled={savingToServer}
@@ -1640,13 +1693,17 @@ export function ArchitectOverlayHUD({
               cursor: savingToServer ? "wait" : "pointer",
               whiteSpace: "nowrap",
             }}
-            title="Ghi thẳng bố cục vào client/public/config/village_layout.json để mọi người chơi đều thấy đúng bản đồ này (Ctrl + S)"
+            title={`Ghi cố định bối cảnh "${activePresetMeta?.name || activePresetId}" (${
+              isBuiltInPreset
+                ? "client/public/config/village_layout.json"
+                : `client/public/config/presets/${activePresetId}.json`
+            }) — Phím tắt Ctrl + S`}
           >
             {savingToServer
               ? "⏳ Đang lưu..."
               : hasUnsavedDraft
-                ? "💾 Lưu Cố Định Vào Game *"
-                : "✅ Đã Lưu Vào Game"}
+                ? "💾 Lưu Bối Cảnh *"
+                : "✅ Đã Lưu Bối Cảnh"}
           </button>
 
           <button
@@ -1668,6 +1725,200 @@ export function ArchitectOverlayHUD({
             title={standaloneArchitect ? "Đóng Studio và quay lại sảnh game" : "Đóng chế độ D5 Studio và quay về Camera người chơi"}
           >
             {standaloneArchitect ? "🚪 Về Sảnh Game" : "✕ Đóng Edit"}
+          </button>
+        </div>
+
+        {/* DÒNG 1.5: QUẢN LÝ ĐA BỐI CẢNH (MULTI-SCENE PRESETS) + TẠO SÂN TRỐNG / NHÂN BẢN / QUÉT TRIPO */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "5px",
+            padding: "4px 10px",
+            background: "rgba(9, 14, 28, 0.90)",
+            border: "1px solid rgba(56, 189, 248, 0.35)",
+            borderRadius: "12px",
+            backdropFilter: "blur(12px)",
+            boxShadow: "0 6px 18px rgba(0, 0, 0, 0.52)",
+            pointerEvents: "auto",
+          }}
+        >
+          <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#7dd3fc", whiteSpace: "nowrap" }}>
+            🗺️ Bối cảnh:
+          </span>
+
+          <select
+            value={activePresetId}
+            onChange={(e) => onSelectPresetId?.(e.target.value)}
+            style={{
+              width: "auto",
+              maxWidth: "255px",
+              margin: 0,
+              padding: "3px 8px",
+              borderRadius: "7px",
+              fontSize: "10.5px",
+              fontWeight: 700,
+              background: "rgba(15, 23, 42, 0.92)",
+              color: "#f8fafc",
+              border: "1px solid rgba(56, 189, 248, 0.45)",
+              cursor: "pointer",
+            }}
+            title="Chuyển đổi giữa Bản Lề V3 và các Bối cảnh tùy chọn bạn đã tạo"
+          >
+            {(presetsList.length > 0
+              ? presetsList
+              : [{ id: "nordic_village_v3", name: "🌲 Làng Bắc Âu V3 (Chuẩn)", nodeCount: nodes.length }]
+            ).map((p) => (
+              <option key={p.id} value={p.id}>
+                {defaultPresetId === p.id ? "⭐ " : ""}
+                {p.name} ({p.nodeCount ?? 0})
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={onCreateCleanStarterPreset}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "3px 8px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 800,
+              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.35))",
+              color: "#a7f3d0",
+              border: "1px solid rgba(52, 211, 153, 0.5)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="Tạo Bối cảnh mới sạch sẽ (chỉ giữ Sân Đá + Bếp Lửa ở tâm [0,0,0]) để bạn tự xếp không gian từ đầu!"
+          >
+            ✨ Tạo Sân Trống
+          </button>
+
+          <button
+            type="button"
+            onClick={onCloneCurrentPreset}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "3px 8px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 700,
+              background: "rgba(59, 130, 246, 0.22)",
+              color: "#bfdbfe",
+              border: "1px solid rgba(96, 165, 250, 0.42)",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="Tạo Bối cảnh mới bằng cách nhân bản toàn bộ vật thể từ bối cảnh đang mở"
+          >
+            📋 Nhân bản cảnh
+          </button>
+
+          {!isBuiltInPreset && (
+            <button
+              type="button"
+              onClick={onRenameActivePreset}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "3px 7px",
+                borderRadius: "7px",
+                fontSize: "10px",
+                fontWeight: 600,
+                background: "rgba(30, 41, 59, 0.72)",
+                color: "#e2e8f0",
+                border: "1px solid rgba(148, 163, 184, 0.28)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              title="Đổi tên hiển thị cho bối cảnh tùy chọn này"
+            >
+              ✏️ Đổi tên
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onSetDefaultPreset}
+            disabled={isDefaultPreset}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "3px 7px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 700,
+              background: isDefaultPreset ? "rgba(245, 158, 11, 0.28)" : "rgba(30, 41, 59, 0.72)",
+              color: isDefaultPreset ? "#fde68a" : "#cbd5e1",
+              border: `1px solid ${isDefaultPreset ? "rgba(245, 158, 11, 0.55)" : "rgba(148, 163, 184, 0.25)"}`,
+              cursor: isDefaultPreset ? "default" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title={
+              isDefaultPreset
+                ? "Bối cảnh này đang là mặc định khi mở phòng mới"
+                : "Đặt bối cảnh này làm bối cảnh mặc định cho sảnh chờ"
+            }
+          >
+            {isDefaultPreset ? "⭐ Mặc định" : "☆ Đặt mặc định"}
+          </button>
+
+          {!isBuiltInPreset && (
+            <button
+              type="button"
+              onClick={onDeleteActivePreset}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "3px 7px",
+                borderRadius: "7px",
+                fontSize: "10px",
+                fontWeight: 700,
+                background: "rgba(239, 68, 68, 0.18)",
+                color: "#fca5a5",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+              title="Xóa bối cảnh tùy chọn này (Bản Lề V3 gốc luôn được bảo vệ an toàn)"
+            >
+              🗑️ Xóa cảnh
+            </button>
+          )}
+
+          <button
+            type="button"
+            disabled={syncingTripoConcepts}
+            onClick={() => {
+              onSyncTripoConcepts?.();
+              setRightTab("library");
+              setLibraryFilter("concepts");
+            }}
+            style={{
+              width: "auto",
+              margin: 0,
+              marginLeft: "2px",
+              padding: "3px 8px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 800,
+              background: "rgba(168, 85, 247, 0.26)",
+              color: "#e9d5ff",
+              border: "1px solid rgba(192, 132, 252, 0.5)",
+              cursor: syncingTripoConcepts ? "wait" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+            title="Quét thư mục MODEL CONCEPT THEM và nạp nóng mọi file .GLB mới vào Tab ➕ Thêm mới ngay lập tức!"
+          >
+            {syncingTripoConcepts
+              ? "⏳ Đang quét..."
+              : `🌟 Kho Concept (${conceptCount}) 🔄`}
           </button>
         </div>
 
@@ -1903,11 +2154,11 @@ export function ArchitectOverlayHUD({
       <div
         style={{
           position: "absolute",
-          top: "94px",
+          top: "128px",
           right: "10px",
           zIndex: 24,
-          width: panelCollapsed ? "auto" : "min(296px, calc(100vw - 20px))",
-          maxHeight: "calc(100% - 108px)",
+          width: panelCollapsed ? "auto" : "min(308px, calc(100vw - 20px))",
+          maxHeight: "calc(100% - 140px)",
           display: "flex",
           flexDirection: "column",
           background: "rgba(9, 14, 28, 0.92)",
@@ -2165,8 +2416,8 @@ export function ArchitectOverlayHUD({
                             <input
                               type="number"
                               step="0.05"
-                              min="0.15"
-                              max="6"
+                              min="0.1"
+                              max="12"
                               value={Number(displayNode.scale[ax.idx] ?? 1).toFixed(2)}
                               onChange={(e) => handleNumericAxisChange("scale", ax.idx, e.target.value)}
                               style={{
@@ -2252,49 +2503,259 @@ export function ArchitectOverlayHUD({
                         </button>
                       </div>
                     </div>
+
+                    {/* CỜ KIẾN TRÚC BỀ MẶT SÂN ĐÁ & VÙNG TÂM GHẾ */}
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "5px",
+                        padding: "7px 8px",
+                        borderRadius: "8px",
+                        background: "rgba(15, 23, 42, 0.72)",
+                        border: "1px solid rgba(148, 163, 184, 0.2)",
+                      }}
+                    >
+                      <div style={{ fontSize: "10px", fontWeight: 700, color: "#94a3b8" }}>
+                        🛡️ Quyền đặt Tâm Sân &amp; Khóa Nền:
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateNodeFields(selectedNode.id, {
+                            allowCenterZone: !displayNode.allowCenterZone,
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          margin: 0,
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          textAlign: "left",
+                          background: displayNode.allowCenterZone
+                            ? "rgba(16, 185, 129, 0.24)"
+                            : "rgba(30, 41, 59, 0.65)",
+                          color: displayNode.allowCenterZone ? "#86efac" : "#cbd5e1",
+                          border: `1px solid ${
+                            displayNode.allowCenterZone
+                              ? "rgba(52, 211, 153, 0.48)"
+                              : "rgba(148, 163, 184, 0.2)"
+                          }`,
+                          cursor: "pointer",
+                        }}
+                        title="Bật cho các nền sân đá / thảm / tiểu cảnh tâm để cho phép đặt bên trong vòng ghế R < 6.2m"
+                      >
+                        {displayNode.allowCenterZone
+                          ? "✅ Cho phép đặt ở vùng tâm ghế (R < 6.2m)"
+                          : "⭕ Cấm lấn vùng ghế (Bấm để mở khóa tâm)"}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={displayNode.type === "plaza_cobblestone"}
+                        onClick={() =>
+                          onUpdateNodeFields(selectedNode.id, {
+                            lockClick: !displayNode.lockClick,
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          margin: 0,
+                          padding: "4px 8px",
+                          borderRadius: "6px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          textAlign: "left",
+                          background:
+                            displayNode.lockClick || displayNode.type === "plaza_cobblestone"
+                              ? "rgba(56, 189, 248, 0.24)"
+                              : "rgba(30, 41, 59, 0.65)",
+                          color:
+                            displayNode.lockClick || displayNode.type === "plaza_cobblestone"
+                              ? "#bae6fd"
+                              : "#cbd5e1",
+                          border: `1px solid ${
+                            displayNode.lockClick || displayNode.type === "plaza_cobblestone"
+                              ? "rgba(56, 189, 248, 0.48)"
+                              : "rgba(148, 163, 184, 0.2)"
+                          }`,
+                          cursor: displayNode.type === "plaza_cobblestone" ? "default" : "pointer",
+                        }}
+                        title="Khi khóa làm Nền, chuột sẽ click xuyên qua mặt sàn lớn này để dễ chọn cây/nhà bên trên. Bạn luôn chọn lại nền này được ở Tab 📑 Lớp!"
+                      >
+                        {displayNode.lockClick || displayNode.type === "plaza_cobblestone"
+                          ? "🔒 Đang khóa làm Nền (Click xuyên — Chọn lại ở Tab 📑 Lớp)"
+                          : "🪨 Khóa làm Nền Sân (Click xuyên qua)"}
+                      </button>
+                    </div>
                   </>
                 )}
               </>
             )}
 
-            {/* ---------------- TAB 2: THƯ VIỆN THẢ THÊM VẬT THỂ RA SÂN ---------------- */}
+            {/* ---------------- TAB 2: THƯ VIỆN THẢ THÊM VẬT THỂ RA SÂN (GỒM CẢ KHO CONCEPT MỚI!) ---------------- */}
             {rightTab === "library" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "2px" }}>
-                  Bấm chọn để thả thêm đạo cụ mới ra trước ống kính (ngoài vòng ghế an toàn):
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "10px", color: "#cbd5e1", fontWeight: 700 }}>
+                    📦 Kho Model ({filteredLibraryItems.length} mẫu)
+                  </span>
+                  <button
+                    type="button"
+                    disabled={syncingTripoConcepts}
+                    onClick={onSyncTripoConcepts}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      background: "rgba(168, 85, 247, 0.25)",
+                      color: "#e9d5ff",
+                      border: "1px solid rgba(192, 132, 252, 0.45)",
+                      cursor: syncingTripoConcepts ? "wait" : "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                    title="Quét thư mục MODEL CONCEPT THEM để nạp thêm file .GLB mới mà không cần khởi động lại Server"
+                  >
+                    {syncingTripoConcepts ? "⏳ Đang quét..." : "🔄 Quét Kho Tripo"}
+                  </button>
                 </div>
-                {SPAWNABLE_ASSET_TYPES.map((type) => {
-                  const item = EXTERIOR_ASSET_CATALOG[type];
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => {
-                        onSpawnAssetType?.(type);
-                        setRightTab("inspector");
-                      }}
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                  {EXTERIOR_CATEGORIES.map((cat) => {
+                    const active = libraryFilter === cat.id;
+                    const isConceptTab = cat.id === "concepts";
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setLibraryFilter(cat.id)}
+                        style={{
+                          width: "auto",
+                          margin: 0,
+                          padding: "2px 6px",
+                          borderRadius: "6px",
+                          fontSize: "10px",
+                          fontWeight: isConceptTab ? 800 : 600,
+                          background: active
+                            ? isConceptTab
+                              ? "rgba(168, 85, 247, 0.35)"
+                              : "rgba(59, 130, 246, 0.28)"
+                            : "rgba(30, 41, 59, 0.55)",
+                          color: active
+                            ? isConceptTab
+                              ? "#f3e8ff"
+                              : "#bfdbfe"
+                            : isConceptTab
+                              ? "#d8b4fe"
+                              : "#94a3b8",
+                          border: `1px solid ${
+                            active ? "rgba(192, 132, 252, 0.5)" : "rgba(148,163,184,0.18)"
+                          }`,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {cat.label}
+                        {isConceptTab ? ` (${conceptCount})` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="🔍 Lọc tên model / concept..."
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  style={{
+                    width: "100%",
+                    margin: 0,
+                    padding: "4px 8px",
+                    borderRadius: "7px",
+                    fontSize: "10.5px",
+                    background: "rgba(15, 23, 42, 0.85)",
+                    border: "1px solid rgba(148, 163, 184, 0.22)",
+                    color: "#f8fafc",
+                  }}
+                />
+
+                <div style={{ maxHeight: "260px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "5px" }}>
+                  {filteredLibraryItems.length === 0 ? (
+                    <div
                       style={{
-                        width: "100%",
-                        margin: 0,
-                        padding: "6px 9px",
+                        padding: "12px 8px",
+                        textAlign: "center",
+                        color: "#94a3b8",
+                        background: "rgba(30, 41, 59, 0.38)",
                         borderRadius: "8px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        textAlign: "left",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "rgba(30, 41, 59, 0.65)",
-                        color: "#f1f5f9",
-                        border: "1px solid rgba(148, 163, 184, 0.2)",
-                        cursor: "pointer",
+                        fontSize: "10.5px",
                       }}
                     >
-                      <span>{item.label}</span>
-                      <span style={{ color: "#fbbf24", fontWeight: 800 }}>＋ Đặt</span>
-                    </button>
-                  );
-                })}
+                      Chưa có model khớp bộ lọc. Bạn có thể chép file <code>.GLB</code> vào thư mục{" "}
+                      <b>MODEL CONCEPT THEM</b> rồi bấm <b>🔄 Quét Kho Tripo</b>!
+                    </div>
+                  ) : (
+                    filteredLibraryItems.map((item) => {
+                      const dims = Array.isArray(item.hitBoxSize)
+                        ? `${item.hitBoxSize[0]}×${item.hitBoxSize[1]}m`
+                        : item.hitHeight
+                          ? `Cao ${item.hitHeight}m`
+                          : "";
+                      return (
+                        <button
+                          key={item.type}
+                          type="button"
+                          onClick={() => {
+                            onSpawnAssetType?.(item.type);
+                            setRightTab("inspector");
+                          }}
+                          style={{
+                            width: "100%",
+                            margin: 0,
+                            padding: "6px 9px",
+                            borderRadius: "8px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            textAlign: "left",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: item.isConcept
+                              ? "rgba(88, 28, 135, 0.28)"
+                              : "rgba(30, 41, 59, 0.65)",
+                            color: "#f1f5f9",
+                            border: `1px solid ${
+                              item.isConcept
+                                ? "rgba(192, 132, 252, 0.42)"
+                                : "rgba(148, 163, 184, 0.2)"
+                            }`,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div style={{ display: "flex", flexDirection: "column", gap: "2px", minWidth: 0 }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.label}
+                            </span>
+                            {(item.isConcept || dims) && (
+                              <span style={{ fontSize: "9.5px", color: item.isConcept ? "#d8b4fe" : "#94a3b8" }}>
+                                {item.isConcept ? `🌟 Concept • ${item.sizeMB} MB` : ""}
+                                {item.isConcept && dims ? " • " : ""}
+                                {dims}
+                                {item.allowCenterZone ? " • Tâm sân" : ""}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ color: "#fbbf24", fontWeight: 800, whiteSpace: "nowrap" }}>＋ Đặt</span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 
@@ -2327,7 +2788,7 @@ export function ArchitectOverlayHUD({
 
                 <input
                   type="text"
-                  placeholder="🔍 Tìm nhà, cây, đèn..."
+                  placeholder="🔍 Tìm nhà, cây, nền đá..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
@@ -2346,6 +2807,8 @@ export function ArchitectOverlayHUD({
                   {filteredOutlinerNodes.map((n) => {
                     const isSel = selectedNode?.id === n.id;
                     const bad = isNodeViolatingSeatZone(n);
+                    const isLockedSurface = Boolean(n.lockClick || n.type === "plaza_cobblestone");
+                    const isConceptNode = Boolean(EXTERIOR_ASSET_CATALOG[n.type]?.isConcept);
                     return (
                       <div
                         key={n.id}
@@ -2356,6 +2819,7 @@ export function ArchitectOverlayHUD({
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
+                          gap: "4px",
                           cursor: "pointer",
                           background: isSel
                             ? "rgba(245, 158, 11, 0.24)"
@@ -2368,11 +2832,21 @@ export function ArchitectOverlayHUD({
                           fontSize: "10.5px",
                         }}
                       >
-                        <span style={{ color: isSel ? "#fde68a" : "#e2e8f0", fontWeight: isSel ? 700 : 500 }}>
+                        <span
+                          style={{
+                            color: isSel ? "#fde68a" : "#e2e8f0",
+                            fontWeight: isSel ? 700 : 500,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {bad ? "⚠️ " : ""}
+                          {isLockedSurface ? "🔒 " : ""}
+                          {isConceptNode ? "🌟 " : ""}
                           {n.label}
                         </span>
-                        <span style={{ color: "#64748b", fontSize: "9.5px" }}>
+                        <span style={{ color: "#64748b", fontSize: "9.5px", whiteSpace: "nowrap" }}>
                           {n.position[0].toFixed(1)}, {n.position[2].toFixed(1)}
                         </span>
                       </div>

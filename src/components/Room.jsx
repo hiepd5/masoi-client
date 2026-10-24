@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
 import { ROLES_CONFIG, generateDefaultRoles } from "../config/roles.config.js";
+import {
+  DEFAULT_SCENE_PRESET_ID,
+  loadScenePresetsIndex,
+} from "../3d/editor/defaultVillageLayout.js";
 import "./Room.css";
 
 const ORDERED_ROLES = ["wolf", "guard", "witch", "seer", "tough_guy", "cursed", "tanner", "villager"];
@@ -27,7 +31,37 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const lastSpokenRef = useRef(-1);
   const currentAudioRef = useRef(null);
 
+  // Danh sách Bối cảnh 3D (Scene Presets) cho Chủ Phòng chọn ở sảnh chờ
+  const [scenePresets, setScenePresets] = useState([]);
+  const syncedDefaultPresetRef = useRef(false);
+
   const myId = sessionStorage.getItem("ws_playerId") || socketRef.current?.id;
+
+  useEffect(() => {
+    if (room?.phase && room.phase !== "lobby") return;
+    let alive = true;
+    loadScenePresetsIndex({ bustCache: true }).then((idx) => {
+      if (!alive || !Array.isArray(idx?.presets)) return;
+      setScenePresets(idx.presets);
+
+      const meNow = room?.players?.find((p) => p.id === myId);
+      if (
+        !syncedDefaultPresetRef.current &&
+        meNow?.isHost &&
+        room?.phase === "lobby" &&
+        (room?.players?.length || 0) <= 1 &&
+        (!room?.scenePresetId || room.scenePresetId === DEFAULT_SCENE_PRESET_ID) &&
+        idx.defaultPresetId &&
+        idx.defaultPresetId !== DEFAULT_SCENE_PRESET_ID
+      ) {
+        syncedDefaultPresetRef.current = true;
+        socketRef.current?.emit("room:setScenePreset", { presetId: idx.defaultPresetId });
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [room?.phase, myId]);
 
   // Sync lobby messages from roomData
   useEffect(() => {
@@ -253,6 +287,16 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     });
   }
 
+  function handleSelectScenePreset(presetId) {
+    if (!me?.isHost || !presetId) return;
+    setError("");
+    socketRef.current.emit("room:setScenePreset", { presetId }, (res) => {
+      if (res && !res.ok) {
+        setError(res.error || "Không thể đổi bối cảnh không gian.");
+      }
+    });
+  }
+
   function handleSendChat(e) {
     e?.preventDefault();
     const text = chatInput.trim();
@@ -300,6 +344,20 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const rolesConfig = room.rolesConfig || generateDefaultRoles(room.players.length);
   const totalRoles = Object.values(rolesConfig).reduce((s, v) => s + (Number(v) || 0), 0);
 
+  const activeScenePresetId = room.scenePresetId || DEFAULT_SCENE_PRESET_ID;
+  const effectivePresets =
+    scenePresets.length > 0
+      ? scenePresets
+      : [
+          {
+            id: DEFAULT_SCENE_PRESET_ID,
+            name: "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
+            nodeCount: 141,
+          },
+        ];
+  const activeSceneMeta =
+    effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
+
   // Điều kiện bắt đầu game
   const totalPlayers = room.players.length;
   const isMinPlayers = totalPlayers >= 6;
@@ -329,6 +387,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           </div>
           <div className={`lobby-stat-chip ${isRolesMatched ? "roles-matched" : "roles-mismatch"}`}>
             🎭 {totalRoles}/{totalPlayers} vai trò
+          </div>
+          <div className="lobby-stat-chip" title="Bối cảnh không gian 3D của phòng chơi">
+            🗺️ {activeSceneMeta?.name || "Làng Bắc Âu V3"}
           </div>
         </div>
 
@@ -505,6 +566,94 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           </div>
 
           <div className="lobby-panel-body">
+            {/* Bộ chọn Bối Cảnh Không Gian 3D (Scene Preset Selector) */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "6px",
+                padding: "9px 11px",
+                marginBottom: "8px",
+                borderRadius: "10px",
+                background: "rgba(15, 23, 42, 0.65)",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#7dd3fc" }}>
+                  🗺️ Bối cảnh không gian 3D:
+                </span>
+                {onOpenArchitectStudio && me?.isHost && (
+                  <button
+                    type="button"
+                    onClick={onOpenArchitectStudio}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "3px 9px",
+                      borderRadius: "6px",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      background: "rgba(245, 158, 11, 0.2)",
+                      color: "#fde68a",
+                      border: "1px solid rgba(245, 158, 11, 0.45)",
+                      cursor: "pointer",
+                    }}
+                    title="Mở D5 Studio để tạo thêm Bối cảnh tùy chọn từ kho MODEL CONCEPT THEM"
+                  >
+                    🏗️ Dựng bối cảnh mới
+                  </button>
+                )}
+              </div>
+
+              {me?.isHost ? (
+                <select
+                  value={activeScenePresetId}
+                  onChange={(e) => handleSelectScenePreset(e.target.value)}
+                  style={{
+                    width: "100%",
+                    margin: 0,
+                    padding: "7px 10px",
+                    borderRadius: "8px",
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                    background: "rgba(9, 14, 28, 0.92)",
+                    color: "#f8fafc",
+                    border: "1px solid rgba(56, 189, 248, 0.45)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {effectivePresets.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.nodeCount ?? 0} vật thể)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div
+                  style={{
+                    fontSize: "0.84rem",
+                    fontWeight: 600,
+                    color: "#e2e8f0",
+                    padding: "4px 2px",
+                  }}
+                >
+                  {activeSceneMeta?.name || "🌲 Làng Bắc Âu V3"}{" "}
+                  <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>
+                    (Chủ phòng chọn)
+                  </span>
+                </div>
+              )}
+            </div>
+
             {me?.isHost ? (
               <div className="roles-preset-bar">
                 <span>Thiết lập nhanh:</span>

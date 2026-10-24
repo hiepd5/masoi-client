@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "syncedAt": "2026-10-23T19:47:06.380Z",
+  "sourceFolder": "MODEL CONCEPT THEM",
+  "totalConcepts": 2,
+  "items": [
+    {
+      "propKey": "concept_4k_round_stone_mosaic",
+      "fileName": "concept_4k_round_stone_mosaic.glb",
+      "url": "/models/props/concepts/concept_4k_round_stone_mosaic.glb",
+      "sourceName": "4k round stone mosaic 3d model.glb",
+      "label": "🏛️ 4k Round Stone Mosaic",
+      "shortLabel": "4k Round Stone Mosaic",
+      "category": "architecture",
+      "shaderProfile": "cobble_plaza",
+      "targetHeight": 4.56,
+      "rawSize": [
+        0.9995,
+        0.1899,
+        0.9995
+      ],
+      "hitBoxSize": [
+        24,
+        4.56,
+        24
+      ],
+      "centerHeight": 2.28,
+      "aoRadius": 0,
+      "aoOpacity": 0,
+      "allowCenterZone": true,
+      "isSurfaceCandidate": true,
+      "defaultSpawnRadius": 0,
+      "defaultSpawnY": -1.55,
+      "sizeBytes": 4624208,
+      "sizeMB": 4.41,
+      "mtimeMs": 1792764077149
+    },
+    {
+      "propKey": "concept_medieval_stone_wall",
+      "fileName": "concept_medieval_stone_wall.glb",
+      "url": "/models/props/concepts/concept_medieval_stone_wall.glb",
+      "sourceName": "medieval+stone+wall+3d+model.glb",
+      "label": "🧱 Medieval Stone Wall",
+      "shortLabel": "Medieval Stone Wall",
+      "category": "architecture",
+      "shaderProfile": "standard",
+      "targetHeight": 2.45,
+      "rawSize": [
+        0.9995,
+        0.6489,
+        0.1479
+      ],
+      "hitBoxSize": [
+        3.77,
+        2.45,
+        0.65
+      ],
+      "centerHeight": 1.23,
+      "aoRadius": 1.81,
+      "aoOpacity": 0.6,
+      "allowCenterZone": false,
+      "isSurfaceCandidate": false,
+      "defaultSpawnRadius": 10.8,
+      "defaultSpawnY": 0,
+      "sizeBytes": 910948,
+      "sizeMB": 0.87,
+      "mtimeMs": 1792780483803
+    }
+  ]
+}

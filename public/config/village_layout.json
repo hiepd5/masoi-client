@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAtMs": 1792778118650,
-  "updatedAtIso": "2026-10-23T17:55:18.650Z",
+  "updatedAtMs": 1792784544236,
+  "updatedAtIso": "2026-10-23T19:42:24.236Z",
   "note": "Bố cục không gian Làng Ma Sói 3D được dàn dựng bằng D5 Architect Studio (Không tác động ghế ngồi người chơi)",
-  "totalNodes": 141,
+  "totalNodes": 153,
   "nodes": [
     {
       "id": "plaza-main",
@@ -27,6 +27,7 @@
       ],
       "seed": 0,
       "allowCenterZone": true,
+      "lockClick": false,
       "deletable": false
     },
     {
@@ -51,6 +52,7 @@
       ],
       "seed": 0,
       "allowCenterZone": true,
+      "lockClick": false,
       "deletable": false
     },
     {
@@ -59,22 +61,23 @@
       "label": "Đài Treo Cổ Hướng Bắc",
       "category": "architecture",
       "position": [
+        -0.546,
         0,
-        0,
-        -9.6
+        10.393
       ],
       "rotation": [
-        0,
-        0,
-        0
+        -3.134,
+        -0.068,
+        3.142
       ],
       "scale": [
-        0.8,
-        0.9,
-        0.8
+        0.894,
+        0.95,
+        0.894
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -83,14 +86,14 @@
       "label": "Tháp Chuông Đá Gothic",
       "category": "architecture",
       "position": [
+        -0.182,
         0,
-        0,
-        -15.799
+        -18.081
       ],
       "rotation": [
-        0,
-        0,
-        0
+        3.142,
+        -1.568,
+        3.142
       ],
       "scale": [
         1,
@@ -99,6 +102,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -123,6 +127,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -147,6 +152,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -171,30 +177,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
-      "deletable": true
-    },
-    {
-      "id": "cottage-4",
-      "type": "house_cottage_b",
-      "label": "Nhà Mái Rơm B #4",
-      "category": "architecture",
-      "position": [
-        -0.137,
-        0,
-        15.152
-      ],
-      "rotation": [
-        0,
-        1.57,
-        0
-      ],
-      "scale": [
-        1.1,
-        1.1,
-        1.1
-      ],
-      "seed": 0,
-      "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -219,6 +202,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -243,6 +227,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -251,14 +236,14 @@
       "label": "Nhà Gỗ Đá A #7",
       "category": "architecture",
       "position": [
-        9.42,
+        9.359,
         0,
-        -12.057
+        -10.222
       ],
       "rotation": [
-        0,
-        -0.603,
-        0
+        -3.141,
+        -1.02,
+        -3.141
       ],
       "scale": [
         1,
@@ -267,6 +252,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -291,6 +277,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -315,6 +302,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -339,6 +327,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -363,6 +352,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -387,6 +377,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -411,6 +402,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -435,6 +427,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -459,6 +452,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -483,6 +477,7 @@
       ],
       "seed": 0.91,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -507,6 +502,7 @@
       ],
       "seed": 1.82,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -531,6 +527,7 @@
       ],
       "seed": 2.73,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -555,6 +552,7 @@
       ],
       "seed": 3.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -579,6 +577,7 @@
       ],
       "seed": 4.55,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -603,6 +602,7 @@
       ],
       "seed": 5.46,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -627,6 +627,7 @@
       ],
       "seed": 6.37,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -651,6 +652,7 @@
       ],
       "seed": 7.28,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -675,6 +677,7 @@
       ],
       "seed": 8.19,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -699,6 +702,7 @@
       ],
       "seed": 10.01,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -723,6 +727,7 @@
       ],
       "seed": 10.92,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -747,6 +752,7 @@
       ],
       "seed": 11.83,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -771,6 +777,7 @@
       ],
       "seed": 12.74,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -795,6 +802,7 @@
       ],
       "seed": 13.65,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -819,6 +827,7 @@
       ],
       "seed": 14.56,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -843,6 +852,7 @@
       ],
       "seed": 15.47,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -867,6 +877,7 @@
       ],
       "seed": 16.38,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -891,6 +902,7 @@
       ],
       "seed": 17.29,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -915,6 +927,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -939,6 +952,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -963,6 +977,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -987,6 +1002,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1011,6 +1027,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1035,6 +1052,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1059,6 +1077,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1083,6 +1102,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1107,6 +1127,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1131,6 +1152,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1155,6 +1177,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1179,6 +1202,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1203,6 +1227,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1227,6 +1252,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1251,6 +1277,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1275,6 +1302,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1299,6 +1327,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1323,6 +1352,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1347,6 +1377,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1371,6 +1402,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1395,6 +1427,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1419,6 +1452,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1443,6 +1477,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1467,6 +1502,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1491,6 +1527,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1515,6 +1552,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1539,6 +1577,7 @@
       ],
       "seed": 0.4,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1563,6 +1602,7 @@
       ],
       "seed": 1.71,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1587,6 +1627,7 @@
       ],
       "seed": 3.02,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1611,6 +1652,7 @@
       ],
       "seed": 4.33,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1635,6 +1677,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1659,6 +1702,7 @@
       ],
       "seed": 6.95,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1683,6 +1727,7 @@
       ],
       "seed": 8.26,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1707,6 +1752,7 @@
       ],
       "seed": 9.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1731,6 +1777,7 @@
       ],
       "seed": 10.88,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1755,6 +1802,7 @@
       ],
       "seed": 12.19,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1779,6 +1827,7 @@
       ],
       "seed": 13.5,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1803,6 +1852,7 @@
       ],
       "seed": 14.81,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1827,6 +1877,7 @@
       ],
       "seed": 16.12,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1851,6 +1902,7 @@
       ],
       "seed": 17.43,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1875,6 +1927,7 @@
       ],
       "seed": 18.74,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1899,6 +1952,7 @@
       ],
       "seed": 20.05,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1923,6 +1977,7 @@
       ],
       "seed": 21.36,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1947,6 +2002,7 @@
       ],
       "seed": 22.67,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1971,6 +2027,7 @@
       ],
       "seed": 23.98,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -1995,6 +2052,7 @@
       ],
       "seed": 25.29,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2019,6 +2077,7 @@
       ],
       "seed": 26.6,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2027,9 +2086,9 @@
       "label": "Thông Cổ Thụ #22",
       "category": "forest",
       "position": [
-        5.874,
+        0.411,
         -1.5,
-        -18.247
+        -24.924
       ],
       "rotation": [
         0,
@@ -2043,6 +2102,7 @@
       ],
       "seed": 27.91,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2067,6 +2127,7 @@
       ],
       "seed": 30,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2091,6 +2152,7 @@
       ],
       "seed": 31.73,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2115,6 +2177,7 @@
       ],
       "seed": 33.46,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2139,6 +2202,7 @@
       ],
       "seed": 35.19,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2163,6 +2227,7 @@
       ],
       "seed": 36.92,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2187,6 +2252,7 @@
       ],
       "seed": 38.65,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2211,6 +2277,7 @@
       ],
       "seed": 40.38,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2235,6 +2302,7 @@
       ],
       "seed": 42.11,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2259,6 +2327,7 @@
       ],
       "seed": 43.84,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2283,6 +2352,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2307,6 +2377,7 @@
       ],
       "seed": 47.3,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2331,6 +2402,7 @@
       ],
       "seed": 49.03,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2355,6 +2427,7 @@
       ],
       "seed": 50.76,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2379,6 +2452,7 @@
       ],
       "seed": 52.49,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2403,6 +2477,7 @@
       ],
       "seed": 54.22,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2427,6 +2502,7 @@
       ],
       "seed": 55.95,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2451,6 +2527,7 @@
       ],
       "seed": 57.68,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2475,6 +2552,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2499,6 +2577,7 @@
       ],
       "seed": 10.95,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2523,6 +2602,7 @@
       ],
       "seed": 15.33,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2547,6 +2627,7 @@
       ],
       "seed": 21.17,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2571,6 +2652,7 @@
       ],
       "seed": 25.55,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2595,6 +2677,7 @@
       ],
       "seed": 28.47,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2619,6 +2702,7 @@
       ],
       "seed": 38.69,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2643,6 +2727,7 @@
       ],
       "seed": 45.99,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2667,6 +2752,7 @@
       ],
       "seed": 51.1,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2691,6 +2777,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2715,6 +2802,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2739,6 +2827,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2763,6 +2852,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2787,6 +2877,7 @@
       ],
       "seed": 59.41,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2811,6 +2902,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2835,6 +2927,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2859,6 +2952,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2883,6 +2977,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2907,6 +3002,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2931,6 +3027,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2955,6 +3052,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2979,6 +3077,7 @@
       ],
       "seed": 45.57,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -2987,9 +3086,9 @@
       "label": "Thông Tán Rộng #12",
       "category": "forest",
       "position": [
-        14.287,
+        16.117,
         0,
-        1.196
+        0.879
       ],
       "rotation": [
         0,
@@ -3003,6 +3102,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3027,6 +3127,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3051,6 +3152,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3075,6 +3177,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3099,6 +3202,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3107,9 +3211,9 @@
       "label": "Thông Tán Rộng #17",
       "category": "forest",
       "position": [
-        9.278,
+        9.869,
         -0.379,
-        12.743
+        13.526
       ],
       "rotation": [
         0,
@@ -3123,6 +3227,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3147,6 +3252,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3171,6 +3277,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3195,6 +3302,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3219,6 +3327,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3243,6 +3352,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3267,6 +3377,7 @@
       ],
       "seed": 5.64,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3291,6 +3402,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3315,6 +3427,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3339,6 +3452,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3363,6 +3477,7 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     },
     {
@@ -3371,9 +3486,9 @@
       "label": "Nhà Gỗ Đá A #12",
       "category": "architecture",
       "position": [
-        16.64,
+        14.107,
         0,
-        6.517
+        5.859
       ],
       "rotation": [
         -3.141,
@@ -3387,6 +3502,332 @@
       ],
       "seed": 0,
       "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-d8xhl",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #1",
+      "category": "architecture",
+      "position": [
+        -16.983,
+        0,
+        -5.392
+      ],
+      "rotation": [
+        0,
+        1.258,
+        0
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dawia",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #2",
+      "category": "architecture",
+      "position": [
+        -17.234,
+        0,
+        5.024
+      ],
+      "rotation": [
+        -3.142,
+        1.299,
+        -3.142
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-db4tp",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #3",
+      "category": "architecture",
+      "position": [
+        -11.259,
+        0,
+        13.272
+      ],
+      "rotation": [
+        3.141,
+        0.617,
+        3.141
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dbc2x",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #4",
+      "category": "architecture",
+      "position": [
+        -1.619,
+        0,
+        17.326
+      ],
+      "rotation": [
+        3.141,
+        0.141,
+        3.141
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dbjol",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #5",
+      "category": "architecture",
+      "position": [
+        8.55,
+        0,
+        15.521
+      ],
+      "rotation": [
+        3.141,
+        -0.457,
+        3.141
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dbr0v",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #6",
+      "category": "architecture",
+      "position": [
+        16.337,
+        0,
+        8.852
+      ],
+      "rotation": [
+        3.141,
+        -0.939,
+        3.141
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dbvcj",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #7",
+      "category": "architecture",
+      "position": [
+        19.109,
+        0,
+        -0.836
+      ],
+      "rotation": [
+        0,
+        -1.414,
+        0.002
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dcjso",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #8",
+      "category": "architecture",
+      "position": [
+        13.841,
+        0,
+        -13.156
+      ],
+      "rotation": [
+        0,
+        -0.937,
+        0.002
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dcnln",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #9",
+      "category": "architecture",
+      "position": [
+        5.102,
+        0,
+        -19.675
+      ],
+      "rotation": [
+        0,
+        -0.334,
+        0.002
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dcs4n",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #10",
+      "category": "architecture",
+      "position": [
+        -4.698,
+        0,
+        -19.57
+      ],
+      "rotation": [
+        0,
+        0.395,
+        0.002
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dcw5n",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #11",
+      "category": "architecture",
+      "position": [
+        -12.386,
+        0,
+        -14.197
+      ],
+      "rotation": [
+        0,
+        0.902,
+        0.002
+      ],
+      "scale": [
+        3,
+        3,
+        3
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_4k_round_stone_mosaic-dffj5",
+      "type": "concept_4k_round_stone_mosaic",
+      "label": "4k Round Stone Mosaic #1",
+      "category": "architecture",
+      "position": [
+        0,
+        -4.512,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_pine_wide-dmj68",
+      "type": "tree_pine_wide",
+      "label": "Thông Tán Rộng #24",
+      "category": "forest",
+      "position": [
+        -0.132,
+        0.094,
+        15.277
+      ],
+      "rotation": [
+        0,
+        0.589,
+        0
+      ],
+      "scale": [
+        0.998,
+        1.04,
+        0.998
+      ],
+      "seed": 5.64,
+      "allowCenterZone": false,
+      "lockClick": false,
       "deletable": true
     }
   ]

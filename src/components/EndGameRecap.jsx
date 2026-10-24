@@ -1,5 +1,9 @@
-﻿import { useState, useEffect, useRef, useMemo } from "react";
-import { ROLE_LABELS, ROLE_EMOJIS, ROLE_COLORS } from "../config/roles.config.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS } from "../config/roles.config.js";
+import {
+  getCinemaAudioEngine,
+  startCinemaStoryRecording,
+} from "../utils/cinemaVideoRecorder.js";
 import "./EndGameRecap.css";
 
 const WINNER_CONFIG = {
@@ -18,671 +22,2277 @@ const WINNER_CONFIG = {
   tanner: {
     emoji: "💀",
     title: "Chán Đời Chiến Thắng!",
-    subtitle: "Kẻ chán sống đã thực hiện được tâm nguyện được treo cổ!",
+    subtitle: "Kẻ chán sống đã thực hiện được tâm nguyện trên giá treo cổ!",
     themeClass: "tanner",
   },
 };
 
+function formatTimecode(ms = 0) {
+  const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+  const m = String(Math.floor(totalSec / 60)).padStart(2, "0");
+  const s = String(totalSec % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+/**
+ * TIỀN XỬ LÝ BIÊN TẬP ĐIỆN ẢNH TINH GỌN (SMART STORY MONTAGE):
+ * - Giữ trọn vẹn mọi vai cá nhân ban đêm, lời mật đàm Sói, lời tranh biện Dân và các cú "quay xe" đổi mục tiêu đắt giá.
+ * - Loại bỏ nhiễu (spam click nhá liên tục không đổi ý, thả emoji lặt vặt).
+ * - Tự động gom chuỗi lá phiếu lặp lại cuối ngày (`day_final_vote`) vào Đại Cảnh Phán Quyết Pháp Trường Trên Cao để phim sâu lắng, kịch tính mà không lê thê!
+ */
+function curateCinematicFrames(rawTimeline = []) {
+  if (!Array.isArray(rawTimeline) || rawTimeline.length === 0) return [];
+
+  const cleaned = [];
+  for (let i = 0; i < rawTimeline.length; i++) {
+    const f = rawTimeline[i];
+    if (!f || !f.kind) continue;
+
+    // Bỏ qua emoji lẻ khi ván đấu đã có đầy đủ tình tiết cốt truyện
+    if (f.kind === "reaction" && rawTimeline.length > 5) continue;
+
+    // Nén chuỗi day_final_vote lẻ tẻ nếu ngay sau đó đã có day_verdict chốt sổ của cùng ngày
+    if (f.kind === "day_final_vote") {
+      const hasVerdictSameDay = rawTimeline
+        .slice(i + 1)
+        .some((nxt) => nxt.day === f.day && nxt.kind === "day_verdict" && nxt.targetId === f.targetId);
+      if (hasVerdictSameDay) continue;
+
+      // Nếu không có day_verdict (hiếm), chỉ giữ frame day_final_vote cuối cùng chứa đầy đủ votesSnapshot
+      const nextSameVote = rawTimeline[i + 1];
+      if (
+        nextSameVote &&
+        nextSameVote.day === f.day &&
+        nextSameVote.kind === "day_final_vote" &&
+        nextSameVote.targetId === f.targetId
+      ) {
+        continue;
+      }
+    }
+
+    // Với day_nominate: giữ mọi cú đổi ý (switched) + giữ cú đề cử đầu tiên mở màn + cú đề cử chốt cuối ngày (gom toàn cảnh)
+    if (f.kind === "day_nominate") {
+      const switched = Boolean(f.prevTargetId && f.prevTargetId !== f.targetId);
+      const prevSameDayNom = cleaned.some((c) => c.day === f.day && c.kind === "day_nominate");
+      const moreNomSameDayAhead = rawTimeline
+        .slice(i + 1)
+        .some((nxt) => nxt.day === f.day && nxt.kind === "day_nominate");
+
+      if (!switched && prevSameDayNom && moreNomSameDayAhead) {
+        continue;
+      }
+      cleaned.push({
+        ...f,
+        _isCollectiveNominationSummary: prevSameDayNom && !moreNomSameDayAhead && !switched,
+      });
+      continue;
+    }
+
+    // Với wolf_aim: nếu cùng 1 con Sói bấm nhá nhiều lần trong cùng đêm, giữ lần nhắm đầu tiên + cú đổi ý cuối cùng trước khi cắn
+    if (f.kind === "wolf_aim") {
+      const nextFrame = rawTimeline[i + 1];
+      if (
+        nextFrame &&
+        nextFrame.day === f.day &&
+        nextFrame.kind === "wolf_aim" &&
+        nextFrame.actorId === f.actorId
+      ) {
+        continue;
+      }
+    }
+
+    cleaned.push(f);
+  }
+
+  return cleaned;
+}
+
+function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap) {
+  const mvpAward = awards.find((a) => a.id === "mvp") || awards[0] || null;
+  const mvpId = mvpAward?.playerId || players[0]?.id || null;
+  const finalOverrides = {};
+
+  players.forEach((p) => {
+    simAliveMap[p.id] = Boolean(p.alive);
+    simRoleMap[p.id] = p.role || "villager";
+    const won =
+      (winner === "wolf" && p.role === "wolf") ||
+      (winner === "tanner" && p.role === "tanner") ||
+      (winner === "village" && p.role !== "wolf" && p.role !== "tanner");
+    if (won && p.alive) {
+      finalOverrides[p.id] = { pose: "cheer" };
+    }
+  });
+
+  if (mvpId) {
+    finalOverrides[mvpId] = {
+      pose: "cheer",
+      isSpotlight: true,
+      badgeText: "👑 MVP VÁN ĐẤU!",
+      badgeColor: "#d97706",
+    };
+  }
+
+  return {
+    id: "beat_mvp_finale",
+    kind: "mvp",
+    day: 999,
+    elapsedMs: null,
+    act1SetupMs: 850,
+    tag: "👑 CHƯƠNG CUỐI • VINH DANH",
+    title: mvpAward
+      ? `Người Hùng Của Đêm Dài: ${mvpAward.name} (${ROLE_LABELS[mvpAward.role] || mvpAward.role})`
+      : WINNER_CONFIG[winner]?.title || "Khép Lại Câu Chuyện",
+    narration: mvpAward
+      ? `Khép lại câu chuyện sinh tử, ngôi vương MVP thuộc về ${mvpAward.name}. ${mvpAward.description}`
+      : WINNER_CONFIG[winner]?.subtitle || "Trận đấu đã khép lại!",
+    durationMs: 6500,
+    mood: "victory",
+    cameraShot: {
+      shotKey: "shot_mvp_finale",
+      shotType: mvpId ? "actor_portrait" : "orbit_reveal",
+      targetId: mvpId,
+      isMvp: true,
+    },
+    vfxCue: mvpId
+      ? { cueId: "cue_mvp_finale", vfxType: "mvp_crown", targetId: mvpId }
+      : null,
+    soundKey: "mvp_crown",
+    lookAtSeatId: mvpId,
+    actorStates: cloneActorSnapshot(finalOverrides),
+  };
+}
+
+/**
+ * BỘ ĐẠO DIỄN PHIM KỂ CHUYỆN CHUYÊN NGHIỆP (PERSONAL POV vs COLLECTIVE HIGH WIDE):
+ * - Đến vai cá nhân ai -> Quay về đúng Góc Nhìn Cá Nhân Qua Vai (`actor_pov`) hoặc Chân Dung (`actor_portrait`) của người đó!
+ * - CHỈ khi Đàn Sói đồng loạt cắn (`high_pack_hunt`) hoặc Cả Làng Vote / Xử Án (`high_tribunal`) mới kéo máy mở rộng lên cao!
+ * - Mỗi cảnh tuân thủ Nhịp 3 Hồi chậm rãi (~5.2s – 6.6s): Lướt máy vào vai (0.95s) -> Ra đòn VFX -> Giữ nhịp lắng đọng hết câu kể MC!
+ */
+function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = [], awards = [], winner = "village") {
+  const playerById = {};
+  players.forEach((p) => {
+    playerById[p.id] = p;
+  });
+
+  const simAliveMap = {};
+  const simRoleMap = {};
+  const enduringSet = new Set();
+
+  players.forEach((p) => {
+    simAliveMap[p.id] = true;
+    simRoleMap[p.id] = p.initialRole || p.role || "villager";
+  });
+
+  const cloneActorSnapshot = (overrides = {}) => {
+    const out = {};
+    players.forEach((p) => {
+      out[p.id] = {
+        isRevealed: true,
+        simAlive: simAliveMap[p.id],
+        overrideRole: simRoleMap[p.id],
+        enduringFire: enduringSet.has(p.id),
+        pose: null,
+        badgeText: null,
+        badgeColor: null,
+        replayChatBubble: null,
+        isWolfWhisper: false,
+        isSpotlight: false,
+        ...(overrides[p.id] || {}),
+      };
+    });
+    return out;
+  };
+
+  const beats = [];
+
+  // 1. MỞ MÀN CÂU CHUYỆN: ĐẠI CẢNH LỘT MẶT NẠ BÊN LỬA TRẠI
+  beats.push({
+    id: "beat_reveal_all",
+    kind: "reveal",
+    day: 0,
+    elapsedMs: 0,
+    act1SetupMs: 400,
+    tag: "🎭 MỞ MÀN CÂU CHUYỆN",
+    title: "Khi Áo Choàng Ẩn Danh Rũ Xuống Bên Lửa Trại",
+    narration:
+      "Bóng đêm dần tan. Hãy cùng quay ngược thời gian, theo chân từng người trong ngôi làng để chứng kiến toàn bộ sự thật phía sau tấm màn bí mật.",
+    durationMs: 4800,
+    mood: "dawn",
+    cameraShot: { shotKey: "shot_reveal", shotType: "orbit_reveal" },
+    vfxCue: { cueId: "cue_reveal", vfxType: "reveal_wave" },
+    soundKey: "reveal_wave",
+    lookAtSeatId: null,
+    actorStates: cloneActorSnapshot(),
+  });
+
+  const curatedFrames = curateCinematicFrames(replayTimeline);
+
+  if (curatedFrames.length > 0) {
+    curatedFrames.forEach((frame, idx) => {
+      const dayNum = frame.day || 1;
+      const seqKey = `${frame.seq || idx}_${frame.kind}`;
+      const actor = frame.actorId ? playerById[frame.actorId] : null;
+      const target = frame.targetId ? playerById[frame.targetId] : null;
+      const prevTarget = frame.prevTargetId ? playerById[frame.prevTargetId] : null;
+
+      if (Array.isArray(frame.aliveIds) && frame.aliveIds.length > 0) {
+        const aliveSet = new Set(frame.aliveIds);
+        players.forEach((p) => {
+          simAliveMap[p.id] = aliveSet.has(p.id);
+        });
+      }
+      if (Array.isArray(frame.wolfIdsNow) && frame.wolfIdsNow.length > 0) {
+        const wolfSet = new Set(frame.wolfIdsNow);
+        players.forEach((p) => {
+          simRoleMap[p.id] = wolfSet.has(p.id) ? "wolf" : p.initialRole || p.role || "villager";
+        });
+      }
+
+      const actorName = actor?.name || "Người chơi";
+      const targetName = target?.name || "Mục tiêu";
+      const prevName = prevTarget?.name || "Mục tiêu cũ";
+      const overrides = {};
+
+      switch (frame.kind) {
+        case "guard_pick": {
+          // VAI CÁ NHÂN BẢO VỆ -> GÓC QUA VAI BẢO VỆ (`actor_pov`)
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "🛡️ HỘ VỆ TRONG ĐÊM",
+              badgeColor: "#2563eb",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              badgeText: "🛡️ ĐƯỢC CHE CHỞ",
+              badgeColor: "#0284c7",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN BẢO VỆ`,
+            title: `Bảo Vệ ${actorName} Lặng Lẽ Canh Gác Cho ${targetName}`,
+            narration:
+              frame.caption ||
+              `Giữa màn sương lạnh Đêm ${dayNum}, Bảo Vệ ${actorName} âm thầm hướng ánh mắt về phía ${targetName} và dựng lên vòm khiên hộ mệnh.`,
+            durationMs: 5400,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "guard_aim",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "guard_aim",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "wolf_aim": {
+          // CÁ NHÂN SÓI RÌNH MỒI / ĐỔI Ý -> GÓC QUA VAI CON SÓI ĐÓ (`actor_pov`)
+          const switched = Boolean(frame.prevTargetId && frame.prevTargetId !== frame.targetId);
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: switched ? "🐺 ĐỔI CON MỒI!" : "🐺 RÌNH MỒI",
+              badgeColor: "#dc2626",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              badgeText: "🎯 TRONG TẦM NGẮM",
+              badgeColor: "#ef4444",
+            };
+          }
+          if (switched && frame.prevTargetId) {
+            overrides[frame.prevTargetId] = {
+              badgeText: "💨 THOÁT TẦM VUỐT",
+              badgeColor: "#64748b",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN SÓI`,
+            title: switched
+              ? `Sói ${actorName} Bất Ngờ Đổi Ý Từ ${prevName} Sang ${targetName}`
+              : `Ánh Mắt Săn Mồi Của Sói ${actorName} Khóa Chặt ${targetName}`,
+            narration: switched
+              ? `Từ góc nhìn của Sói ${actorName}, sau một thoáng chần chừ trước ${prevName}, móng vuốt bất ngờ xoay sang nhắm thẳng vào ${targetName}.`
+              : `Từ trong bóng tối, Sói ${actorName} nhe nanh hướng thẳng móng vuốt sắc lạnh về phía chiếc ghế của ${targetName}.`,
+            durationMs: switched ? 5800 : 5200,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "wolf_aim",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              prevTargetId: frame.prevTargetId,
+            },
+            soundKey: "wolf_aim",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "wolf_chat": {
+          // SÓI THÌ THẦM MẬT ĐÀM -> GÓC CÁ NHÂN CON SÓI ĐANG NÓI (`actor_pov` / `actor_portrait`)
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "defend",
+              replayChatBubble: frame.chatText,
+              isWolfWhisper: true,
+              badgeText: "🐺 MẬT ĐÀM TRONG ĐÊM",
+              badgeColor: "#991b1b",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 700,
+            tag: `🌙 ĐÊM ${dayNum} • MẬT ĐÀM SÓI`,
+            title: `Lời Thì Thầm Bí Mật Của Sói ${actorName}`,
+            narration: `Sói ${actorName} khẽ nghiêng người bàn mưu cùng đồng loại: "${frame.chatText || ""}"`,
+            dialogueSpeaker: `🐺 ${actorName}`,
+            dialogueText: frame.chatText ? `🐺 ${actorName}: "${frame.chatText}"` : null,
+            isWolfWhisper: true,
+            durationMs: 5500,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: frame.targetId ? "actor_pov" : "actor_portrait",
+              sourceId: frame.actorId,
+              targetId: frame.targetId || frame.actorId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "wolf_whisper",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "wolf_whisper",
+            lookAtSeatId: frame.targetId || frame.actorId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "wolf_strike": {
+          // ĐÀN SÓI ĐỒNG LOẠT CẮN -> MỞ RỘNG KHUNG HÌNH LÊN CAO TOÀN CẢNH (`high_pack_hunt`)!
+          const packIds = frame.coActorIds?.length ? frame.coActorIds : frame.actorId ? [frame.actorId] : [];
+          packIds.forEach((wid) => {
+            overrides[wid] = {
+              pose: "castLunge",
+              badgeText: "🐺 ĐÀN SÓI VỒ MỒI!",
+              badgeColor: "#dc2626",
+            };
+          });
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "hitRecoil",
+              badgeText: "🩸 TRÚNG NANH ĐÀN SÓI!",
+              badgeColor: "#ef4444",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 1050,
+            tag: `🌙 ĐÊM ${dayNum} • ĐẠI CẢNH ĐÀN SÓI CẮN`,
+            title: `Cả Đàn Sói Đồng Loạt Lao Ra Tấn Công ${targetName}!`,
+            narration: `Thời khắc định đoạt của Đêm ${dayNum}! Khung hình mở rộng toàn cảnh khi cả đàn Sói đồng loạt phóng móng vuốt đỏ rực chụp xuống ${targetName}!`,
+            durationMs: 6100,
+            mood: "night",
+            legacyEvent: { type: "wolf", day: dayNum, sourceId: frame.actorId, targetId: frame.targetId },
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "high_pack_hunt",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              shakeStrength: 0.92,
+              shakeDelayMs: 1550,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "wolf_attack",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "wolf_attack",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "shield_block": {
+          // VAI CÁ NHÂN BẢO VỆ ĐỠ ĐÒN -> GÓC QUA VAI BẢO VỆ (`actor_pov`)
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "🛡️ KHIÊN THẦN CỨU MẠNG!",
+              badgeColor: "#2563eb",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "cheer",
+              badgeText: "✨ THOÁT CHẾT NGOẠN MỤC!",
+              badgeColor: "#0ea5e9",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • KHIÊN HỘ VỆ CẢN ĐÒN`,
+            title: `Khiên Của Bảo Vệ ${actorName} Chặn Đứng Nanh Sói, Cứu Sống ${targetName}!`,
+            narration: `Đúng khoảnh khắc sinh tử, vòm khiên ánh sáng của ${actorName} bùng nổ hất văng đòn cắn của đàn Sói, giữ toàn mạng cho ${targetName}!`,
+            durationMs: 5900,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              shakeStrength: 0.78,
+              shakeDelayMs: 1250,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "guard_block",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "guard_block",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "witch_save": {
+          // VAI CÁ NHÂN PHÙ THỦY -> GÓC QUA VAI PHÙ THỦY (`actor_pov`)
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "💚 TUNG TIÊN DƯỢC!",
+              badgeColor: "#16a34a",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "cheer",
+              badgeText: "💚 CẢI TỬ HOÀN SINH!",
+              badgeColor: "#22c55e",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN PHÙ THỦY`,
+            title: `Phù Thủy ${actorName} Mở Bình Tiên Dược Cứu Sống ${targetName}`,
+            narration: `Chứng kiến ${targetName} hấp hối trong đêm, Phù Thủy ${actorName} quyết định tung bình linh dược xanh ngọc quý giá nhất để kéo họ về từ cõi chết.`,
+            durationMs: 5600,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "witch_save",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "witch_save",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "witch_poison": {
+          // VAI CÁ NHÂN PHÙ THỦY -> GÓC QUA VAI PHÙ THỦY (`actor_pov`)
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "☠️ NÉM ĐỘC DƯỢC!",
+              badgeColor: "#7e22ce",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "hitRecoil",
+              badgeText: "☠️ TRÚNG KỊCH ĐỘC!",
+              badgeColor: "#9333ea",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN PHÙ THỦY`,
+            title: `Phù Thủy ${actorName} Lạnh Lùng Quăng Bình Độc Về Phía ${targetName}`,
+            narration: `Từ phía sau vành mũ bí ẩn, Phù Thủy ${actorName} rút chốt bình độc dược tím sẫm và ném thẳng sang chiếc ghế của ${targetName}!`,
+            durationMs: 5700,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              shakeStrength: 0.65,
+              shakeDelayMs: 1450,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "witch_poison",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "witch_poison",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "seer_scan": {
+          // VAI CÁ NHÂN TIÊN TRI -> GÓC QUA VAI TIÊN TRI (`actor_pov`)
+          const isWolfResult = frame.decision === "wolf";
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "🔮 KHAI MỞ MẮT THẦN",
+              badgeColor: "#6366f1",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              badgeText: isWolfResult ? "🔴 CHÂN TƯỚNG MA SÓI!" : "🔵 TÂM HỒN DÂN LÀNH",
+              badgeColor: isWolfResult ? "#dc2626" : "#0284c7",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN TIÊN TRI`,
+            title: isWolfResult
+              ? `Tiên Tri ${actorName} Phát Hiện Chân Tướng Ma Sói Của ${targetName}!`
+              : `Tiên Tri ${actorName} Soi Thấu Sự Trong Sạch Của ${targetName}`,
+            narration: isWolfResult
+              ? `Qua vai Tiên Tri ${actorName}, luồng sáng pha lê vừa chạm vào ${targetName} lập tức hóa đỏ rực — một con Ma Sói đã lộ diện trong đêm!`
+              : `Tiên Tri ${actorName} lặng lẽ chiếu luồng sáng cổ ngữ sang ghế của ${targetName} và nhận được ánh lam hiền hòa của phe Dân Làng.`,
+            durationMs: 5700,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "seer_scan",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              isWolfResult,
+            },
+            soundKey: "seer_scan",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "cursed_turn": {
+          // VAI CÁ NHÂN KẺ BỊ NGUYỀN -> GÓC CHÂN DUNG CÁ NHÂN (`actor_portrait`)
+          if (frame.targetId) {
+            simRoleMap[frame.targetId] = "wolf";
+            overrides[frame.targetId] = {
+              overrideRole: "wolf",
+              pose: "cheer",
+              badgeText: "🌑➡️🐺 HÓA THÀNH SÓI!",
+              badgeColor: "#9333ea",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 900,
+            tag: `🌙 ĐÊM ${dayNum} • HUYẾT NGUYỀN THỨC TỈNH`,
+            title: `Bước Ngoặt Định Mệnh — ${targetName} Hóa Thành Ma Sói Mới!`,
+            narration: `Sau cú cắn trong đêm, chiếc mặt nạ phong ấn của ${targetName} vỡ vụn! Dòng máu Sói âm ỉ bấy lâu chính thức trỗi dậy.`,
+            durationMs: 6000,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.targetId,
+              shakeStrength: 0.72,
+              shakeDelayMs: 950,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "cursed_transform",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "cursed_transform",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "tough_endure": {
+          if (frame.targetId) {
+            enduringSet.add(frame.targetId);
+            overrides[frame.targetId] = {
+              enduringFire: true,
+              pose: "cheer",
+              badgeText: "💪 MÌNH ĐỒNG DA SẮT!",
+              badgeColor: "#ea580c",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 850,
+            tag: `🌙 ĐÊM ${dayNum} • Ý CHÍ TRÁNG SĨ`,
+            title: `Người Cứng Cỏi ${targetName} Nghiến Răng Chịu Đựng Vết Cắn Sói`,
+            narration: `Dù trúng đòn chí mạng trong đêm, ý chí sắt đá vẫn giúp ${targetName} gồng mình trụ vững để đón ánh bình minh thêm một ngày nữa!`,
+            durationMs: 5500,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "tough_guy_endure",
+              targetId: frame.targetId,
+            },
+            soundKey: "tough_guy_endure",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "night_death": {
+          if (frame.targetId) {
+            simAliveMap[frame.targetId] = false;
+            enduringSet.delete(frame.targetId);
+            overrides[frame.targetId] = {
+              simAlive: false,
+              badgeText: "👻 LÌA ĐỜI ĐÊM QUA",
+              badgeColor: "#475569",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "dawn",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 650,
+            tag: `☀️ BÌNH MINH NGÀY ${dayNum}`,
+            title: `Bình Minh Tang Tóc — ${targetName} Không Qua Khỏi Đêm Dài`,
+            narration: `Khi sương mù tan dần bên bếp lửa, cả làng bàng hoàng nhận ra ${targetName} đã mãi mãi ra đi trong đêm qua.`,
+            durationMs: 5300,
+            mood: "dawn",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: frame.targetId ? "actor_portrait" : "orbit_reveal",
+              targetId: frame.targetId,
+            },
+            vfxCue: null,
+            soundKey: "story",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "peaceful_dawn": {
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "dawn",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 500,
+            tag: `☀️ BÌNH MINH NGÀY ${dayNum}`,
+            title: `Bình Minh Thanh Bình Sau Đêm Nghẹt Thở`,
+            narration: `Ánh nắng sớm mai chiếu rọi khắp ngôi làng — kỳ diệu thay, đêm thứ ${dayNum} khép lại mà không một ai phải ngã xuống!`,
+            durationMs: 4700,
+            mood: "dawn",
+            cameraShot: { shotKey: `shot_${seqKey}`, shotType: "orbit_reveal" },
+            vfxCue: null,
+            soundKey: "story",
+            lookAtSeatId: null,
+            actorStates: cloneActorSnapshot(),
+          });
+          break;
+        }
+
+        case "village_chat": {
+          const isWolfSpeaker = simRoleMap[frame.actorId] === "wolf";
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "defend",
+              replayChatBubble: frame.chatText,
+              isWolfWhisper: false,
+              badgeText: isWolfSpeaker ? "🐺 ĐÓNG KỊCH NGỤY BIỆN" : "💬 LÊN TIẾNG SUY LUẬN",
+              badgeColor: isWolfSpeaker ? "#dc2626" : "#d97706",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "day",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 600,
+            tag: `☀️ NGÀY ${dayNum} • GÓC CÁ NHÂN TRANH BIỆN`,
+            title: isWolfSpeaker
+              ? `Sói ${actorName} Bình Thản Ngụy Biện Trước Cả Làng`
+              : `${actorName} Cất Tiếng Suy Luận Giữa Vòng Tròn`,
+            narration: `${actorName} lên tiếng trước dân làng: "${frame.chatText || ""}"`,
+            dialogueText: frame.chatText ? `💬 ${actorName}: "${frame.chatText}"` : null,
+            isWolfWhisper: false,
+            durationMs: 5200,
+            mood: "dawn",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.actorId,
+            },
+            vfxCue: null,
+            soundKey: "story",
+            lookAtSeatId: frame.actorId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "day_nominate": {
+          const switched = Boolean(frame.prevTargetId && frame.prevTargetId !== frame.targetId);
+          const isCollectiveVote = Boolean(frame._isCollectiveNominationSummary);
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: switched ? "👉 ĐỔI MŨI DÙI!" : "👉 CHỈ MẶT ĐỀ CỬ",
+              badgeColor: "#d97706",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "hitRecoil",
+              badgeText: "⚖️ TÂM ĐIỂM NGHI NGỜ",
+              badgeColor: "#ea580c",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "tribunal",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 900,
+            tag: isCollectiveVote
+              ? `🗳️ NGÀY ${dayNum} • TOÀN CẢNH BỎ PHIẾU ĐỀ CỬ`
+              : `🗳️ NGÀY ${dayNum} • CHỈ TAY CÁ NHÂN`,
+            title: switched
+              ? `${actorName} Bất Ngờ Đổi Hướng, Chỉ Thẳng Tay Vào ${targetName}!`
+              : isCollectiveVote
+                ? `Mũi Dùi Của Cả Ngôi Làng Dồn Về Phía ${targetName}`
+                : `${actorName} Khơi Mào Nghi Vấn, Chỉ Mặt ${targetName}`,
+            narration: isCollectiveVote
+              ? `Khung hình mở rộng toàn vòng tròn khi hàng loạt cánh tay trong làng đồng loạt chỉ thẳng về chiếc ghế của ${targetName}!`
+              : switched
+                ? `Giữa lúc căng thẳng, ${actorName} rút lại lời buộc tội ${prevName} và quay ngoắt sang chỉ mặt ${targetName}!`
+                : `Từ góc ghế của mình, ${actorName} đứng thẳng dậy giơ tay đề cử ${targetName} ra trước pháp trường.`,
+            durationMs: 5500,
+            mood: "dusk_trial",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: isCollectiveVote ? "high_tribunal" : "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "day_point",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              prevTargetId: frame.prevTargetId,
+              votesDetail: frame.votesSnapshot || {},
+            },
+            soundKey: isCollectiveVote ? "day_tribunal" : "day_point",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "day_defense": {
+          // CÁ NHÂN BỊ CÁO BIỆN HỘ -> GÓC CHÂN DUNG CÁ NHÂN (`actor_portrait`)
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "defend",
+              badgeText: "⚖️ BIỆN HỘ TRÊN GHẾ NÓNG",
+              badgeColor: "#ea580c",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "tribunal",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 700,
+            tag: `⚖️ NGÀY ${dayNum} • GÓC NHÌN BỊ CÁO`,
+            title: `${targetName} Đơn Độc Tự Biện Hộ Trên Ghế Nóng`,
+            narration: `Trước hàng chục ánh mắt phán xét của cả làng, ${targetName} nỗ lực cất lời bảo vệ mạng sống của chính mình trên ghế nóng.`,
+            durationMs: 5400,
+            mood: "dusk_trial",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.targetId,
+            },
+            vfxCue: null,
+            soundKey: "day_point",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "day_final_vote":
+        case "day_verdict": {
+          // CẢ LÀNG VOTE & PHÁN QUYẾT -> MỞ RỘNG KHUNG HÌNH LÊN CAO TOÀN CẢNH (`high_tribunal`)!
+          const isHanged = frame.decision === "hang";
+          const roleLabel = ROLE_LABELS[frame.targetRole || simRoleMap[frame.targetId]] || "Người chơi";
+          const votesObj = frame.votesSnapshot || {};
+          Object.entries(votesObj).forEach(([vid, dec]) => {
+            if (vid !== frame.targetId) {
+              overrides[vid] = {
+                pose: "castLunge",
+                badgeText: dec === "hang" ? "👎 TREO!" : "🕊️ THA!",
+                badgeColor: dec === "hang" ? "#dc2626" : "#16a34a",
+              };
+            }
+          });
+          if (frame.targetId) {
+            if (frame.kind === "day_verdict" && isHanged) {
+              simAliveMap[frame.targetId] = false;
+            }
+            overrides[frame.targetId] = {
+              simAlive: frame.kind === "day_verdict" ? !isHanged : simAliveMap[frame.targetId],
+              pose: isHanged ? null : "cheer",
+              badgeText: isHanged ? "🪢 BỊ TREO CỔ!" : "🕊️ ĐƯỢC THA BỔNG!",
+              badgeColor: isHanged ? "#dc2626" : "#16a34a",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "tribunal",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 1000,
+            tag: `⚖️ NGÀY ${dayNum} • ĐẠI CẢNH BỎ PHIẾU PHÁP TRƯỜNG`,
+            title: isHanged
+              ? `Phán Quyết Định Mệnh — Cả Làng Bỏ Phiếu Treo Cổ ${targetName} (${roleLabel})`
+              : `Cả Ngôi Làng Mở Đường Sống, Tha Bổng Cho ${targetName}`,
+            narration:
+              frame.caption ||
+              (isHanged
+                ? `Từ góc máy trên cao bao quát pháp trường, những lá phiếu đỏ định mệnh khép lại số phận của ${targetName} — chân tướng lộ diện là ${roleLabel}!`
+                : `Những tia sáng xanh khoan hồng chiếm ưu thế trên khắp quảng trường, ${targetName} thoát khỏi giá treo cổ trong gang tấc!`),
+            durationMs: 6400,
+            mood: "dusk_trial",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "high_tribunal",
+              targetId: frame.targetId,
+              shakeStrength: isHanged ? 0.85 : 0.18,
+              shakeDelayMs: 1400,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "day_tribunal",
+              targetId: frame.targetId,
+              votesDetail: votesObj,
+              isHanged,
+            },
+            soundKey: "day_tribunal",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        default:
+          break;
+      }
+    });
+
+    beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap));
+    return beats;
+  }
+
+  // ==================== DỰ PHÒNG DỰNG TỪ `history[]` (Áp dụng chuẩn Góc Cá Nhân vs Tập Thể Trên Cao 100%) ====================
+  const findRolePlayerId = (roleKey) =>
+    players.find((p) => (p.initialRole || p.role) === roleKey || p.role === roleKey)?.id || null;
+
+  const daySet = new Set();
+  history.forEach((ev) => {
+    if (ev?.day) daySet.add(ev.day);
+  });
+  const sortedDays = Array.from(daySet).sort((a, b) => a - b);
+
+  sortedDays.forEach((dayNum) => {
+    const dayEvents = history.filter((e) => (e.day || 1) === dayNum);
+    const guardEv = dayEvents.find((e) => e.type === "guard" && e.targetId);
+    const wolfEv = dayEvents.find((e) => e.type === "wolf" && e.targetId);
+    const witchSaveEv = dayEvents.find((e) => e.type === "witch_save" && e.targetId);
+    const witchPoisonEv = dayEvents.find((e) => e.type === "witch_poison" && e.targetId);
+    const seerEv = dayEvents.find((e) => e.type === "seer" && e.targetId);
+    const toughEv = dayEvents.find((e) => e.type === "tough_guy_endured");
+    const cursedEv = dayEvents.find((e) => e.type === "cursed_transformed");
+    const deathEvs = dayEvents.filter((e) => e.type === "death");
+    const hangEv = dayEvents.find((e) => e.type === "hang");
+    const spareEv = dayEvents.find((e) => e.type === "spare");
+
+    if (guardEv?.targetId) {
+      const guardId = guardEv.sourceId || findRolePlayerId("guard");
+      const guardName = playerById[guardId]?.name || "Bảo Vệ";
+      const targetName = playerById[guardEv.targetId]?.name || "Người dân";
+      const blockedWolf = wolfEv?.targetId === guardEv.targetId;
+      const overrides = {};
+      if (guardId) overrides[guardId] = { pose: "castLunge", badgeText: "🛡️ HỘ VỆ!", badgeColor: "#2563eb" };
+      overrides[guardEv.targetId] = {
+        pose: blockedWolf ? "cheer" : null,
+        badgeText: blockedWolf ? "✨ CHẶN ĐỨNG SÓI!" : "🛡️ ĐƯỢC GÁC",
+        badgeColor: "#3b82f6",
+      };
+      beats.push({
+        id: `day_${dayNum}_guard`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 950,
+        tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN BẢO VỆ`,
+        title: blockedWolf
+          ? `Khiên Của Bảo Vệ ${guardName} Đánh Bật Nanh Sói Cứu ${targetName}!`
+          : `Bảo Vệ ${guardName} Lặng Lẽ Canh Gác Cho ${targetName}`,
+        narration: blockedWolf
+          ? `Qua vai Bảo Vệ ${guardName}, vòm khiên ánh sáng kịp thời dựng lên đánh bật đòn vồ của đàn Sói, cứu mạng ${targetName}!`
+          : `Trong đêm tĩnh mịch, Bảo Vệ ${guardName} âm thầm đặt khiên che chở cho ghế của ${targetName}.`,
+        durationMs: 5600,
+        mood: "night",
+        cameraShot: {
+          shotKey: `shot_${dayNum}_guard`,
+          shotType: "actor_pov",
+          sourceId: guardId,
+          targetId: guardEv.targetId,
+          shakeStrength: blockedWolf ? 0.75 : 0,
+          shakeDelayMs: 1250,
+        },
+        vfxCue: {
+          cueId: `cue_${dayNum}_guard`,
+          vfxType: blockedWolf ? "guard_block" : "guard_aim",
+          sourceId: guardId,
+          targetId: guardEv.targetId,
+        },
+        soundKey: blockedWolf ? "guard_block" : "guard_aim",
+        lookAtSeatId: guardEv.targetId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    if (wolfEv?.targetId) {
+      const sourceWolfId = wolfEv.sourceId || findRolePlayerId("wolf");
+      const victimName = playerById[wolfEv.targetId]?.name || "Nạn nhân";
+      const overrides = {};
+      if (sourceWolfId) overrides[sourceWolfId] = { pose: "castLunge", badgeText: "🐺 ĐÀN SÓI VỒ MỒI!", badgeColor: "#dc2626" };
+      overrides[wolfEv.targetId] = { pose: "hitRecoil", badgeText: "🩸 TRÚNG ĐÒN SÓI!", badgeColor: "#ef4444" };
+      beats.push({
+        id: `day_${dayNum}_wolf`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 1050,
+        tag: `🌙 ĐÊM ${dayNum} • ĐẠI CẢNH ĐÀN SÓI CẮN`,
+        title: `Đàn Sói Đồng Loạt Lao Ra Cắn ${victimName}!`,
+        narration: `Khung hình vút lên cao bao quát toàn bộ ngôi làng khi cả đàn Sói đồng loạt phóng nanh vuốt đỏ rực vào ${victimName}!`,
+        durationMs: 6000,
+        mood: "night",
+        cameraShot: {
+          shotKey: `shot_${dayNum}_wolf`,
+          shotType: "high_pack_hunt",
+          sourceId: sourceWolfId,
+          targetId: wolfEv.targetId,
+          shakeStrength: 0.9,
+          shakeDelayMs: 1500,
+        },
+        vfxCue: {
+          cueId: `cue_${dayNum}_wolf`,
+          vfxType: "wolf_attack",
+          sourceId: sourceWolfId,
+          targetId: wolfEv.targetId,
+        },
+        soundKey: "wolf_attack",
+        lookAtSeatId: wolfEv.targetId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    if (witchSaveEv?.targetId) {
+      const witchId = witchSaveEv.sourceId || findRolePlayerId("witch");
+      const targetName = playerById[witchSaveEv.targetId]?.name || "Nạn nhân";
+      const overrides = {};
+      if (witchId) overrides[witchId] = { pose: "castLunge", badgeText: "💚 TUNG THUỐC CỨU!", badgeColor: "#16a34a" };
+      overrides[witchSaveEv.targetId] = { pose: "cheer", badgeText: "💚 HỒI SINH!", badgeColor: "#22c55e" };
+      beats.push({
+        id: `day_${dayNum}_wsave`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 950,
+        tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN PHÙ THỦY`,
+        title: `Phù Thủy Tung Bình Tiên Dược Cứu Sống ${targetName}`,
+        narration: `Từ góc nhìn cá nhân của Phù Thủy, bình tiên dược xanh ngọc bay vút qua đống lửa kéo ${targetName} trở về từ cõi chết!`,
+        durationMs: 5600,
+        mood: "night",
+        cameraShot: { shotKey: `shot_${dayNum}_wsave`, shotType: "actor_pov", sourceId: witchId, targetId: witchSaveEv.targetId },
+        vfxCue: { cueId: `cue_${dayNum}_wsave`, vfxType: "witch_save", sourceId: witchId, targetId: witchSaveEv.targetId },
+        soundKey: "witch_save",
+        lookAtSeatId: witchSaveEv.targetId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    if (witchPoisonEv?.targetId) {
+      const witchId = witchPoisonEv.sourceId || findRolePlayerId("witch");
+      const targetName = playerById[witchPoisonEv.targetId]?.name || "Mục tiêu";
+      const overrides = {};
+      if (witchId) overrides[witchId] = { pose: "castLunge", badgeText: "☠️ QUĂNG BÌNH ĐỘC!", badgeColor: "#7e22ce" };
+      overrides[witchPoisonEv.targetId] = { pose: "hitRecoil", badgeText: "☠️ TRÚNG ĐỘC!", badgeColor: "#9333ea" };
+      beats.push({
+        id: `day_${dayNum}_wpoison`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 950,
+        tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN PHÙ THỦY`,
+        title: `Phù Thủy Lạnh Lùng Ném Độc Dược Vào ${targetName}`,
+        narration: `Từ góc ghế của Phù Thủy, bình độc tím sẫm lao thẳng sang và vỡ tan dưới chân ghế của ${targetName}!`,
+        durationMs: 5600,
+        mood: "night",
+        cameraShot: {
+          shotKey: `shot_${dayNum}_wpoison`,
+          shotType: "actor_pov",
+          sourceId: witchId,
+          targetId: witchPoisonEv.targetId,
+          shakeStrength: 0.65,
+          shakeDelayMs: 1400,
+        },
+        vfxCue: { cueId: `cue_${dayNum}_wpoison`, vfxType: "witch_poison", sourceId: witchId, targetId: witchPoisonEv.targetId },
+        soundKey: "witch_poison",
+        lookAtSeatId: witchPoisonEv.targetId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    if (cursedEv?.targetId) {
+      simRoleMap[cursedEv.targetId] = "wolf";
+      const cursedName = playerById[cursedEv.targetId]?.name || "Kẻ Bị Nguyền";
+      beats.push({
+        id: `day_${dayNum}_cursed`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 900,
+        tag: `🌙 ĐÊM ${dayNum} • HUYẾT NGUYỀN`,
+        title: `Lời Nguyền Thức Tỉnh — ${cursedName} Hóa Ma Sói!`,
+        narration: `Dòng máu Sói chính thức thức tỉnh biến ${cursedName} thành một Ma Sói mới trong đêm!`,
+        durationMs: 5800,
+        mood: "night",
+        cameraShot: { shotKey: `shot_${dayNum}_cursed`, shotType: "actor_portrait", targetId: cursedEv.targetId, shakeStrength: 0.7, shakeDelayMs: 950 },
+        vfxCue: { cueId: `cue_${dayNum}_cursed`, vfxType: "cursed_transform", targetId: cursedEv.targetId },
+        soundKey: "cursed_transform",
+        lookAtSeatId: cursedEv.targetId,
+        actorStates: cloneActorSnapshot({
+          [cursedEv.targetId]: { pose: "cheer", badgeText: "🌑➡️🐺 HÓA SÓI!", badgeColor: "#9333ea" },
+        }),
+      });
+    }
+
+    if (toughEv?.targetId) {
+      enduringSet.add(toughEv.targetId);
+      const toughName = playerById[toughEv.targetId]?.name || "Người Cứng Cỏi";
+      beats.push({
+        id: `day_${dayNum}_tough`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 850,
+        tag: `🌙 ĐÊM ${dayNum} • Ý CHÍ THÉP`,
+        title: `Người Cứng Cỏi ${toughName} Trụ Vững Sau Đòn Sói`,
+        narration: `${toughName} nghiến răng chịu đựng vết thương chí mạng của Sói để sống sót qua bình minh!`,
+        durationMs: 5400,
+        mood: "night",
+        cameraShot: { shotKey: `shot_${dayNum}_tough`, shotType: "actor_portrait", targetId: toughEv.targetId },
+        vfxCue: { cueId: `cue_${dayNum}_tough`, vfxType: "tough_guy_endure", targetId: toughEv.targetId },
+        soundKey: "tough_guy_endure",
+        lookAtSeatId: toughEv.targetId,
+        actorStates: cloneActorSnapshot({
+          [toughEv.targetId]: { pose: "cheer", badgeText: "💪 GỒNG CHỊU ĐÒN!", badgeColor: "#ea580c" },
+        }),
+      });
+    }
+
+    if (seerEv?.targetId) {
+      const seerId = seerEv.sourceId || findRolePlayerId("seer");
+      const targetName = playerById[seerEv.targetId]?.name || "Mục tiêu";
+      const isWolfResult = Boolean(seerEv.isWolf || seerEv.text?.includes("là Sói"));
+      const overrides = {};
+      if (seerId) overrides[seerId] = { pose: "castLunge", badgeText: "🔮 SOI THẤU!", badgeColor: "#6366f1" };
+      overrides[seerEv.targetId] = {
+        badgeText: isWolfResult ? "🔴 PHÁT HIỆN SÓI!" : "🔵 DÂN LÀNH",
+        badgeColor: isWolfResult ? "#dc2626" : "#0284c7",
+      };
+      beats.push({
+        id: `day_${dayNum}_seer`,
+        kind: "night",
+        day: dayNum,
+        act1SetupMs: 950,
+        tag: `🌙 ĐÊM ${dayNum} • GÓC NHÌN TIÊN TRI`,
+        title: isWolfResult ? `Mắt Thần Của Tiên Tri Bắt Trọn Sói ${targetName}!` : `Tiên Tri Soi Thấu ${targetName}`,
+        narration: isWolfResult
+          ? `Qua vai Tiên Tri, luồng sáng pha lê lóe đỏ rực khi chạm vào ${targetName} — chân tướng Sói đã bị vạch trần!`
+          : `Qua vai Tiên Tri, tia pha lê xác nhận ${targetName} mang tâm hồn lương thiện của Dân Làng.`,
+        durationMs: 5600,
+        mood: "night",
+        cameraShot: { shotKey: `shot_${dayNum}_seer`, shotType: "actor_pov", sourceId: seerId, targetId: seerEv.targetId },
+        vfxCue: { cueId: `cue_${dayNum}_seer`, vfxType: "seer_scan", sourceId: seerId, targetId: seerEv.targetId, isWolfResult },
+        soundKey: "seer_scan",
+        lookAtSeatId: seerEv.targetId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    if (deathEvs.length > 0) {
+      const overrides = {};
+      deathEvs.forEach((dEv) => {
+        if (dEv.targetId) {
+          simAliveMap[dEv.targetId] = false;
+          enduringSet.delete(dEv.targetId);
+          overrides[dEv.targetId] = { badgeText: "👻 TỬ NẠN ĐÊM QUA", badgeColor: "#475569" };
+        }
+      });
+      const focusDeadId = deathEvs[0]?.targetId || null;
+      const deadNames = deathEvs.map((e) => playerById[e.targetId]?.name || e.targetName || "Người dân").join(", ");
+      beats.push({
+        id: `day_${dayNum}_dawn_death`,
+        kind: "dawn",
+        day: dayNum,
+        act1SetupMs: 650,
+        tag: `☀️ SÁNG NGÀY ${dayNum}`,
+        title: `Bình Minh Tang Tóc — ${deadNames} Ngã Xuống`,
+        narration: `Mặt trời ló dạng sau đêm dài, cả làng bàng hoàng phát hiện ${deadNames} đã không qua khỏi!`,
+        durationMs: 5200,
+        mood: "dawn",
+        cameraShot: { shotKey: `shot_${dayNum}_dawn`, shotType: focusDeadId ? "actor_portrait" : "orbit_reveal", targetId: focusDeadId },
+        vfxCue: null,
+        soundKey: "story",
+        lookAtSeatId: focusDeadId,
+        actorStates: cloneActorSnapshot(overrides),
+      });
+    }
+
+    const verdictEv = hangEv || spareEv;
+    if (verdictEv?.targetId) {
+      const isHanged = Boolean(hangEv);
+      const defName = playerById[verdictEv.targetId]?.name || verdictEv.targetName || "Bị cáo";
+      const defRole = verdictEv.targetRole || simRoleMap[verdictEv.targetId] || "villager";
+      const roleLabel = ROLE_LABELS[defRole] || defRole;
+      if (isHanged) simAliveMap[verdictEv.targetId] = false;
+      beats.push({
+        id: `day_${dayNum}_tribunal`,
+        kind: "tribunal",
+        day: dayNum,
+        act1SetupMs: 1000,
+        tag: `⚖️ NGÀY ${dayNum} • ĐẠI CẢNH BỎ PHIẾU PHÁP TRƯỜNG`,
+        title: isHanged ? `Pháp Trường Treo Cổ ${defName} (${roleLabel})` : `${defName} Được Dân Làng Tha Bổng`,
+        narration: verdictEv.text || "",
+        durationMs: 6200,
+        mood: "dusk_trial",
+        cameraShot: {
+          shotKey: `shot_${dayNum}_tribunal`,
+          shotType: "high_tribunal",
+          targetId: verdictEv.targetId,
+          shakeStrength: isHanged ? 0.85 : 0.15,
+          shakeDelayMs: 1400,
+        },
+        vfxCue: {
+          cueId: `cue_${dayNum}_tribunal`,
+          vfxType: "day_tribunal",
+          targetId: verdictEv.targetId,
+          votesDetail: verdictEv.votesDetail || {},
+          isHanged,
+        },
+        soundKey: "day_tribunal",
+        lookAtSeatId: verdictEv.targetId,
+        actorStates: cloneActorSnapshot({
+          [verdictEv.targetId]: {
+            pose: isHanged ? null : "cheer",
+            badgeText: isHanged ? "🪢 TREO CỔ!" : "🕊️ THA BỔNG!",
+            badgeColor: isHanged ? "#dc2626" : "#16a34a",
+          },
+        }),
+      });
+    }
+  });
+
+  beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap));
+  return beats;
+}
+
 export default function EndGameRecap({
   history = [],
+  replayTimeline = [],
   awards = [],
   isHost,
   onRestart,
   onAnimate,
+  onStageChange,
+  viewMode = "3d",
+  onToggleViewMode = null,
+  showPostGameChat = false,
+  onTogglePostGameChat = null,
   players = [],
   winner = "village",
 }) {
-  const [activeTab, setActiveTab] = useState("reveal"); // 'reveal' | 'clash' | 'awards'
-  const [flippedMap, setFlippedMap] = useState({});
-  const [selectedDay, setSelectedDay] = useState(1);
+  const [beatIndex, setBeatIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  // Tốc độ kể chuyện chuyên nghiệp: 0.75 (Chậm sâu) | 1 (Chuẩn điện ảnh) | 1.5 (Nhanh)
+  const [recapSpeed, setRecapSpeed] = useState(1);
   const [speechEnabled, setSpeechEnabled] = useState(true);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [recapSpeed, setRecapSpeed] = useState(1); // 1 or 1.5
+  const [followDirector, setFollowDirector] = useState(true);
+  const [relockToken, setRelockToken] = useState(0);
+  const [drawerTab, setDrawerTab] = useState(() => (viewMode === "2d" ? "cards" : null));
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [flippedMap, setFlippedMap] = useState({});
+
+  // Nhịp 3 hồi cho mỗi cảnh: Act 1 (Lướt máy vào vai) -> Act 2 (Tung chiêu VFX) -> Act 3 (Chờ giọng MC dứt câu + lắng đọng)
+  const [act2Armed, setAct2Armed] = useState(false);
+  const [speechCompletedForBeatId, setSpeechCompletedForBeatId] = useState(null);
+
+  // Giao diện Phim Mở Full 100%: Tự động ẩn các thanh nút bấm sau 2.4s không di chuột để nhường trọn màn hình cho câu chuyện!
+  const [hudVisible, setHudVisible] = useState(true);
+  const idleHudTimerRef = useRef(null);
+
+  // Quay Video Phim Kể Chuyện & Cửa sổ Xem Lại Video Ngay Trong Game
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [recordedVideo, setRecordedVideo] = useState(null);
+  const [showVideoPlayerModal, setShowVideoPlayerModal] = useState(false);
+  const [recordErrorMsg, setRecordErrorMsg] = useState("");
+  const activeRecorderRef = useRef(null);
+  const overlayStateRef = useRef({});
 
   const winConfig = WINNER_CONFIG[winner] || WINNER_CONFIG.village;
 
-  // Compute all distinct days from history
-  const allDays = useMemo(() => {
-    const daySet = new Set();
-    history.forEach((h) => {
-      if (h.day) daySet.add(h.day);
-    });
-    const days = Array.from(daySet).sort((a, b) => a - b);
-    return days.length > 0 ? days : [1];
-  }, [history]);
+  const storyBeats = useMemo(
+    () => buildTrueSpaceReplayBeats(replayTimeline, history, players, awards, winner),
+    [replayTimeline, history, players, awards, winner]
+  );
 
-  // Flip cards one by one automatically at the start
+  const safeBeatIdx = Math.min(beatIndex, Math.max(0, storyBeats.length - 1));
+  const currentBeat = storyBeats[safeBeatIdx] || storyBeats[0];
+  const isAtFinale = safeBeatIdx >= storyBeats.length - 1;
+
+  // Cập nhật dữ liệu phụ đề thời gian thực cho Bộ Ghép Video 2D Compositor
   useEffect(() => {
-    let index = 0;
-    const interval = setInterval(() => {
-      if (index < players.length) {
-        const p = players[index];
-        setFlippedMap((prev) => ({ ...prev, [p.id]: true }));
-        index++;
-      } else {
-        clearInterval(interval);
+    overlayStateRef.current = {
+      chapterTag: currentBeat?.tag || "",
+      winnerBanner: `${winConfig.emoji} ${winConfig.title}`,
+      title: currentBeat?.title || "",
+      narration: currentBeat?.narration || "",
+      dialogueText: currentBeat?.dialogueText || null,
+      isWolfWhisper: Boolean(currentBeat?.isWolfWhisper),
+      progressRatio: (safeBeatIdx + 1) / Math.max(1, storyBeats.length),
+    };
+  }, [currentBeat, winConfig, safeBeatIdx, storyBeats.length]);
+
+  // Đánh thức thanh điều khiển khi người xem chạm chuột / bàn phím, và tự ẩn sau 2.4s khi đang chiếu phim!
+  const wakeUpHud = useCallback(() => {
+    setHudVisible(true);
+    if (idleHudTimerRef.current) {
+      clearTimeout(idleHudTimerRef.current);
+      idleHudTimerRef.current = null;
+    }
+    if (isPlaying && !drawerTab && !showVideoPlayerModal && !isAtFinale && viewMode === "3d") {
+      idleHudTimerRef.current = setTimeout(() => {
+        setHudVisible(false);
+      }, 2400);
+    }
+  }, [isPlaying, drawerTab, showVideoPlayerModal, isAtFinale, viewMode]);
+
+  useEffect(() => {
+    wakeUpHud();
+    const handleMove = () => wakeUpHud();
+    const handleKeyDown = (e) => {
+      wakeUpHud();
+      if (showVideoPlayerModal) return;
+      const tag = (e.target?.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        setIsPlaying((p) => !p);
+      } else if (e.code === "ArrowRight") {
+        setIsPlaying(false);
+        setBeatIndex((i) => Math.min(storyBeats.length - 1, i + 1));
+      } else if (e.code === "ArrowLeft") {
+        setIsPlaying(false);
+        setBeatIndex((i) => Math.max(0, i - 1));
+      }
+    };
+    window.addEventListener("mousemove", handleMove, { passive: true });
+    window.addEventListener("touchstart", handleMove, { passive: true });
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("touchstart", handleMove);
+      window.removeEventListener("keydown", handleKeyDown);
+      if (idleHudTimerRef.current) clearTimeout(idleHudTimerRef.current);
+    };
+  }, [wakeUpHud, showVideoPlayerModal, storyBeats.length]);
+
+  const handleManualOrbit = useCallback(() => {
+    setFollowDirector(false);
+    setHudVisible(true);
+  }, []);
+
+  const handleRelockDirector = useCallback(() => {
+    setFollowDirector(true);
+    setRelockToken((t) => t + 1);
+  }, []);
+
+  const chapterJumps = useMemo(() => {
+    const list = [{ key: "reveal", label: "🎭 Mở Màn", beatIdx: 0 }];
+    const seenDays = new Set();
+    storyBeats.forEach((b, idx) => {
+      if (b.day > 0 && b.day < 999 && !seenDays.has(b.day)) {
+        seenDays.add(b.day);
+        list.push({ key: `day_${b.day}`, label: `🌙☀️ Ngày ${b.day}`, beatIdx: idx });
+      }
+    });
+    list.push({
+      key: "mvp",
+      label: "👑 MVP",
+      beatIdx: Math.max(0, storyBeats.length - 1),
+    });
+    return list;
+  }, [storyBeats]);
+
+  const allDays = useMemo(() => {
+    const s = new Set();
+    storyBeats.forEach((b) => {
+      if (b.day > 0 && b.day < 999) s.add(b.day);
+    });
+    history.forEach((h) => {
+      if (h.day) s.add(h.day);
+    });
+    const arr = Array.from(s).sort((a, b) => a - b);
+    return arr.length > 0 ? arr : [1];
+  }, [storyBeats, history]);
+
+  const [detailDay, setDetailDay] = useState(1);
+
+  // Mở khóa lần lượt 8 vai ở Cảnh 0 chậm rãi trang trọng (280ms/ghế)
+  useEffect(() => {
+    setRevealedCount(0);
+    let count = 0;
+    const timer = setInterval(() => {
+      count += 1;
+      setRevealedCount(count);
+      if (players[count - 1]) {
+        const pid = players[count - 1].id;
+        setFlippedMap((prev) => ({ ...prev, [pid]: true }));
+      }
+      if (count >= players.length) {
+        clearInterval(timer);
       }
     }, 280);
-
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, [players]);
 
-  // Group events by day & categorize into Night and Day
-  const dayBundles = useMemo(() => {
-    const map = {};
-    allDays.forEach((d) => {
-      map[d] = {
-        day: d,
-        night: [],
-        daytime: [],
-        nightClash: null,
-        dayTribunal: null,
-      };
-    });
+  // NHỊP 1 -> NHỊP 2: Chờ máy quay lướt êm về sau vai nhân vật (act1SetupMs) rồi mới kích hoạt tung chiêu VFX & âm thanh!
+  useEffect(() => {
+    if (!currentBeat) return undefined;
+    const setupDelay = Math.max(220, (currentBeat.act1SetupMs ?? 900) / recapSpeed);
+    setAct2Armed(false);
+    const armTimer = setTimeout(() => {
+      setAct2Armed(true);
+      const audioEngine = getCinemaAudioEngine();
+      audioEngine?.setSpeakerMuted(!speechEnabled);
+      audioEngine?.triggerBeatSound(currentBeat.soundKey || currentBeat.vfxCue?.vfxType || "story");
+    }, setupDelay);
+    return () => clearTimeout(armTimer);
+  }, [currentBeat?.id, recapSpeed, speechEnabled]);
 
-    history.forEach((ev) => {
-      const d = ev.day || 1;
-      if (!map[d]) {
-        map[d] = { day: d, night: [], daytime: [], nightClash: null, dayTribunal: null };
-      }
+  // Đồng bộ trạng thái Sân Khấu 3D theo Nhịp 1 (Chuẩn bị góc cá nhân) -> Nhịp 2 (Tung đòn VFX)
+  useEffect(() => {
+    if (!currentBeat) return;
 
-      if (
-        ["guard", "wolf", "witch_save", "witch_poison", "seer", "tough_guy_endured", "cursed_transformed", "death", "peaceful_night"].includes(
-          ev.type
-        )
-      ) {
-        map[d].night.push(ev);
-      } else {
-        map[d].daytime.push(ev);
-      }
-    });
-
-    // Analyze Clash for each day
-    allDays.forEach((d) => {
-      const b = map[d];
-      const wolfEv = b.night.find((e) => e.type === "wolf" && e.targetId);
-      const guardEv = b.night.find((e) => e.type === "guard" && e.targetId);
-      const witchSaveEv = b.night.find((e) => e.type === "witch_save" && e.targetId);
-      const witchPoisonEv = b.night.find((e) => e.type === "witch_poison" && e.targetId);
-      const seerEv = b.night.find((e) => e.type === "seer" && e.targetId);
-      const toughGuyEv = b.night.find((e) => e.type === "tough_guy_endured");
-      const cursedEv = b.night.find((e) => e.type === "cursed_transformed");
-      const deathEvs = b.night.filter((e) => e.type === "death");
-
-      const targetId = wolfEv?.targetId;
-      const victim = targetId ? players.find((p) => p.id === targetId) : null;
-      const guard = guardEv?.sourceId ? players.find((p) => p.id === guardEv.sourceId) : null;
-      const guardTarget = guardEv?.targetId ? players.find((p) => p.id === guardEv.targetId) : null;
-      const witchSaveTarget = witchSaveEv?.targetId ? players.find((p) => p.id === witchSaveEv.targetId) : null;
-      const witchPoisonTarget = witchPoisonEv?.targetId ? players.find((p) => p.id === witchPoisonEv.targetId) : null;
-      const seerTarget = seerEv?.targetId ? players.find((p) => p.id === seerEv.targetId) : null;
-
-      let outcomeType = "peaceful"; // 'saved' | 'bloody' | 'peaceful'
-      let outcomeText = "Đêm bình yên trôi qua, không ai tử nạn!";
-
-      if (deathEvs.length > 0) {
-        outcomeType = "bloody";
-        const deadNames = deathEvs.map((e) => players.find((p) => p.id === e.targetId)?.name || "Người dân").join(", ");
-        outcomeText = `Sáng hôm sau, ${deadNames} đã không thể qua khỏi!`;
-      } else if (wolfEv && (guardTarget?.id === wolfEv.targetId || witchSaveTarget?.id === wolfEv.targetId)) {
-        outcomeType = "saved";
-        const savior =
-          guardTarget?.id === wolfEv.targetId ? `Bảo Vệ ${guard?.name || ""}` : "Bình thuốc cứu của Phù Thủy";
-        outcomeText = `${victim?.name || "Nạn nhân"} bị Sói tấn công nhưng được ${savior} cứu sống thần kỳ!`;
-      } else if (toughGuyEv) {
-        outcomeType = "saved";
-        outcomeText = "Người Cứng Cỏi bị Sói cắn nhưng đã kiên cường gượng dậy, thoát chết ngoạn mục đêm nay!";
-      } else if (cursedEv) {
-        outcomeType = "saved";
-        outcomeText = "Kẻ Bị Nguyền bị cắn nhưng không chết, mà dòng máu Sói thức tỉnh, chính thức thành Sói!";
-      }
-
-      b.nightClash = {
-        wolfVictim: victim,
-        guard,
-        guardTarget,
-        witchSaveTarget,
-        witchPoisonTarget,
-        seerTarget,
-        seerIsWolf: seerEv?.isWolf || seerEv?.text?.includes("là Sói"),
-        toughGuyEv,
-        cursedEv,
-        deathEvs,
-        outcomeType,
-        outcomeText,
-      };
-
-      // Tribunal
-      const nomEv = b.daytime.find((e) => e.type === "nomination");
-      const hangEv = b.daytime.find((e) => e.type === "hang");
-      const spareEv = b.daytime.find((e) => e.type === "spare");
-
-      const defEv = hangEv || spareEv;
-      const defendant = defEv?.targetId ? players.find((p) => p.id === defEv.targetId) : null;
-
-      b.dayTribunal = {
-        nominees: nomEv?.nominees || [],
-        defendant,
-        isHanged: Boolean(hangEv),
-        isSpared: Boolean(spareEv),
-        hangCount: defEv?.hangCount || 0,
-        spareCount: defEv?.spareCount || 0,
-        votesDetail: defEv?.votesDetail || {},
-        role: defEv?.targetRole || defendant?.role,
-      };
-    });
-
-    return map;
-  }, [history, allDays, players]);
-
-  // TTS Speech helper
-  function speakNarration(text) {
-    if (!speechEnabled || !window.speechSynthesis) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = "vi-VN";
-      utter.rate = 0.88 * recapSpeed;
-      utter.pitch = 0.95;
-      utter.volume = 0.9;
-      window.speechSynthesis.speak(utter);
-    } catch {
-      // ignore
+    let actorStates = currentBeat.actorStates;
+    if (currentBeat.kind === "reveal" && revealedCount < players.length) {
+      actorStates = { ...currentBeat.actorStates };
+      players.forEach((p, idx) => {
+        actorStates[p.id] = {
+          ...(actorStates[p.id] || {}),
+          isRevealed: idx < revealedCount,
+          pose: idx === revealedCount - 1 ? "cheer" : null,
+        };
+      });
+    } else if (!act2Armed && currentBeat.vfxCue) {
+      // Ở Nhịp 1 (0 -> 0.95s): Giữ nhân vật bình tĩnh nhìn mục tiêu trong lúc máy quay lướt về sau vai họ, chưa tung đòn vội!
+      actorStates = {};
+      Object.entries(currentBeat.actorStates || {}).forEach(([pid, st]) => {
+        actorStates[pid] = {
+          ...st,
+          pose: st.replayChatBubble ? st.pose : null,
+          badgeText: st.replayChatBubble ? st.badgeText : null,
+        };
+      });
     }
+
+    onStageChange?.({
+      beatId: currentBeat.id,
+      mood: currentBeat.mood,
+      cameraShot: currentBeat.cameraShot
+        ? {
+            ...currentBeat.cameraShot,
+            dollySpeedScale: recapSpeed,
+            followDirector,
+            relockToken,
+          }
+        : null,
+      onManualOrbit: handleManualOrbit,
+      vfxCue: act2Armed || currentBeat.kind === "reveal" ? currentBeat.vfxCue : null,
+      lookAtSeatId: currentBeat.lookAtSeatId,
+      actorStates,
+    });
+
+    onAnimate?.(act2Armed ? currentBeat.legacyEvent || null : null);
+
+    if (currentBeat.day > 0 && currentBeat.day < 999) {
+      setDetailDay(currentBeat.day);
+    }
+  }, [
+    currentBeat,
+    act2Armed,
+    revealedCount,
+    players,
+    recapSpeed,
+    followDirector,
+    relockToken,
+    handleManualOrbit,
+    onStageChange,
+    onAnimate,
+  ]);
+
+  // NHỊP 3: Lồng tiếng Giọng Đọc Kể Chuyện MC & Báo hiệu chính xác thời điểm đọc xong câu (không bao giờ cắt ngang chữ!)
+  useEffect(() => {
+    if (!currentBeat) return undefined;
+    const beatId = currentBeat.id;
+
+    if (!speechEnabled || !window.speechSynthesis || !currentBeat.narration) {
+      setSpeechCompletedForBeatId(beatId);
+      return undefined;
+    }
+
+    setSpeechCompletedForBeatId(null);
+    let settled = false;
+    const markDone = () => {
+      if (settled) return;
+      settled = true;
+      setSpeechCompletedForBeatId(beatId);
+    };
+
+    // Bộ hẹn giờ bảo hiểm phòng trường hợp voice hệ điều hành treo không bắn sự kiện onend
+    const estReadMs = Math.max(4200, currentBeat.narration.length * 88) / recapSpeed;
+    const safetyTimer = setTimeout(markDone, estReadMs + 1400);
+
+    const startSpeakTimer = setTimeout(() => {
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(currentBeat.narration);
+        utter.lang = "vi-VN";
+        utter.rate = Math.min(1.25, Math.max(0.78, 0.88 * recapSpeed));
+        utter.pitch = 0.95;
+        utter.volume = 0.92;
+        const voices = window.speechSynthesis.getVoices?.() || [];
+        const viVoice = voices.find((v) => v.lang?.toLowerCase().startsWith("vi"));
+        if (viVoice) utter.voice = viVoice;
+        utter.onend = () => {
+          // Đệm lắng đọng cảm xúc 850ms sau khi MC vừa dứt lời!
+          setTimeout(markDone, 850);
+        };
+        utter.onerror = markDone;
+        window.speechSynthesis.speak(utter);
+      } catch {
+        markDone();
+      }
+    }, 320);
+
+    return () => {
+      clearTimeout(safetyTimer);
+      clearTimeout(startSpeakTimer);
+    };
+  }, [currentBeat?.id, currentBeat?.narration, speechEnabled, recapSpeed]);
+
+  // Dọn dẹp tài nguyên khi rời màn hình Recap
+  useEffect(() => {
+    const audioEngine = getCinemaAudioEngine();
+    audioEngine?.setAmbientActive(true);
+    return () => {
+      try {
+        window.speechSynthesis?.cancel();
+      } catch {
+        // ignore
+      }
+      audioEngine?.setAmbientActive(false);
+      if (activeRecorderRef.current) {
+        activeRecorderRef.current.stop();
+        activeRecorderRef.current = null;
+      }
+      onStageChange?.(null);
+      onAnimate?.(null);
+    };
+  }, [onStageChange, onAnimate]);
+
+  useEffect(() => {
+    return () => {
+      if (recordedVideo?.url) {
+        URL.revokeObjectURL(recordedVideo.url);
+      }
+    };
+  }, [recordedVideo?.url]);
+
+  const stopVideoCaptureAndOpenPlayer = useCallback(async () => {
+    const rec = activeRecorderRef.current;
+    if (!rec) return;
+    activeRecorderRef.current = null;
+    setIsRecordingVideo(false);
+    try {
+      const result = await rec.stop();
+      if (result?.url) {
+        setRecordedVideo((prev) => {
+          if (prev?.url) URL.revokeObjectURL(prev.url);
+          return result;
+        });
+        setShowVideoPlayerModal(true);
+        setHudVisible(true);
+      }
+    } catch {
+      setRecordErrorMsg("Không thể đóng gói file video vừa quay.");
+    }
+  }, []);
+
+  // Điều phối chuyển cảnh: CHỈ chuyển khi ĐÃ đủ thời lượng cảnh tối thiểu VÀ Giọng đọc MC đã dứt câu (+0.85s lắng đọng)!
+  const [minDurationPassedForBeatId, setMinDurationPassedForBeatId] = useState(null);
+
+  useEffect(() => {
+    if (!isPlaying || !currentBeat) return undefined;
+    setMinDurationPassedForBeatId(null);
+    const minWaitMs = Math.max(3600, (currentBeat.durationMs || 5400) / recapSpeed);
+    const timer = setTimeout(() => {
+      setMinDurationPassedForBeatId(currentBeat.id);
+    }, minWaitMs);
+    return () => clearTimeout(timer);
+  }, [isPlaying, currentBeat?.id, currentBeat?.durationMs, recapSpeed]);
+
+  useEffect(() => {
+    if (!isPlaying || !currentBeat) return undefined;
+    const minDone = minDurationPassedForBeatId === currentBeat.id;
+    const voiceDone = !speechEnabled || speechCompletedForBeatId === currentBeat.id;
+    if (!minDone || !voiceDone) return undefined;
+
+    if (safeBeatIdx < storyBeats.length - 1) {
+      setBeatIndex(safeBeatIdx + 1);
+    } else {
+      setIsPlaying(false);
+      setHudVisible(true);
+      if (activeRecorderRef.current) {
+        // Chờ thêm 1.1s ở khung hình MVP cuối cùng trước khi chốt băng Video!
+        const endRecTimer = setTimeout(() => {
+          stopVideoCaptureAndOpenPlayer();
+        }, 1100);
+        return () => clearTimeout(endRecTimer);
+      }
+    }
+    return undefined;
+  }, [
+    isPlaying,
+    currentBeat,
+    minDurationPassedForBeatId,
+    speechCompletedForBeatId,
+    speechEnabled,
+    safeBeatIdx,
+    storyBeats.length,
+    stopVideoCaptureAndOpenPlayer,
+  ]);
+
+  // Nút [🔴 Quay Video Phim]: Tự tua về Mở Màn 00:00, ẩn sạch thanh công cụ để ghi trọn bộ phim và bật trình xem lại ngay!
+  const handleStartFullStoryVideoRecording = useCallback(() => {
+    setRecordErrorMsg("");
+    if (viewMode !== "3d" && onToggleViewMode) {
+      onToggleViewMode();
+    }
+    try {
+      const recSession = startCinemaStoryRecording({
+        getOverlayState: () => overlayStateRef.current,
+      });
+      activeRecorderRef.current = recSession;
+      setDrawerTab(null);
+      setShowVideoPlayerModal(false);
+      setFollowDirector(true);
+      setRelockToken((t) => t + 1);
+      setRecapSpeed(1);
+      setBeatIndex(0);
+      setIsPlaying(true);
+      setIsRecordingVideo(true);
+      setHudVisible(false);
+    } catch (err) {
+      setRecordErrorMsg(err?.message || "Không thể khởi động trình ghi video.");
+    }
+  }, [viewMode, onToggleViewMode]);
+
+  function cycleSpeed() {
+    setRecapSpeed((s) => (s === 1 ? 0.75 : s === 0.75 ? 1.5 : 1));
   }
 
-  // Trigger animations & speech when selected day changes in clash tab
-  useEffect(() => {
-    if (activeTab !== "clash") return;
-    const bundle = dayBundles[selectedDay];
-    if (!bundle) return;
-
-    // Trigger visual animation in player circle
-    const firstNightEvent = bundle.night.find((e) => e.type === "wolf") || bundle.night[0];
-    if (firstNightEvent) {
-      onAnimate?.(firstNightEvent);
-    }
-
-    // Speak outcome
-    if (bundle.nightClash) {
-      speakNarration(`Đêm thứ ${selectedDay}. ${bundle.nightClash.outcomeText}`);
-    }
-  }, [activeTab, selectedDay, dayBundles, onAnimate]);
-
-  // Autoplay progression
-  useEffect(() => {
-    if (!isPlaying) return;
-    const timer = setTimeout(() => {
-      const currIdx = allDays.indexOf(selectedDay);
-      if (currIdx < allDays.length - 1) {
-        setSelectedDay(allDays[currIdx + 1]);
-      } else {
-        setIsPlaying(false);
-        setActiveTab("awards");
-      }
-    }, 4500 / recapSpeed);
-
-    return () => clearTimeout(timer);
-  }, [isPlaying, selectedDay, allDays, recapSpeed]);
+  function toggleDrawer(tab) {
+    setDrawerTab((prev) => (prev === tab ? null : tab));
+    setHudVisible(true);
+  }
 
   function handleFlipAll() {
     const all = {};
-    players.forEach((p) => (all[p.id] = true));
+    players.forEach((p) => {
+      all[p.id] = true;
+    });
     setFlippedMap(all);
+    setRevealedCount(players.length);
   }
 
-  const currentBundle = dayBundles[selectedDay];
+  function toggleBrowserFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }
+
+  const dayReplayBeats = useMemo(
+    () => storyBeats.filter((b) => b.day === detailDay),
+    [storyBeats, detailDay]
+  );
+
+  const timecodeLabel =
+    typeof currentBeat?.elapsedMs === "number"
+      ? formatTimecode(currentBeat.elapsedMs)
+      : `CẢNH ${String(safeBeatIdx + 1).padStart(2, "0")}/${String(storyBeats.length).padStart(2, "0")}`;
+
+  const controlsHiddenForImmersion =
+    viewMode === "3d" &&
+    !drawerTab &&
+    !showVideoPlayerModal &&
+    (isRecordingVideo || (!hudVisible && isPlaying && !isAtFinale));
 
   return (
-    <div className="recap-cinema-overlay">
-      <div className="recap-cinema-container">
-        {/* --- TOP CINEMA BAR & TABS --- */}
-        <header className="recap-top-nav">
-          <div className="recap-tabs-list">
-            <button
-              className={`btn-recap-tab ${activeTab === "reveal" ? "active" : ""}`}
-              onClick={() => {
-                setActiveTab("reveal");
-                onAnimate?.(null);
-              }}
-            >
-              🏆 Lật Bài & Vinh Quang
-            </button>
-            <button
-              className={`btn-recap-tab ${activeTab === "clash" ? "active" : ""}`}
-              onClick={() => setActiveTab("clash")}
-            >
-              ⚔️ Diễn Biến Từng Ngày
-            </button>
-            <button
-              className={`btn-recap-tab ${activeTab === "awards" ? "active" : ""}`}
-              onClick={() => {
-                setActiveTab("awards");
-                onAnimate?.(null);
-              }}
-            >
-              👑 Bảng Vàng & MVP ({awards.length})
-            </button>
-          </div>
+    <div
+      className={`recap-stage2a-root ${drawerTab ? "drawer-open" : ""} ${
+        showPostGameChat ? "with-right-chat" : ""
+      } ${controlsHiddenForImmersion ? "cinema-immersive-clean" : ""}`}
+    >
+      {/* Dải Tối Letterbox Rất Nhẹ Sát Đáy Giúp Chữ Phụ Đề Phim Nổi Sắc Nét Mà Không Cần Hộp Nền Thô! */}
+      {viewMode === "3d" && <div className="cinema-bottom-vignette" aria-hidden="true" />}
 
-          <div className="recap-quick-tools">
-            <button
-              className="btn-recap-tool"
-              onClick={() => setSpeechEnabled((prev) => !prev)}
-              title={speechEnabled ? "Tắt đọc MC" : "Bật đọc MC"}
-            >
-              {speechEnabled ? "🔊 Giọng MC" : "🔇 Tắt MC"}
-            </button>
-            <button
-              className="btn-recap-tool"
-              onClick={() => setRecapSpeed((s) => (s === 1 ? 1.5 : 1))}
-              title="Tốc độ diễn hoạt"
-            >
-              ⚡ {recapSpeed}x
-            </button>
-          </div>
-        </header>
+      {/* Chỉ Báo Nhỏ Góc Trên Khi Đang Ghi Hình Tự Động Toàn Bộ Câu Chuyện */}
+      {isRecordingVideo && (
+        <div className="cinema-recording-live-pill">
+          <span className="vf-rec-dot" />
+          <span>
+            ĐANG QUAY PHIM ({safeBeatIdx + 1}/{storyBeats.length})
+          </span>
+          <button
+            type="button"
+            className="btn-stop-record-early"
+            onClick={stopVideoCaptureAndOpenPlayer}
+            title="Dừng quay ngay tại đây và mở trình phát xem lại video"
+          >
+            ⏹ Dừng & Xem ngay
+          </button>
+        </div>
+      )}
 
-        {/* --- MAIN BODY CONTENT --- */}
-        <main className="recap-content-body">
-          {/* ================= TAB 1: REVEAL & WINNER ================= */}
-          {activeTab === "reveal" && (
-            <>
-              <div className={`recap-winner-hero ${winConfig.themeClass}`}>
-                <div className="recap-winner-emoji-big">{winConfig.emoji}</div>
-                <h2 className="recap-winner-title-big">{winConfig.title}</h2>
-                <p className="recap-winner-quote">"{winConfig.subtitle}"</p>
-              </div>
+      {/* Nhãn Chương Mảnh Tinh Tế Khi Ẩn Thanh Công Cụ Để Xem Full Màn Hình */}
+      {controlsHiddenForImmersion && !isRecordingVideo && (
+        <div className="cinema-minimal-chapter-whisper">
+          <span>{currentBeat?.tag}</span>
+        </div>
+      )}
 
-              <div className="recap-cards-heading">
-                <h3>🃏 Danh Tính Thật Của Mọi Người</h3>
-                <button className="btn-recap-tool" onClick={handleFlipAll}>
-                  Lật tất cả ✓
-                </button>
-              </div>
-
-              <div className="recap-cards-grid-3d">
-                {players.map((p) => {
-                  const isFlipped = Boolean(flippedMap[p.id]);
-                  const roleKey = p.role || "villager";
-                  const team = roleKey === "wolf" ? "wolf" : roleKey === "tanner" ? "neutral" : "village";
-
-                  return (
-                    <div
-                      key={p.id}
-                      className={`card-flip-item ${isFlipped ? "flipped" : ""}`}
-                      onClick={() =>
-                        setFlippedMap((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
-                      }
-                      title="Bấm để lật thẻ bài"
-                    >
-                      <div className="card-flip-inner">
-                        {/* Mặt úp ban đầu */}
-                        <div className="card-flip-front">
-                          <span className="back-pattern-icon">🎴</span>
-                          <span className="back-name">{p.name}</span>
-                        </div>
-
-                        {/* Mặt ngửa danh tính thật */}
-                        <div className={`card-flip-back ${team}`}>
-                          <img src={p.avatar} alt={p.name} className="card-flip-avatar" />
-                          <span
-                            className="card-flip-role-badge"
-                            style={{ color: ROLE_COLORS[roleKey] || "#fff" }}
-                          >
-                            {ROLE_EMOJIS[roleKey]} {ROLE_LABELS[roleKey]}
-                          </span>
-                          <span className="card-flip-player-name">{p.name}</span>
-                          <span
-                            className={`card-flip-status-pill ${p.alive ? "alive" : "dead"}`}
-                          >
-                            {p.alive ? "🟢 Còn sống" : "💀 Tử nạn"}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {/* ================= TAB 2: NIGHT CLASH & DAY TRIBUNAL ================= */}
-          {activeTab === "clash" && (
-            <div className="recap-day-container">
-              {/* Day Selector Pills */}
-              <div className="recap-days-selector">
-                {allDays.map((d) => (
-                  <button
-                    key={d}
-                    className={`btn-day-pill ${selectedDay === d ? "active" : ""}`}
-                    onClick={() => {
-                      setSelectedDay(d);
-                      setIsPlaying(false);
-                    }}
-                  >
-                    🌙☀️ Ngày {d}
-                  </button>
-                ))}
-              </div>
-
-              {/* Night Clash Section */}
-              {currentBundle?.nightClash && (
-                <div className="night-clash-card">
-                  <div className="night-clash-header">
-                    <h4>🌙 Đêm {selectedDay} — Đấu Trí Bí Mật</h4>
-                    <span style={{ fontSize: "0.82rem", color: "#a5b4fc" }}>
-                      {currentBundle.night.length} hành động đêm
-                    </span>
-                  </div>
-
-                  <div className="clash-actions-stream">
-                    {/* Sói cắn */}
-                    {currentBundle.nightClash.wolfVictim && (
-                      <div className="clash-action-row">
-                        <div className="clash-action-icon" style={{ color: "#ef4444" }}>
-                          🐺
-                        </div>
-                        <div className="clash-action-desc">
-                          Đàn Sói đã bí mật nhắm vào:{" "}
-                          <strong>{currentBundle.nightClash.wolfVictim.name}</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Bảo vệ */}
-                    {currentBundle.nightClash.guardTarget && (
-                      <div className="clash-action-row">
-                        <div className="clash-action-icon" style={{ color: "#3b82f6" }}>
-                          🛡️
-                        </div>
-                        <div className="clash-action-desc">
-                          Bảo Vệ {currentBundle.nightClash.guard ? `[${currentBundle.nightClash.guard.name}] ` : ""}
-                          lặng lẽ che chắn cho:{" "}
-                          <strong>{currentBundle.nightClash.guardTarget.name}</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Phù Thủy Cứu */}
-                    {currentBundle.nightClash.witchSaveTarget && (
-                      <div className="clash-action-row">
-                        <div className="clash-action-icon" style={{ color: "#22c55e" }}>
-                          🧪
-                        </div>
-                        <div className="clash-action-desc">
-                          Phù Thủy mở bình tiên dược, <strong>cứu sống {currentBundle.nightClash.witchSaveTarget.name}!</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Phù Thủy Độc */}
-                    {currentBundle.nightClash.witchPoisonTarget && (
-                      <div className="clash-action-row">
-                        <div className="clash-action-icon" style={{ color: "#a855f7" }}>
-                          ☠️
-                        </div>
-                        <div className="clash-action-desc">
-                          Phù Thủy tung bình độc hạ gục:{" "}
-                          <strong>{currentBundle.nightClash.witchPoisonTarget.name}</strong>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Tiên Tri soi */}
-                    {currentBundle.nightClash.seerTarget && (
-                      <div className="clash-action-row">
-                        <div className="clash-action-icon" style={{ color: "#818cf8" }}>
-                          🔮
-                        </div>
-                        <div className="clash-action-desc">
-                          Tiên Tri đã soi <strong>{currentBundle.nightClash.seerTarget.name}</strong> và phát hiện:{" "}
-                          <span
-                            style={{
-                              color: currentBundle.nightClash.seerIsWolf ? "#ef4444" : "#4ade80",
-                              fontWeight: 800,
-                            }}
-                          >
-                            {currentBundle.nightClash.seerIsWolf ? "🔴 Là SÓI!" : "🔵 Là Dân Lành"}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Người Cứng Cỏi */}
-                    {currentBundle.nightClash.toughGuyEv && (
-                      <div className="clash-action-row" style={{ background: "rgba(249, 115, 22, 0.15)" }}>
-                        <div className="clash-action-icon">💪</div>
-                        <div className="clash-action-desc" style={{ color: "#fdba74" }}>
-                          Người Cứng Cỏi bị Sói tấn công nhưng đã kiên cường gượng dậy, sống sót qua ngày!
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Kẻ Bị Nguyền */}
-                    {currentBundle.nightClash.cursedEv && (
-                      <div className="clash-action-row" style={{ background: "rgba(100, 116, 139, 0.2)" }}>
-                        <div className="clash-action-icon">🌑</div>
-                        <div className="clash-action-desc" style={{ color: "#cbd5e1" }}>
-                          Kẻ Bị Nguyền bị cắn nhưng dòng máu Sói đã thức tỉnh, biến thành Sói từ đêm tiếp theo!
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Kết quả sáng hôm sau */}
-                  <div
-                    className={`clash-outcome-banner ${currentBundle.nightClash.outcomeType}`}
-                  >
-                    <span>
-                      {currentBundle.nightClash.outcomeType === "saved"
-                        ? "✨"
-                        : currentBundle.nightClash.outcomeType === "bloody"
-                        ? "💀"
-                        : "🕊️"}
-                    </span>
-                    <span>{currentBundle.nightClash.outcomeText}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Day Tribunal Section */}
-              {currentBundle?.dayTribunal && currentBundle.dayTribunal.defendant && (
-                <div className="day-tribunal-card">
-                  <div className="day-tribunal-header">
-                    <h4>☀️ Ngày {selectedDay} — Tòa Án Phán Quyết</h4>
-                    <span style={{ fontSize: "0.82rem", color: "#fde047" }}>
-                      Bị cáo: <strong>{currentBundle.dayTribunal.defendant.name}</strong>
-                    </span>
-                  </div>
-
-                  <div className="tribunal-votes-grid">
-                    {/* Cột Treo Cổ */}
-                    <div className="tribunal-vote-column hang">
-                      <div className="vote-column-title" style={{ color: "#f87171" }}>
-                        <span>🪢 Phiếu Treo Cổ</span>
-                        <span>{currentBundle.dayTribunal.hangCount} phiếu</span>
-                      </div>
-                      <div className="vote-voters-list">
-                        {Object.entries(currentBundle.dayTribunal.votesDetail)
-                          .filter(([, v]) => v === "hang")
-                          .map(([voterId]) => {
-                            const p = players.find((x) => x.id === voterId);
-                            return (
-                              <span key={voterId} className="voter-pill">
-                                {p?.name || voterId}
-                              </span>
-                            );
-                          })}
-                      </div>
-                    </div>
-
-                    {/* Cột Tha Bổng */}
-                    <div className="tribunal-vote-column spare">
-                      <div className="vote-column-title" style={{ color: "#4ade80" }}>
-                        <span>🕊️ Phiếu Tha Bổng</span>
-                        <span>{currentBundle.dayTribunal.spareCount} phiếu</span>
-                      </div>
-                      <div className="vote-voters-list">
-                        {Object.entries(currentBundle.dayTribunal.votesDetail)
-                          .filter(([, v]) => v === "spare")
-                          .map(([voterId]) => {
-                            const p = players.find((x) => x.id === voterId);
-                            return (
-                              <span key={voterId} className="voter-pill">
-                                {p?.name || voterId}
-                              </span>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bản án chốt */}
-                  <div
-                    className={`tribunal-verdict-banner ${
-                      currentBundle.dayTribunal.isHanged
-                        ? currentBundle.dayTribunal.role === "wolf"
-                          ? "hanged-wolf"
-                          : "hanged-innocent"
-                        : "spared"
-                    }`}
-                  >
-                    <span>{currentBundle.dayTribunal.isHanged ? "⚖️" : "🕊️"}</span>
-                    <span>
-                      {currentBundle.dayTribunal.isHanged ? (
-                        <>
-                          Làng đã quyết định <strong>Treo Cổ {currentBundle.dayTribunal.defendant.name}</strong>. Danh tính thực sự:{" "}
-                          <span style={{ textDecoration: "underline" }}>
-                            {ROLE_EMOJIS[currentBundle.dayTribunal.role]}{" "}
-                            {ROLE_LABELS[currentBundle.dayTribunal.role] || currentBundle.dayTribunal.role}
-                          </span>
-                          !{" "}
-                          {currentBundle.dayTribunal.role === "wolf"
-                            ? "🎉 Tiêu diệt Sói xuất sắc!"
-                            : currentBundle.dayTribunal.role === "tanner"
-                            ? "💀 Cả làng bị Chán Đời đánh lừa!"
-                            : "😱 Ôi không! Làng đã treo nhầm người vô tội!"}
-                        </>
-                      ) : (
-                        <>
-                          Làng đã quyết định <strong>Tha Bổng {currentBundle.dayTribunal.defendant.name}</strong> với{" "}
-                          {currentBundle.dayTribunal.spareCount} phiếu tha!
-                        </>
-                      )}
-                    </span>
-                  </div>
-                </div>
-              )}
+      {/* ==================== 1. THANH ĐỈNH MÀN HÌNH (TỰ ẨN MƯỢT KHI ĐANG XEM PHIM FULL) ==================== */}
+      <header className={`replay-viewfinder-topbar ${controlsHiddenForImmersion ? "hud-hidden" : ""}`}>
+        <div className="vf-left-cluster">
+          <div className={`recap-top-ribbon ${winConfig.themeClass}`}>
+            <span className="ribbon-emoji">{winConfig.emoji}</span>
+            <div className="ribbon-texts">
+              <strong>{winConfig.title}</strong>
+              <span>{winConfig.subtitle}</span>
             </div>
-          )}
-
-          {/* ================= TAB 3: HALL OF FAME & MVP ================= */}
-          {activeTab === "awards" && (
-            <div className="recap-awards-section">
-              {/* MVP Hero Card */}
-              {awards.length > 0 && awards[0]?.id === "mvp" && (
-                <div className="mvp-hero-card">
-                  <div className="mvp-hero-avatar-wrapper">
-                    <img
-                      src={awards[0].avatar}
-                      alt={awards[0].name}
-                      className="mvp-hero-avatar"
-                    />
-                    <span className="mvp-crown-badge">👑</span>
-                  </div>
-                  <div className="mvp-hero-details">
-                    <span className="mvp-badge-tag">🏆 CẦU THỦ XUẤT SẮC NHẤT TRẬN ĐẤU</span>
-                    <h3 className="mvp-hero-name">
-                      {awards[0].name} ({ROLE_EMOJIS[awards[0].role]} {ROLE_LABELS[awards[0].role] || awards[0].role})
-                    </h3>
-                    <p className="mvp-hero-desc">{awards[0].description}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Special Awards Grid */}
-              <div className="awards-grid">
-                {awards
-                  .filter((a) => a.id !== "mvp")
-                  .map((award) => (
-                    <div
-                      key={award.id}
-                      className="award-card-item"
-                      style={{ borderColor: award.color || "rgba(255,255,255,0.15)" }}
-                    >
-                      <img
-                        src={award.avatar}
-                        alt={award.name}
-                        className="award-player-avatar"
-                        style={{ borderColor: award.color || "#fff" }}
-                      />
-                      <div className="award-details">
-                        <span className="award-title" style={{ color: award.color || "#f1f5f9" }}>
-                          {award.title}
-                        </span>
-                        <span className="award-recipient">
-                          {award.name} ({ROLE_EMOJIS[award.role]} {ROLE_LABELS[award.role]})
-                        </span>
-                        <span className="award-description">{award.description}</span>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
-        </main>
-
-        {/* --- BOTTOM CINEMA FOOTER & PLAYBACK CONTROLS --- */}
-        <footer className="recap-cinema-footer">
-          <div className="recap-playback-buttons">
-            <button
-              className="btn-playback"
-              onClick={() => {
-                const idx = allDays.indexOf(selectedDay);
-                if (idx > 0) setSelectedDay(allDays[idx - 1]);
-              }}
-              disabled={allDays.indexOf(selectedDay) <= 0}
-              title="Lùi lại 1 ngày"
-            >
-              ◀️ Trước
-            </button>
-
-            <button
-              className="btn-playback"
-              onClick={() => setIsPlaying((p) => !p)}
-              style={{ background: isPlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(99, 102, 241, 0.2)" }}
-            >
-              {isPlaying ? "⏸️ Tạm dừng" : "▶️ Tự động chiếu"}
-            </button>
-
-            <button
-              className="btn-playback"
-              onClick={() => {
-                const idx = allDays.indexOf(selectedDay);
-                if (idx < allDays.length - 1) setSelectedDay(allDays[idx + 1]);
-                else setActiveTab("awards");
-              }}
-              disabled={allDays.indexOf(selectedDay) >= allDays.length - 1 && activeTab === "awards"}
-              title="Tiếp theo"
-            >
-              Sau ▶️
-            </button>
           </div>
 
-          <div className="recap-restart-wrapper">
-            {isHost ? (
-              <button className="btn-recap-restart-master" onClick={onRestart}>
-                🎮 Bắt đầu ván mới
+          <div className="vf-rec-pill" title="Phim kể chuyện diễn biến thật từ góc nhìn từng nhân vật">
+            <span className="vf-rec-dot" />
+            <span className="vf-rec-text">PHIM KỂ CHUYỆN</span>
+            <span className="vf-timecode">{timecodeLabel}</span>
+          </div>
+        </div>
+
+        <div className="vf-right-cluster">
+          {/* Nút Quay Lại Video & Xem Lại Ngay Trong Game */}
+          {!isRecordingVideo && (
+            <button
+              type="button"
+              className="vf-record-movie-btn"
+              onClick={handleStartFullStoryVideoRecording}
+              title="Tự động quay lại toàn bộ bộ phim kể chuyện 3D kèm phụ đề & âm thanh để xem lại và lưu về máy"
+            >
+              🔴 Quay Video Phim
+            </button>
+          )}
+
+          {recordedVideo && !isRecordingVideo && (
+            <button
+              type="button"
+              className="vf-watch-recorded-btn"
+              onClick={() => {
+                setIsPlaying(false);
+                setShowVideoPlayerModal(true);
+              }}
+              title="Mở rạp xem lại bản video vừa quay"
+            >
+              🎬 Xem Video Đã Quay ({recordedVideo.durationSec}s)
+            </button>
+          )}
+
+          {viewMode === "3d" &&
+            !followDirector && (
+              <button
+                type="button"
+                className="vf-relock-btn"
+                onClick={handleRelockDirector}
+                title="Khóa ống kính quay về góc nhìn đạo diễn theo từng vai"
+              >
+                🎥 Bám lại Đạo Diễn
               </button>
-            ) : (
-              <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                ⏳ Đang chờ Chủ phòng bắt đầu ván mới...
-              </span>
+            )}
+
+          <button
+            type="button"
+            className="vf-tool-btn"
+            onClick={toggleBrowserFullscreen}
+            title="Mở toàn màn hình rạp chiếu phim"
+          >
+            ⛶ Full Màn Hình
+          </button>
+
+          {onTogglePostGameChat && (
+            <button
+              type="button"
+              className={`vf-tool-btn ${showPostGameChat ? "active" : ""}`}
+              onClick={onTogglePostGameChat}
+              title="Đóng/mở cột trò chuyện sau trận đấu"
+            >
+              💬 {showPostGameChat ? "Ẩn Chat" : "Chat"}
+            </button>
+          )}
+
+          {onToggleViewMode && (
+            <button
+              type="button"
+              className="vf-tool-btn"
+              onClick={onToggleViewMode}
+              title="Chuyển đổi giữa Phim 3D và Thẻ 2D"
+            >
+              {viewMode === "3d" ? "⚡ 2D" : "🎮 3D"}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {recordErrorMsg && (
+        <div className="cinema-record-error-toast" onClick={() => setRecordErrorMsg("")}>
+          ⚠️ {recordErrorMsg}
+        </div>
+      )}
+
+      {/* ==================== 2. NGĂN KÉO KÍNH MỜ BẬT/TẮT TÙY Ý (THẺ BÀI / CẢNH QUAY / MVP) ==================== */}
+      {drawerTab && !showVideoPlayerModal && (
+        <div className="recap-glass-drawer">
+          <div className="drawer-header">
+            <div className="drawer-tabs">
+              <button
+                type="button"
+                className={`drawer-tab-btn ${drawerTab === "details" ? "active" : ""}`}
+                onClick={() => setDrawerTab("details")}
+              >
+                🎬 Kịch Bản Từng Pha ({storyBeats.length})
+              </button>
+              <button
+                type="button"
+                className={`drawer-tab-btn ${drawerTab === "cards" ? "active" : ""}`}
+                onClick={() => setDrawerTab("cards")}
+              >
+                🃏 Thẻ Bài ({players.length})
+              </button>
+              <button
+                type="button"
+                className={`drawer-tab-btn ${drawerTab === "awards" ? "active" : ""}`}
+                onClick={() => setDrawerTab("awards")}
+              >
+                👑 Bảng Vàng MVP ({awards.length})
+              </button>
+            </div>
+            <button
+              type="button"
+              className="drawer-close-btn"
+              onClick={() => setDrawerTab(null)}
+              title="Thu gọn để xem phim toàn màn hình"
+            >
+              ✕ Mở Rộng Phim 3D
+            </button>
+          </div>
+
+          <div className="drawer-body">
+            {drawerTab === "cards" && (
+              <>
+                <div className="recap-cards-heading">
+                  <h3>🎭 Chân Tướng Cả Làng</h3>
+                  <button type="button" className="btn-recap-tool" onClick={handleFlipAll}>
+                    Lật tất cả ✓
+                  </button>
+                </div>
+                <div className="recap-cards-grid-3d">
+                  {players.map((p) => {
+                    const isFlipped = Boolean(flippedMap[p.id]);
+                    const roleKey = p.role || "villager";
+                    const wasCursed = p.initialRole && p.initialRole !== roleKey;
+                    const team =
+                      roleKey === "wolf" ? "wolf" : roleKey === "tanner" ? "neutral" : "village";
+
+                    return (
+                      <div
+                        key={p.id}
+                        className={`card-flip-item ${isFlipped ? "flipped" : ""}`}
+                        onClick={() =>
+                          setFlippedMap((prev) => ({ ...prev, [p.id]: !prev[p.id] }))
+                        }
+                      >
+                        <div className="card-flip-inner">
+                          <div className="card-flip-front">
+                            <span className="back-pattern-icon">🎴</span>
+                            <span className="back-name">{p.name}</span>
+                          </div>
+                          <div className={`card-flip-back ${team}`}>
+                            <img src={p.avatar} alt={p.name} className="card-flip-avatar" />
+                            <span
+                              className="card-flip-role-badge"
+                              style={{ color: ROLE_COLORS[roleKey] || "#fff" }}
+                            >
+                              {ROLE_EMOJIS[roleKey]} {ROLE_LABELS[roleKey]}
+                            </span>
+                            {wasCursed && (
+                              <span style={{ fontSize: "10px", color: "#c084fc", fontWeight: 700 }}>
+                                (Gốc: {ROLE_EMOJIS[p.initialRole]} {ROLE_LABELS[p.initialRole]})
+                              </span>
+                            )}
+                            <span className="card-flip-player-name">{p.name}</span>
+                            <span className={`card-flip-status-pill ${p.alive ? "alive" : "dead"}`}>
+                              {p.alive ? "🟢 Sống sót" : "👻 Tử nạn"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {drawerTab === "details" && (
+              <div className="recap-day-container">
+                <div className="recap-days-selector">
+                  {allDays.map((d) => (
+                    <button
+                      type="button"
+                      key={d}
+                      className={`btn-day-pill ${detailDay === d ? "active" : ""}`}
+                      onClick={() => {
+                        setDetailDay(d);
+                        const idx = storyBeats.findIndex((b) => b.day === d);
+                        if (idx >= 0) {
+                          setBeatIndex(idx);
+                          setIsPlaying(false);
+                        }
+                      }}
+                    >
+                      🌙☀️ Ngày {d}
+                    </button>
+                  ))}
+                </div>
+                <div className="clash-actions-stream">
+                  {dayReplayBeats.length === 0 ? (
+                    <div className="clash-action-row">
+                      <div className="clash-action-desc">Chưa có cảnh quay trong ngày này.</div>
+                    </div>
+                  ) : (
+                    dayReplayBeats.map((b) => {
+                      const targetBeatIdx = storyBeats.findIndex((item) => item.id === b.id);
+                      const isCurrentRow = targetBeatIdx === safeBeatIdx;
+                      return (
+                        <div
+                          key={b.id}
+                          className={`clash-action-row clickable ${isCurrentRow ? "active-beat" : ""}`}
+                          onClick={() => {
+                            if (targetBeatIdx >= 0) {
+                              setBeatIndex(targetBeatIdx);
+                              setIsPlaying(true);
+                              setDrawerTab(null);
+                            }
+                          }}
+                          title="Nhấp để phát ngay cảnh quay này ở chế độ toàn màn hình!"
+                        >
+                          <div className="clash-action-icon">
+                            {b.kind === "night" ? "🌙" : b.kind === "tribunal" ? "⚖️" : "☀️"}
+                          </div>
+                          <div className="clash-action-desc">
+                            <strong>{b.title}</strong>
+                            <div style={{ fontSize: "0.78rem", color: "#94a3b8", marginTop: "2px" }}>
+                              {b.narration}
+                            </div>
+                          </div>
+                          <span className="jump-play-pill">▶ Phát cảnh</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {drawerTab === "awards" && (
+              <div className="recap-awards-section">
+                {awards.length > 0 && awards[0]?.id === "mvp" && (
+                  <div className="mvp-hero-card">
+                    <div className="mvp-hero-avatar-wrapper">
+                      <img src={awards[0].avatar} alt={awards[0].name} className="mvp-hero-avatar" />
+                      <span className="mvp-crown-badge">👑</span>
+                    </div>
+                    <div className="mvp-hero-details">
+                      <span className="mvp-badge-tag">🏆 CẦU THỦ XUẤT SẮC NHẤT TRẬN ĐẤU</span>
+                      <h3 className="mvp-hero-name">
+                        {awards[0].name} ({ROLE_EMOJIS[awards[0].role]}{" "}
+                        {ROLE_LABELS[awards[0].role] || awards[0].role})
+                      </h3>
+                      <p className="mvp-hero-desc">{awards[0].description}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="awards-grid">
+                  {awards
+                    .filter((a) => a.id !== "mvp")
+                    .map((award) => (
+                      <div
+                        key={award.id}
+                        className="award-card-item"
+                        style={{ borderColor: award.color || "rgba(255,255,255,0.15)" }}
+                      >
+                        <img
+                          src={award.avatar}
+                          alt={award.name}
+                          className="award-player-avatar"
+                          style={{ borderColor: award.color || "#fff" }}
+                        />
+                        <div className="award-details">
+                          <span className="award-title" style={{ color: award.color || "#f1f5f9" }}>
+                            {award.title}
+                          </span>
+                          <span className="award-recipient">
+                            {award.name} ({ROLE_EMOJIS[award.role]} {ROLE_LABELS[award.role]})
+                          </span>
+                          <span className="award-description">{award.description}</span>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
             )}
           </div>
-        </footer>
-      </div>
+        </div>
+      )}
+
+      {/* ==================== 3. PHỤ ĐỀ ĐIỆN ẢNH NỔI TRONG SUỐT + THANH ĐẠO DIỄN TỰ ẨN ==================== */}
+      <footer className="cinema-bottom-stack">
+        {/* Phụ đề phim luôn hiển thị thanh thoát không che cảnh, kể cả khi thanh nút bấm đã tự ẩn! */}
+        <div className="cinema-floating-subtitle">
+          {!controlsHiddenForImmersion && (
+            <span className={`director-scene-badge kind-${currentBeat?.kind || "night"}`}>
+              {currentBeat?.tag || "🎬 CẢNH QUAY"}
+            </span>
+          )}
+          <div className="cinema-sub-title">{currentBeat?.title}</div>
+          <div className="cinema-sub-narration">{currentBeat?.narration}</div>
+        </div>
+
+        {/* Bàn điều khiển tua phim — Tự động lặn xuống đáy khi đang tập trung xem phim Full màn hình! */}
+        <section className={`recap-director-dock ${controlsHiddenForImmersion ? "hud-hidden" : ""}`}>
+          <div className="director-scrubber-row">
+            <span className="scrubber-index-pill">
+              🎬 Pha {safeBeatIdx + 1}/{storyBeats.length}
+            </span>
+            <input
+              type="range"
+              className="director-timeline-slider"
+              min={0}
+              max={Math.max(0, storyBeats.length - 1)}
+              step={1}
+              value={safeBeatIdx}
+              onChange={(e) => {
+                setIsPlaying(false);
+                setBeatIndex(Number(e.target.value));
+              }}
+              aria-label="Thanh tua phim kể chuyện 3D"
+            />
+            <span className="scrubber-time-pill">{timecodeLabel}</span>
+          </div>
+
+          <div className="director-controls-row">
+            <div className="director-chapters">
+              {chapterJumps.map((ch) => {
+                const isCurrent =
+                  (ch.key === "reveal" && currentBeat?.kind === "reveal") ||
+                  (ch.key === "mvp" && currentBeat?.kind === "mvp") ||
+                  ch.key === `day_${currentBeat?.day}`;
+                return (
+                  <button
+                    type="button"
+                    key={ch.key}
+                    className={`director-chip ${isCurrent ? "active" : ""}`}
+                    onClick={() => {
+                      setBeatIndex(ch.beatIdx);
+                      setIsPlaying(true);
+                    }}
+                  >
+                    {ch.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="director-transport">
+              <button
+                type="button"
+                className="director-btn"
+                disabled={safeBeatIdx <= 0}
+                onClick={() => {
+                  setIsPlaying(false);
+                  setBeatIndex((i) => Math.max(0, i - 1));
+                }}
+                title="Lùi 1 pha (Phím ←)"
+              >
+                ⏮
+              </button>
+              <button
+                type="button"
+                className={`director-btn play-toggle ${isPlaying ? "playing" : ""}`}
+                onClick={() => {
+                  if (!isPlaying && isAtFinale) {
+                    setBeatIndex(0);
+                    setIsPlaying(true);
+                  } else {
+                    setIsPlaying((p) => !p);
+                  }
+                }}
+              >
+                {isPlaying ? "⏸ Tạm dừng" : isAtFinale ? "↺ Xem lại từ đầu" : "▶ Tiếp tục phim"}
+              </button>
+              <button
+                type="button"
+                className="director-btn"
+                disabled={isAtFinale}
+                onClick={() => {
+                  setIsPlaying(false);
+                  setBeatIndex((i) => Math.min(storyBeats.length - 1, i + 1));
+                }}
+                title="Tiến 1 pha (Phím →)"
+              >
+                ⏭
+              </button>
+              <button
+                type="button"
+                className="director-btn"
+                onClick={cycleSpeed}
+                title="Đổi nhịp độ kể chuyện (0.75x Chậm sâu • 1x Chuẩn phim • 1.5x Nhanh)"
+              >
+                🎞️ {recapSpeed}x
+              </button>
+              <button
+                type="button"
+                className="director-btn"
+                onClick={() => {
+                  setSpeechEnabled((prev) => {
+                    if (prev) window.speechSynthesis?.cancel();
+                    return !prev;
+                  });
+                }}
+                title="Bật/tắt giọng đọc kể chuyện & âm thanh điện ảnh"
+              >
+                {speechEnabled ? "🔊 Kể chuyện" : "🔇 Tắt tiếng"}
+              </button>
+            </div>
+
+            <div className="director-drawers-and-restart">
+              <button
+                type="button"
+                className={`director-btn drawer-trigger ${drawerTab === "details" ? "active" : ""}`}
+                onClick={() => toggleDrawer("details")}
+              >
+                📜 Kịch Bản
+              </button>
+              <button
+                type="button"
+                className={`director-btn drawer-trigger ${drawerTab === "cards" ? "active" : ""}`}
+                onClick={() => toggleDrawer("cards")}
+              >
+                🃏 Thẻ Bài
+              </button>
+              <button
+                type="button"
+                className={`director-btn drawer-trigger ${drawerTab === "awards" ? "active" : ""}`}
+                onClick={() => toggleDrawer("awards")}
+              >
+                👑 MVP ({awards.length})
+              </button>
+
+              {isHost ? (
+                <button type="button" className="btn-director-restart" onClick={onRestart}>
+                  🔄 Ván Mới
+                </button>
+              ) : (
+                <span className="director-wait-host">⏳ Chờ Host...</span>
+              )}
+            </div>
+          </div>
+        </section>
+      </footer>
+
+      {/* ==================== 4. RẠP XEM LẠI VIDEO VỪA QUAY FULL-SCREEN NGAY TRONG GAME ==================== */}
+      {showVideoPlayerModal && recordedVideo && (
+        <div
+          className="cinema-video-modal-backdrop"
+          onClick={() => setShowVideoPlayerModal(false)}
+        >
+          <div className="cinema-video-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="cinema-video-modal-header">
+              <div className="cinema-video-modal-title">
+                <span>🎬 Bản Thu Video Phim Kể Chuyện</span>
+                <small>
+                  Thời lượng ~{recordedVideo.durationSec}s • Lúc {recordedVideo.createdAt} • Chuẩn HD 16:9 kèm Phụ đề
+                </small>
+              </div>
+              <div className="cinema-video-modal-actions">
+                <a
+                  href={recordedVideo.url}
+                  download={`MaSoi3D_PhimKeChuyen_${Date.now()}.${recordedVideo.ext}`}
+                  className="btn-download-story-video"
+                >
+                  ⬇️ Tải Video Về Máy (.{recordedVideo.ext})
+                </a>
+                <button
+                  type="button"
+                  className="btn-re-record-video"
+                  onClick={handleStartFullStoryVideoRecording}
+                >
+                  🔴 Quay Lại Bản Mới
+                </button>
+                <button
+                  type="button"
+                  className="btn-close-video-modal"
+                  onClick={() => setShowVideoPlayerModal(false)}
+                >
+                  ✕ Đóng
+                </button>
+              </div>
+            </div>
+
+            <div className="cinema-video-player-stage">
+              <video
+                src={recordedVideo.url}
+                controls
+                autoPlay
+                playsInline
+                className="cinema-recorded-video-el"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

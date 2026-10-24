@@ -4,6 +4,7 @@ import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 import CameraController3D from "../camera/CameraController3D.jsx";
 import GreyboxActor from "../actors/GreyboxActor.jsx";
+import StoryVfxLayer3D from "../effects/StoryVfxLayer3D.jsx";
 import VillageEnvironment3D from "../environment/VillageEnvironment3D.jsx";
 import { computeCircleRadius, getSeatTransform } from "../utils/seatLayout.js";
 import {
@@ -12,25 +13,32 @@ import {
   loadPropCalibration,
   resetPropCalibration,
   savePropCalibration,
+  subscribeConceptManifestChanges,
 } from "../config/propManifest.js";
 import {
-  preloadVillagePropsInIdle,
+  preloadActiveLayoutProps,
   subscribePropStatuses,
 } from "../props/SmartPropGLB.jsx";
 import {
+  DEFAULT_SCENE_PRESET_ID,
   EXTERIOR_ASSET_CATALOG,
   LAYOUT_SCHEMA_VERSION,
   NO_BUILD_SEAT_RADIUS,
+  buildCleanCourtyardStarterNodes,
   buildDefaultVillageNodes,
   clearVillageDraftLocal,
+  deleteScenePresetOnServer,
+  ensureDynamicConceptCatalogLoaded,
   isDevArchitectAllowed,
   isNodeViolatingSeatZone,
   loadInitialVillageLayout,
   normalizeLayoutNode,
   pushNodeOutsideSeatZone,
   round3,
+  saveScenePresetToServer,
   saveVillageDraftLocal,
   saveVillageLayoutToProjectFile,
+  triggerSyncTripoConceptsOnServer,
 } from "../editor/defaultVillageLayout.js";
 
 // Tách rời 100% mã nguồn D5 Architect Studio khỏi Bundle của người chơi trên Web Production!
@@ -109,6 +117,8 @@ export default function WerewolfScene3D({
   wolfTeammates = [],
   speakingIds = [],
   reactions = [],
+  recapStageState = null,
+  scenePresetId = null,
   standaloneArchitect = false,
   onExitStandalone = null,
   externalOpenArchitectCounter = 0,
@@ -136,10 +146,14 @@ export default function WerewolfScene3D({
   const [propStatuses, setPropStatuses] = useState({});
   const [propDiagnostics, setPropDiagnostics] = useState({});
 
-  // ================== TRẠNG THÁI D5 ARCHITECT SCENE EDITOR (CHỈ DEV MỚI KÍCH HOẠT ĐƯỢC) ==================
+  // ================== TRẠNG THÁI D5 ARCHITECT SCENE EDITOR & MULTI-SCENE PRESETS ==================
   const [architectMode, setArchitectMode] = useState(() => Boolean(standaloneArchitect && isDevSetup));
   const [studioMood, setStudioMood] = useState(() => (standaloneArchitect ? "day" : "auto")); // 'auto' | 'day' | 'dawn' | 'dusk_trial' | 'night'
   const [studioSeatCount, setStudioSeatCount] = useState(8); // 6 | 8 | 12 (ghế tham chiếu khóa cứng trong Studio)
+  const [presetsIndex, setPresetsIndex] = useState(null);
+  const [activePresetId, setActivePresetId] = useState(() => scenePresetId || null);
+  const [syncingTripoConcepts, setSyncingTripoConcepts] = useState(false);
+  const [conceptCount, setConceptCount] = useState(0);
   const [layoutNodes, setLayoutNodes] = useState(() => buildDefaultVillageNodes());
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [gizmoMode, setGizmoMode] = useState("translate"); // 'translate' | 'rotate' | 'scale'
@@ -159,6 +173,7 @@ export default function WerewolfScene3D({
   const cameraStateRef = useRef({ position: [0, 10, 18], target: [0, 1, 0] });
   const preDragSnapshotRef = useRef(null);
   const lastGizmoDragEndMsRef = useRef(0);
+  const loadedPresetIdRef = useRef(null);
 
   const flashEditorBanner = useCallback((msg) => {
     setStatusBanner(msg);
@@ -167,26 +182,60 @@ export default function WerewolfScene3D({
     }, 3200);
   }, []);
 
-  // Tải bố cục từ client/public/config/village_layout.json (hoặc bản nháp localStorage nếu Dev đang xếp dở)
+  // Tự động nạp danh mục Concept .GLB từ thư mục "MODEL CONCEPT THEM"
   useEffect(() => {
+    ensureDynamicConceptCatalogLoaded();
+    return subscribeConceptManifestChanges((items) => {
+      setConceptCount(Array.isArray(items) ? items.length : 0);
+    });
+  }, []);
+
+  // Đồng bộ theo bối cảnh Chủ Phòng chọn trong ván chơi (khi không mở chế độ Edit D5)
+  useEffect(() => {
+    if (!architectMode && scenePresetId && scenePresetId !== activePresetId) {
+      setActivePresetId(scenePresetId);
+    }
+  }, [scenePresetId, architectMode, activePresetId]);
+
+  // Tải bố cục theo Bối Cảnh Đang Mở (hoặc bản nháp localStorage riêng của từng Preset trên máy Dev)
+  useEffect(() => {
+    if (activePresetId && loadedPresetIdRef.current === activePresetId) return;
     let mounted = true;
-    loadInitialVillageLayout().then((res) => {
+    loadInitialVillageLayout(activePresetId).then((res) => {
       if (!mounted || !res?.nodes?.length) return;
+      loadedPresetIdRef.current = res.presetId;
+      setPresetsIndex(res.presetsIndex || null);
+      setActivePresetId(res.presetId);
       setLayoutNodes(res.nodes);
       setHasUnsavedDraft(Boolean(res.hasUnsavedDraft));
+      setUndoStack([]);
+      setRedoStack([]);
+      setSelectedNodeId(null);
     });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [activePresetId]);
 
+  // Lắng nghe trạng thái tải các file .GLB
   useEffect(() => {
-    preloadVillagePropsInIdle({ includeOuterTiers: true });
     return subscribePropStatuses((snapshot) => {
       setPropStatuses(snapshot?.statuses || {});
       setPropDiagnostics(snapshot?.diagnostics || {});
     });
   }, []);
+
+  // Nạp ngầm cuốn chiếu CHỈ ĐÚNG các file .GLB thực sự xuất hiện trong Bối cảnh đang mở (0 KB thừa trên Web/Mobile!)
+  useEffect(() => {
+    const activePropKeys = [];
+    layoutNodes.forEach((n) => {
+      const pk = EXTERIOR_ASSET_CATALOG[n.type]?.propKey || n.type;
+      if (pk && PROP_MANIFEST[pk] && !activePropKeys.includes(pk)) {
+        activePropKeys.push(pk);
+      }
+    });
+    preloadActiveLayoutProps(activePropKeys, { includeChair: true });
+  }, [layoutNodes, conceptCount]);
 
   // Mở nhanh D5 Studio khi bấm nút cam trên thanh HUD trong ván đấu
   useEffect(() => {
@@ -208,18 +257,23 @@ export default function WerewolfScene3D({
     [layoutNodes, selectedNodeId]
   );
 
-  // Hàm ghi lịch sử Undo + lưu nháp tức thì vào localStorage
-  const applyLayoutMutation = useCallback((updater, snapshotOverride = null) => {
-    setLayoutNodes((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      const baseSnap = snapshotOverride || prev;
-      setUndoStack((u) => [...u.slice(-(MAX_UNDO_STEPS - 1)), baseSnap]);
-      setRedoStack([]);
-      setHasUnsavedDraft(true);
-      saveVillageDraftLocal(next);
-      return next;
-    });
-  }, []);
+  const effectivePresetId = activePresetId || DEFAULT_SCENE_PRESET_ID;
+
+  // Hàm ghi lịch sử Undo + lưu nháp tức thì vào localStorage theo từng Bối cảnh
+  const applyLayoutMutation = useCallback(
+    (updater, snapshotOverride = null) => {
+      setLayoutNodes((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        const baseSnap = snapshotOverride || prev;
+        setUndoStack((u) => [...u.slice(-(MAX_UNDO_STEPS - 1)), baseSnap]);
+        setRedoStack([]);
+        setHasUnsavedDraft(true);
+        saveVillageDraftLocal(next, effectivePresetId);
+        return next;
+      });
+    },
+    [effectivePresetId]
+  );
 
   const handleBeginGizmoTransform = useCallback(() => {
     preDragSnapshotRef.current = layoutNodes;
@@ -239,7 +293,7 @@ export default function WerewolfScene3D({
         position: [...sourceNode.position],
         rotation: [...sourceNode.rotation],
         scale: [...sourceNode.scale],
-        allowCenterZone: false,
+        allowCenterZone: Boolean(sourceNode.allowCenterZone),
         deletable: true,
       });
       if (!cloneNode) return null;
@@ -278,11 +332,21 @@ export default function WerewolfScene3D({
 
   const handleDropSelectedToGround = useCallback(() => {
     if (!selectedNode) return;
+    const meta = EXTERIOR_ASSET_CATALOG[selectedNode.type];
+    const defaultY = Number.isFinite(Number(meta?.defaultSpawnY))
+      ? round3(meta.defaultSpawnY)
+      : 0;
+    const targetY =
+      defaultY !== 0 && Math.abs((selectedNode.position[1] || 0) - defaultY) < 0.02
+        ? 0
+        : defaultY;
     handleUpdateNodeFields(selectedNode.id, {
-      position: [selectedNode.position[0], 0, selectedNode.position[2]],
+      position: [selectedNode.position[0], targetY, selectedNode.position[2]],
       rotation: [0, selectedNode.rotation[1], 0],
     });
-    flashEditorBanner(`⚓ Đã hạ "${selectedNode.label}" chạm sát mặt sân y = 0!`);
+    flashEditorBanner(
+      `⚓ Đã căn cao độ "${selectedNode.label}" về Y = ${targetY}m!`
+    );
   }, [selectedNode, handleUpdateNodeFields, flashEditorBanner]);
 
   const handlePushSingleOutsideSeatZone = useCallback(
@@ -328,7 +392,7 @@ export default function WerewolfScene3D({
         round3(selectedNode.position[1]),
         round3(selectedNode.position[2] + 0.85),
       ],
-      allowCenterZone: false,
+      allowCenterZone: Boolean(selectedNode.allowCenterZone),
       deletable: true,
     });
     if (isNodeViolatingSeatZone(cloneNode)) {
@@ -352,15 +416,25 @@ export default function WerewolfScene3D({
       const meta = EXTERIOR_ASSET_CATALOG[type];
       if (!meta) return;
 
-      // Đặt vật thể mới ngay vùng tâm nhìn hiện tại của Camera (nếu rơi vào Vòng Ghế thì tự đẩy ra biên an toàn!)
-      const camTarget = cameraStateRef.current?.target || [0, 0, -10];
-      let sx = round3(camTarget[0]);
-      let sz = round3(camTarget[2]);
-      if (Math.hypot(sx, sz) < NO_BUILD_SEAT_RADIUS + 0.6) {
-        const angle = Math.atan2(sx || 0.2, sz || -1);
-        const r = Math.max(NO_BUILD_SEAT_RADIUS + 1.5, meta.defaultSpawnRadius || 12);
-        sx = round3(Math.sin(angle) * r);
-        sz = round3(Math.cos(angle) * r);
+      const spawnY = Number.isFinite(Number(meta.defaultSpawnY))
+        ? round3(meta.defaultSpawnY)
+        : 0;
+
+      // Nếu là nền sân đá / đấu trường trung tâm (allowCenterZone + defaultSpawnRadius = 0): đặt ngay chính tâm [0, spawnY, 0]!
+      let sx = 0;
+      let sz = 0;
+      let yaw = 0;
+      if (!(meta.allowCenterZone && (meta.defaultSpawnRadius === 0 || meta.isSurfaceCandidate))) {
+        const camTarget = cameraStateRef.current?.target || [0, 0, -10];
+        sx = round3(camTarget[0]);
+        sz = round3(camTarget[2]);
+        if (!meta.allowCenterZone && Math.hypot(sx, sz) < NO_BUILD_SEAT_RADIUS + 0.6) {
+          const angle = Math.atan2(sx || 0.2, sz || -1);
+          const r = Math.max(NO_BUILD_SEAT_RADIUS + 1.5, meta.defaultSpawnRadius || 12);
+          sx = round3(Math.sin(angle) * r);
+          sz = round3(Math.cos(angle) * r);
+        }
+        yaw = round3(Math.atan2(-sx, -sz));
       }
 
       const countSame = layoutNodes.filter((n) => n.type === type).length + 1;
@@ -368,16 +442,21 @@ export default function WerewolfScene3D({
         id: `${type}-${Date.now().toString(36).slice(-5)}`,
         type,
         label: `${meta.shortLabel} #${countSame}`,
-        position: [sx, 0, sz],
-        rotation: [0, round3(Math.atan2(-sx, -sz)), 0],
+        position: [sx, spawnY, sz],
+        rotation: [0, yaw, 0],
         scale: [1, 1, 1],
         seed: countSame * 1.17,
+        allowCenterZone: Boolean(meta.allowCenterZone),
       });
 
       applyLayoutMutation((prev) => [...prev, newNode]);
       setSelectedNodeId(newNode.id);
       setGizmoMode("translate");
-      flashEditorBanner(`➕ Đã đặt "${newNode.label}" ra sân!`);
+      flashEditorBanner(
+        meta.isSurfaceCandidate
+          ? `🏟️ Đã đặt "${newNode.label}" vào tâm sân [0, ${spawnY}m, 0]!`
+          : `➕ Đã đặt "${newNode.label}" ra sân!`
+      );
     },
     [layoutNodes, applyLayoutMutation, flashEditorBanner]
   );
@@ -388,13 +467,13 @@ export default function WerewolfScene3D({
       const previous = u[u.length - 1];
       setLayoutNodes((curr) => {
         setRedoStack((r) => [...r, curr]);
-        saveVillageDraftLocal(previous);
+        saveVillageDraftLocal(previous, effectivePresetId);
         return previous;
       });
       setHasUnsavedDraft(true);
       return u.slice(0, -1);
     });
-  }, []);
+  }, [effectivePresetId]);
 
   const handleRedo = useCallback(() => {
     setRedoStack((r) => {
@@ -402,30 +481,197 @@ export default function WerewolfScene3D({
       const restored = r[r.length - 1];
       setLayoutNodes((curr) => {
         setUndoStack((u) => [...u, curr]);
-        saveVillageDraftLocal(restored);
+        saveVillageDraftLocal(restored, effectivePresetId);
         return restored;
       });
       setHasUnsavedDraft(true);
       return r.slice(0, -1);
     });
-  }, []);
+  }, [effectivePresetId]);
+
+  // ================== BỘ XỬ LÝ QUẢN LÝ ĐA BỐI CẢNH (MULTI-SCENE PRESETS) ==================
+  const handleSelectPresetId = useCallback(
+    (nextId) => {
+      if (!nextId || nextId === effectivePresetId) return;
+      if (
+        hasUnsavedDraft &&
+        !window.confirm(
+          "Bối cảnh hiện tại đang có thay đổi nháp (đã lưu tạm trên trình duyệt). Chuyển sang bối cảnh khác ngay?"
+        )
+      ) {
+        return;
+      }
+      setActivePresetId(nextId);
+      flashEditorBanner(`🗺️ Đang chuyển sang bối cảnh "${nextId}"...`);
+    },
+    [effectivePresetId, hasUnsavedDraft, flashEditorBanner]
+  );
+
+  const handleCreateCleanStarterPreset = useCallback(async () => {
+    const rawName = window.prompt(
+      "Nhập tên cho Bối cảnh Sân Trống mới (chỉ giữ Sân Đá + Lửa Trại ở tâm [0,0,0]):",
+      "🏟️ Đấu Trường Đá Cổ (Tùy chỉnh)"
+    );
+    if (!rawName || !rawName.trim()) return;
+    try {
+      setSavingToServer(true);
+      const starterNodes = buildCleanCourtyardStarterNodes();
+      const res = await saveScenePresetToServer({
+        presetId: rawName.trim(),
+        name: rawName.trim(),
+        nodes: starterNodes,
+      });
+      if (res?.preset?.id) {
+        loadedPresetIdRef.current = res.preset.id;
+        setPresetsIndex(res.presetsIndex || null);
+        setActivePresetId(res.preset.id);
+        setLayoutNodes(starterNodes);
+        setHasUnsavedDraft(false);
+        setUndoStack([]);
+        setRedoStack([]);
+        setSelectedNodeId(null);
+        flashEditorBanner(
+          `✨ Đã tạo "${res.preset.name}" — Sân trống sẵn sàng để bạn thả Concept mới!`
+        );
+      }
+    } catch (err) {
+      flashEditorBanner(`⚠️ Lỗi tạo bối cảnh mới: ${err.message}`);
+    } finally {
+      setSavingToServer(false);
+    }
+  }, [flashEditorBanner]);
+
+  const handleCloneCurrentPreset = useCallback(async () => {
+    const currentMeta = presetsIndex?.presets?.find((p) => p.id === effectivePresetId);
+    const defaultCloneName = `${currentMeta?.name || "Bối cảnh"} (Bản sao)`;
+    const rawName = window.prompt("Nhập tên cho Bối cảnh nhân bản:", defaultCloneName);
+    if (!rawName || !rawName.trim()) return;
+    try {
+      setSavingToServer(true);
+      const res = await saveScenePresetToServer({
+        presetId: rawName.trim(),
+        name: rawName.trim(),
+        nodes: layoutNodes,
+      });
+      if (res?.preset?.id) {
+        loadedPresetIdRef.current = res.preset.id;
+        setPresetsIndex(res.presetsIndex || null);
+        setActivePresetId(res.preset.id);
+        setHasUnsavedDraft(false);
+        setUndoStack([]);
+        setRedoStack([]);
+        flashEditorBanner(`📋 Đã nhân bản sang bối cảnh mới "${res.preset.name}"!`);
+      }
+    } catch (err) {
+      flashEditorBanner(`⚠️ Lỗi nhân bản bối cảnh: ${err.message}`);
+    } finally {
+      setSavingToServer(false);
+    }
+  }, [presetsIndex, effectivePresetId, layoutNodes, flashEditorBanner]);
+
+  const handleRenameActivePreset = useCallback(async () => {
+    if (effectivePresetId === DEFAULT_SCENE_PRESET_ID) return;
+    const currentMeta = presetsIndex?.presets?.find((p) => p.id === effectivePresetId);
+    const rawName = window.prompt(
+      "Đổi tên hiển thị cho bối cảnh này:",
+      currentMeta?.name || effectivePresetId
+    );
+    if (!rawName || !rawName.trim()) return;
+    try {
+      setSavingToServer(true);
+      const res = await saveScenePresetToServer({
+        presetId: effectivePresetId,
+        name: rawName.trim(),
+        nodes: layoutNodes,
+      });
+      if (res?.presetsIndex) setPresetsIndex(res.presetsIndex);
+      setHasUnsavedDraft(false);
+      flashEditorBanner(`✏️ Đã đổi tên thành "${rawName.trim()}"!`);
+    } catch (err) {
+      flashEditorBanner(`⚠️ Lỗi đổi tên: ${err.message}`);
+    } finally {
+      setSavingToServer(false);
+    }
+  }, [effectivePresetId, presetsIndex, layoutNodes, flashEditorBanner]);
+
+  const handleSetDefaultPreset = useCallback(async () => {
+    try {
+      setSavingToServer(true);
+      const res = await saveScenePresetToServer({
+        presetId: effectivePresetId,
+        setAsDefault: true,
+        nodes: layoutNodes,
+      });
+      if (res?.presetsIndex) setPresetsIndex(res.presetsIndex);
+      setHasUnsavedDraft(false);
+      flashEditorBanner("⭐ Đã đặt bối cảnh này làm Mặc Định khi tạo phòng mới!");
+    } catch (err) {
+      flashEditorBanner(`⚠️ Lỗi đặt mặc định: ${err.message}`);
+    } finally {
+      setSavingToServer(false);
+    }
+  }, [effectivePresetId, layoutNodes, flashEditorBanner]);
+
+  const handleDeleteActivePreset = useCallback(async () => {
+    if (effectivePresetId === DEFAULT_SCENE_PRESET_ID) return;
+    const currentMeta = presetsIndex?.presets?.find((p) => p.id === effectivePresetId);
+    if (
+      !window.confirm(
+        `Xóa bối cảnh "${currentMeta?.name || effectivePresetId}"? (Bản sao lưu tự động vẫn được cất trong data/layout_backups/)`
+      )
+    ) {
+      return;
+    }
+    try {
+      setSavingToServer(true);
+      const res = await deleteScenePresetOnServer(effectivePresetId);
+      if (res?.presetsIndex) setPresetsIndex(res.presetsIndex);
+      setActivePresetId(DEFAULT_SCENE_PRESET_ID);
+      flashEditorBanner("🗑️ Đã xóa bối cảnh tùy chọn và quay về Bản Lề V3!");
+    } catch (err) {
+      flashEditorBanner(`⚠️ Lỗi xóa bối cảnh: ${err.message}`);
+    } finally {
+      setSavingToServer(false);
+    }
+  }, [effectivePresetId, presetsIndex, flashEditorBanner]);
+
+  const handleSyncTripoConcepts = useCallback(async () => {
+    try {
+      setSyncingTripoConcepts(true);
+      const res = await triggerSyncTripoConceptsOnServer();
+      const count = Array.isArray(res?.items) ? res.items.length : 0;
+      setConceptCount(count);
+      setReloadToken((t) => t + 1);
+      flashEditorBanner(
+        `🌟 Đã đồng bộ nóng thư mục MODEL CONCEPT THEM: ${count} model .GLB sẵn sàng!`
+      );
+    } catch (err) {
+      flashEditorBanner(`⚠️ Không quét được qua Server (${err.message})`);
+    } finally {
+      setSyncingTripoConcepts(false);
+    }
+  }, [flashEditorBanner]);
 
   const handleSaveLayoutToProject = useCallback(async () => {
     try {
       setSavingToServer(true);
-      await saveVillageLayoutToProjectFile(layoutNodes);
+      const res = await saveVillageLayoutToProjectFile(layoutNodes, effectivePresetId);
+      if (res?.presetsIndex) setPresetsIndex(res.presetsIndex);
       setHasUnsavedDraft(false);
-      flashEditorBanner("✅ Đã lưu cố định bố cục vào client/public/config/village_layout.json!");
+      flashEditorBanner(
+        `✅ Đã lưu cố định bối cảnh vào ${res?.filePath || "client/public/config/"}!`
+      );
     } catch (err) {
       flashEditorBanner(`⚠️ Chưa ghi được lên Server (${err.message}) — Đã giữ an toàn trên trình duyệt!`);
     } finally {
       setSavingToServer(false);
     }
-  }, [layoutNodes, flashEditorBanner]);
+  }, [layoutNodes, effectivePresetId, flashEditorBanner]);
 
   const handleExportLayoutJson = useCallback(() => {
     const doc = {
       schemaVersion: LAYOUT_SCHEMA_VERSION,
+      presetId: effectivePresetId,
       updatedAtMs: Date.now(),
       updatedAtIso: new Date().toISOString(),
       nodes: layoutNodes,
@@ -434,11 +680,14 @@ export default function WerewolfScene3D({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "village_layout.json";
+    a.download =
+      effectivePresetId === DEFAULT_SCENE_PRESET_ID
+        ? "village_layout.json"
+        : `${effectivePresetId}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    flashEditorBanner("📤 Đã xuất file village_layout.json về máy!");
-  }, [layoutNodes, flashEditorBanner]);
+    flashEditorBanner(`📤 Đã xuất file ${a.download} về máy!`);
+  }, [layoutNodes, effectivePresetId, flashEditorBanner]);
 
   const handleImportLayoutJson = useCallback(
     async (file) => {
@@ -460,13 +709,21 @@ export default function WerewolfScene3D({
   );
 
   const handleResetDefaultLayout = useCallback(() => {
-    if (!window.confirm("Khôi phục toàn bộ cảnh quan về bố cục mặc định ban đầu?")) return;
-    const defaults = buildDefaultVillageNodes();
+    const isCustom = effectivePresetId !== DEFAULT_SCENE_PRESET_ID;
+    const msg = isCustom
+      ? "Đưa bối cảnh tùy chọn này về lại Sân Trống Chuẩn (Sân Đá + Lửa Trại ở tâm)?"
+      : "Khôi phục toàn bộ cảnh quan về bố cục Làng Bắc Âu mặc định ban đầu?";
+    if (!window.confirm(msg)) return;
+    const defaults = isCustom ? buildCleanCourtyardStarterNodes() : buildDefaultVillageNodes();
     applyLayoutMutation(defaults);
-    clearVillageDraftLocal();
+    clearVillageDraftLocal(effectivePresetId);
     setSelectedNodeId(null);
-    flashEditorBanner("↺ Đã khôi phục về bố cục mặc định (Bấm '💾 Lưu Cố Định' nếu muốn ghi đè file)!");
-  }, [applyLayoutMutation, flashEditorBanner]);
+    flashEditorBanner(
+      isCustom
+        ? "↺ Đã dọn về Sân Trống Chuẩn (Bấm '💾 Lưu Bối Cảnh' nếu muốn ghi cố định)!"
+        : "↺ Đã khôi phục về bố cục mặc định (Bấm '💾 Lưu Bối Cảnh' nếu muốn ghi cố định)!"
+    );
+  }, [effectivePresetId, applyLayoutMutation, flashEditorBanner]);
 
   // ================== CĂN CHỈNH MẪU GỐC .GLB (PROP TUNER CŨ) ==================
   const updateSinglePropCalib = (propKey, patch) => {
@@ -523,7 +780,7 @@ export default function WerewolfScene3D({
   const numPlayers = orderedPlayers.length || 6;
   const circleRadius = useMemo(() => computeCircleRadius(numPlayers), [numPlayers]);
 
-  // Chế độ xem thử ánh sáng 4 buổi trong D5 Studio (không ảnh hưởng tới logic ván đấu thật)
+  // Chế độ xem thử ánh sáng 4 buổi trong D5 Studio + Tự đổi bầu trời Đêm/Ngày theo nhịp phim Story 2A!
   const effectiveEnvironmentMood = useMemo(() => {
     if (architectMode && studioMood && studioMood !== "auto") {
       if (studioMood === "day") return { isNight: false, phase: "day_discuss", hasWinner: false };
@@ -531,12 +788,23 @@ export default function WerewolfScene3D({
       if (studioMood === "dusk_trial") return { isNight: false, phase: "day_final_vote", hasWinner: false };
       if (studioMood === "night") return { isNight: true, phase: "night_wolf", hasWinner: false };
     }
+    if (!architectMode && hasWinner && recapStageState?.mood) {
+      if (recapStageState.mood === "night") {
+        return { isNight: true, phase: "night_wolf", hasWinner: true };
+      }
+      if (recapStageState.mood === "dusk_trial") {
+        return { isNight: false, phase: "day_final_vote", hasWinner: true };
+      }
+      if (recapStageState.mood === "dawn") {
+        return { isNight: false, phase: "day_reveal", hasWinner: true };
+      }
+    }
     return {
       isNight: Boolean(isNight),
       phase: phase || "day_discuss",
       hasWinner: Boolean(hasWinner),
     };
-  }, [architectMode, studioMood, isNight, phase, hasWinner]);
+  }, [architectMode, studioMood, hasWinner, recapStageState?.mood, isNight, phase]);
 
   const seatMap = useMemo(() => {
     const map = {};
@@ -549,11 +817,14 @@ export default function WerewolfScene3D({
   const mySeatTransform = (me && seatMap[me.id]) || getSeatTransform(0, numPlayers, circleRadius);
 
   const lookTargetWorld = useMemo(() => {
+    if (hasWinner && recapStageState?.lookAtSeatId && seatMap[recapStageState.lookAtSeatId]) {
+      return seatMap[recapStageState.lookAtSeatId];
+    }
     if (defendantId && seatMap[defendantId]) return seatMap[defendantId];
     const activeSpeakerId = speakingIds?.[0];
     if (activeSpeakerId && seatMap[activeSpeakerId]) return seatMap[activeSpeakerId];
     return null;
-  }, [defendantId, speakingIds, seatMap]);
+  }, [hasWinner, recapStageState?.lookAtSeatId, defendantId, speakingIds, seatMap]);
 
   const loadedGlbCount = PROP_KEYS.filter((k) => propStatuses[k] === "loaded").length;
 
@@ -569,8 +840,8 @@ export default function WerewolfScene3D({
         overflow: "hidden",
       }}
     >
-      {/* ==================== THANH ĐIỀU KHIỂN GÓC TRÁI (CHỈ HIỆN NÚT DEV KHI isDevSetup = true!) ==================== */}
-      {!architectMode && (
+      {/* ==================== THANH ĐIỀU KHIỂN GÓC TRÁI (CHỈ HIỆN NÚT DEV KHI isDevSetup = true, ẨN KHI PHÁT BĂNG GHI HÌNH REPLAY!) ==================== */}
+      {!architectMode && !hasWinner && (
         <div
           style={{
             position: "absolute",
@@ -753,6 +1024,17 @@ export default function WerewolfScene3D({
             totalGlbCount={PROP_KEYS.length}
             showPropTuner={showPropTuner}
             onTogglePropTuner={() => setShowPropTuner((v) => !v)}
+            presetsIndex={presetsIndex}
+            activePresetId={effectivePresetId}
+            onSelectPresetId={handleSelectPresetId}
+            onCreateCleanStarterPreset={handleCreateCleanStarterPreset}
+            onCloneCurrentPreset={handleCloneCurrentPreset}
+            onRenameActivePreset={handleRenameActivePreset}
+            onSetDefaultPreset={handleSetDefaultPreset}
+            onDeleteActivePreset={handleDeleteActivePreset}
+            syncingTripoConcepts={syncingTripoConcepts}
+            onSyncTripoConcepts={handleSyncTripoConcepts}
+            conceptCount={conceptCount}
             onSelectNodeId={setSelectedNodeId}
             onUpdateNodeFields={handleUpdateNodeFields}
             onDropToGround={handleDropSelectedToGround}
@@ -781,16 +1063,16 @@ export default function WerewolfScene3D({
         </Suspense>
       )}
 
-      {/* ==================== HỘP QUẢN LÝ 12 FILE .GLB TRIPO PRO (CHỈ DEV — MỞ ĐƯỢC CẢ TRONG D5 STUDIO!) ==================== */}
+      {/* ==================== HỘP QUẢN LÝ FILE .GLB TRIPO PRO + KHO CONCEPT (CHỈ DEV — MỞ ĐƯỢC CẢ TRONG D5 STUDIO!) ==================== */}
       {isDevSetup && showPropTuner && (
         <div
           style={{
             position: "absolute",
-            top: architectMode ? "94px" : "46px",
+            top: architectMode ? "128px" : "46px",
             left: "10px",
             zIndex: 28,
             width: "min(365px, calc(100vw - 24px))",
-            maxHeight: architectMode ? "calc(100% - 144px)" : "calc(100% - 108px)",
+            maxHeight: architectMode ? "calc(100% - 178px)" : "calc(100% - 108px)",
             overflowY: "auto",
             background: "rgba(9, 14, 28, 0.92)",
             border: "1px solid rgba(148, 163, 184, 0.28)",
@@ -805,12 +1087,13 @@ export default function WerewolfScene3D({
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", gap: "6px" }}>
             <strong style={{ fontSize: "12px", color: "#f8fafc" }}>
-              🏰 Kho 12 Đạo Cụ Tripo Pro (.GLB)
+              🏰 Kho {PROP_KEYS.length} Đạo Cụ Tripo (.GLB)
             </strong>
             <div style={{ display: "flex", gap: "4px" }}>
               <button
                 type="button"
-                onClick={() => setReloadToken((t) => t + 1)}
+                disabled={syncingTripoConcepts}
+                onClick={handleSyncTripoConcepts}
                 style={{
                   width: "auto",
                   margin: 0,
@@ -818,13 +1101,13 @@ export default function WerewolfScene3D({
                   borderRadius: "6px",
                   fontSize: "10.5px",
                   fontWeight: 700,
-                  background: "rgba(16, 185, 129, 0.22)",
-                  color: "#6ee7b7",
-                  border: "1px solid rgba(16, 185, 129, 0.45)",
+                  background: "rgba(168, 85, 247, 0.24)",
+                  color: "#e9d5ff",
+                  border: "1px solid rgba(192, 132, 252, 0.45)",
                   cursor: "pointer",
                 }}
               >
-                🔄 Quét lại .GLB
+                {syncingTripoConcepts ? "⏳..." : "🔄 Quét Concept"}
               </button>
               <button
                 type="button"
@@ -864,17 +1147,19 @@ export default function WerewolfScene3D({
           </div>
 
           <div style={{ fontSize: "10.5px", color: "#94a3b8", marginBottom: "8px", lineHeight: 1.35 }}>
-            Bảng này căn tâm gốc cho từng chủng loại <code>.GLB</code> (gồm cả ghế). Để kéo thả từng căn nhà / gốc cây bằng 3 mũi tên, hãy bấm nút cam <b>🏗️ Dựng Cảnh D5</b>!
+            Bảng này căn tâm gốc cho từng chủng loại <code>.GLB</code> (gồm cả ghế &amp; Concept mới). Để kéo thả từng vật thể bằng 3 mũi tên, hãy bấm nút cam <b>🏗️ Dựng Cảnh D5</b>!
           </div>
 
           {[
+            { batchId: 3, title: `🌟 Đợt 3 — Kho Concept Tùy Chọn (${conceptCount} món)` },
             { batchId: 1, title: "📦 Đợt 1 — Trung Tâm & Kiến Trúc (6 món)" },
             { batchId: 2, title: "🌲 Đợt 2 — Sân Đá, Rừng Ngẫu Nhiên & Tiểu Cảnh (6 món)" },
           ].map(({ batchId, title }) => {
             const batchKeys = PROP_KEYS.filter((k) => (PROP_MANIFEST[k]?.batch || 1) === batchId);
+            if (batchId === 3 && batchKeys.length === 0) return null;
             const batchLoaded = batchKeys.filter((k) => propStatuses[k] === "loaded").length;
             return (
-              <div key={batchId} style={{ marginBottom: batchId === 1 ? "10px" : "2px" }}>
+              <div key={batchId} style={{ marginBottom: "10px" }}>
                 <div
                   style={{
                     display: "flex",
@@ -1078,6 +1363,7 @@ export default function WerewolfScene3D({
         dpr={architectMode ? [1, 1.5] : adaptiveDpr}
         gl={{
           antialias: !isLowPowerDevice,
+          preserveDrawingBuffer: true,
           powerPreference: "high-performance",
           toneMapping: THREE.ACESFilmicToneMapping,
           toneMappingExposure: 1.12,
@@ -1102,7 +1388,7 @@ export default function WerewolfScene3D({
           propStatuses={propStatuses}
           reloadToken={reloadToken}
           layoutNodes={layoutNodes}
-          frustumCullingEnabled={frustumCullingEnabled}
+          frustumCullingEnabled={frustumCullingEnabled && !hasWinner}
           architectMode={architectMode}
           isLowPowerDevice={isLowPowerDevice}
           isGizmoDragging={isGizmoDragging}
@@ -1151,7 +1437,7 @@ export default function WerewolfScene3D({
           </Suspense>
         )}
 
-        {/* Điều khiển Camera Kép (Gameplay cho Người chơi vs Bay WASD/Orbit cho Dev D5) */}
+        {/* Điều khiển Camera Kép (Gameplay + Đạo diễn Replay Không Gian Thật + Bay WASD/Orbit cho Dev D5) */}
         <CameraController3D
           cameraMode={cameraMode}
           mySeatTransform={mySeatTransform}
@@ -1161,7 +1447,19 @@ export default function WerewolfScene3D({
           isGizmoDragging={isGizmoDragging}
           focusRequest={focusRequest}
           cameraStateRef={cameraStateRef}
+          recapShot={hasWinner ? recapStageState?.cameraShot || null : null}
+          onRecapManualOrbit={recapStageState?.onManualOrbit || null}
+          seatMap={seatMap}
         />
+
+        {/* Tầng Hiệu Ứng Kể Chuyện Điện Ảnh 3D (Đường đạn Móng Vuốt, Bình Độc, Khiên Bảo Vệ, Tia Phiếu, Spotlight MVP) */}
+        {hasWinner && !architectMode && (
+          <StoryVfxLayer3D
+            activeCue={recapStageState?.vfxCue || null}
+            seatMap={seatMap}
+            circleRadius={circleRadius}
+          />
+        )}
 
         {/* Vòng Ghế Gỗ Sồi & Nhân Vật (Bị khóa cứng tương tác chuột 100% khi bật D5 Mode!) */}
         {orderedPlayers.map((p) => {
@@ -1220,6 +1518,7 @@ export default function WerewolfScene3D({
               chairCalib={propCalib?.prop_chair}
               reloadToken={reloadToken}
               architectMode={architectMode}
+              recapActorState={hasWinner ? recapStageState?.actorStates?.[p.id] || null : null}
               onSelect={onSelectPlayer}
             />
           );

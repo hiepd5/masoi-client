@@ -166,9 +166,10 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
 
   // Trên Web Production: Bỏ hoàn toàn bước chặn RTT props_sync_state.json để dùng thẳng CDN Cache 1 năm (immutable)!
   const shouldCheckDevSync = Boolean(import.meta.env?.DEV || reloadToken > 0);
-  const syncState = shouldCheckDevSync ? await fetchPropsSyncState(reloadToken) : null;
+  const syncState =
+    shouldCheckDevSync && manifest.batch !== 3 ? await fetchPropsSyncState(reloadToken) : null;
   const syncItem = syncState?.items?.[propKey] || null;
-  const mtimeTag = syncItem?.mtimeMs || 0;
+  const mtimeTag = syncItem?.mtimeMs || manifest.mtimeMs || 0;
 
   const versionTag = shouldCheckDevSync
     ? `${ASSET_SYNC_VERSION}_${mtimeTag}_${reloadToken}`
@@ -265,12 +266,22 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
       box.getCenter(center);
 
       // Tiêm GPU Shader Điện Ảnh (Gió Rừng 2 Chiều Y×XZ + Cửa Sổ/Đèn Lồng Tự Phát Sáng + Sân Đá Ẩm Ánh Lửa) 1 lần duy nhất!
-      enhancePropMaterialsForCinema(root, propKey, box, size, center);
+      enhancePropMaterialsForCinema(root, propKey, box, size, center, manifest.shaderProfile || null);
 
       let autoYawRad = 0;
       let effectiveTargetHeight = manifest.targetHeight;
-      const sizeMB = syncItem?.sizeMB ?? Number((buffer.byteLength / (1024 * 1024)).toFixed(2));
-      const sourceName = syncItem?.sourceName || manifest.fileName;
+      const sizeMB =
+        syncItem?.sizeMB ??
+        (manifest.sizeMB > 0
+          ? manifest.sizeMB
+          : Number((buffer.byteLength / (1024 * 1024)).toFixed(2)));
+      const sourceName = syncItem?.sourceName || manifest.sourceName || manifest.fileName;
+      const normFactor = (manifest.targetHeight || 1) / Math.max(0.01, size.y);
+      const resolvedSize = [
+        Number((Math.max(0.01, size.x) * normFactor).toFixed(2)),
+        Number((Math.max(0.01, size.y) * normFactor).toFixed(2)),
+        Number((Math.max(0.01, size.z) * normFactor).toFixed(2)),
+      ];
 
       if (manifest.autoAlignChair) {
         const chairCal = analyzeChairGeometry(root, box, size, center, manifest);
@@ -279,6 +290,7 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
         propDiagnosticsMap[propKey] = {
           autoYawDeg: chairCal.autoYawDeg,
           resolvedHeight: chairCal.effectiveTargetHeight,
+          resolvedSize,
           seatMatched: chairCal.seatMatched,
           sourceName,
           sizeMB,
@@ -287,6 +299,7 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
         propDiagnosticsMap[propKey] = {
           autoYawDeg: 0,
           resolvedHeight: manifest.targetHeight,
+          resolvedSize,
           seatMatched: false,
           sourceName,
           sizeMB,
@@ -319,15 +332,58 @@ async function probeAndParseProp(propKey, reloadToken = 0) {
   return task;
 }
 
+const idlePreloadQueue = [];
 let activeIdlePreloadRunning = false;
 
-/**
- * Nạp ngầm cuốn chiếu 3 đợt (Staggered Idle Preload) để người chơi vào phòng không bị khựng khung hình:
- * - Ở sảnh Lobby: gọi với includeOuterTiers = false (chỉ nạp trước 4 mẫu lõi: Ghế, Bếp lửa, Sân đá, Đài treo cổ).
- * - Khi vào Phòng 3D: gọi với includeOuterTiers = true (nạp nốt Nhà cổ, Tháp chuông & Rừng thông cách nhịp 110ms).
- */
-export function preloadVillagePropsInIdle({ includeOuterTiers = false } = {}) {
+function scheduleIdlePreloadKeys(keys = []) {
   if (typeof window === "undefined") return;
+  keys.forEach((k) => {
+    if (k && PROP_MANIFEST[k] && !propStatusMap[k] && !idlePreloadQueue.includes(k)) {
+      idlePreloadQueue.push(k);
+    }
+  });
+  if (idlePreloadQueue.length === 0 || activeIdlePreloadRunning) return;
+
+  activeIdlePreloadRunning = true;
+  const runIdle =
+    window.requestIdleCallback ||
+    ((cb) => window.setTimeout(() => cb({ timeRemaining: () => 12 }), 90));
+
+  const stepNext = () => {
+    if (idlePreloadQueue.length === 0) {
+      activeIdlePreloadRunning = false;
+      return;
+    }
+    const nextKey = idlePreloadQueue.shift();
+    if (!nextKey || propStatusMap[nextKey]) {
+      stepNext();
+      return;
+    }
+    runIdle(() => {
+      probeAndParseProp(nextKey, 0).finally(() => {
+        window.setTimeout(stepNext, 95);
+      });
+    });
+  };
+
+  stepNext();
+}
+
+/**
+ * Nạp ngầm cuốn chiếu theo đúng Bối Cảnh Đang Mở (Zero-Waste On-Demand Preload):
+ * - Người chơi trên Web/Mobile CHỈ tải đúng những file .GLB thực sự xuất hiện trong nodes[] của bối cảnh đó!
+ * - Các model nằm trong kho "MODEL CONCEPT THEM" nhưng không đặt ra sân tốn 0 KB băng thông người chơi!
+ */
+export function preloadActiveLayoutProps(activePropKeys = [], { includeChair = true } = {}) {
+  const ordered = [];
+  if (includeChair) ordered.push("prop_chair");
+  (activePropKeys || []).forEach((k) => {
+    if (k && !ordered.includes(k)) ordered.push(k);
+  });
+  scheduleIdlePreloadKeys(ordered);
+}
+
+export function preloadVillagePropsInIdle({ includeOuterTiers = false } = {}) {
   const keys = includeOuterTiers
     ? [
         ...PRELOAD_TIERS.TIER_1_CORE,
@@ -335,30 +391,7 @@ export function preloadVillagePropsInIdle({ includeOuterTiers = false } = {}) {
         ...PRELOAD_TIERS.TIER_3_FOREST,
       ]
     : [...PRELOAD_TIERS.TIER_1_CORE];
-
-  const pending = keys.filter((k) => !propStatusMap[k]);
-  if (pending.length === 0 || activeIdlePreloadRunning) return;
-
-  activeIdlePreloadRunning = true;
-  const runIdle =
-    window.requestIdleCallback ||
-    ((cb) => window.setTimeout(() => cb({ timeRemaining: () => 12 }), 90));
-
-  let idx = 0;
-  const stepNext = () => {
-    if (idx >= pending.length) {
-      activeIdlePreloadRunning = false;
-      return;
-    }
-    const nextKey = pending[idx++];
-    runIdle(() => {
-      probeAndParseProp(nextKey, 0).finally(() => {
-        window.setTimeout(stepNext, 110);
-      });
-    });
-  };
-
-  stepNext();
+  scheduleIdlePreloadKeys(keys);
 }
 
 const NOOP_RAYCAST = () => {};

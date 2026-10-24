@@ -285,17 +285,32 @@ export function createVolumetricFireMaterial({ phaseOffset = 0, opacityScale = 1
  * 3. TIÊM SHADER GIÓ RỪNG 2 CHIỀU (Y × XZ) + CỬA SỔ/ĐÈN LỒNG TỰ PHÁT SÁNG + SÂN ĐÁ ẨM ÁNH LỬA VÀO .GLB TRIPO!
  * - Chạy 1 lần duy nhất lúc parse .GLB -> Chia sẻ chung Program/Material cho hàng chục cây/nhà -> 0ms CPU overhead!
  */
-export function enhancePropMaterialsForCinema(root, propKey, rawBox, rawSize, rawCenter) {
-  const isPineTree = propKey === "tree_pine_tall" || propKey === "tree_pine_wide";
-  const isDeadTree = propKey === "tree_dead_gnarled";
+export function enhancePropMaterialsForCinema(
+  root,
+  propKey,
+  rawBox,
+  rawSize,
+  rawCenter,
+  shaderProfile = null
+) {
+  const isPineTree =
+    propKey === "tree_pine_tall" ||
+    propKey === "tree_pine_wide" ||
+    shaderProfile === "pine_wind";
+  const isDeadTree =
+    propKey === "tree_dead_gnarled" || shaderProfile === "dead_wind";
   const isTree = isPineTree || isDeadTree;
-  const isLantern = propKey === "prop_lantern";
+  const isLantern =
+    propKey === "prop_lantern" || shaderProfile === "lantern_glow";
   const isWarmBuilding =
     propKey === "house_cottage_a" ||
     propKey === "house_cottage_b" ||
-    propKey === "landmark_belltower";
-  const isCampfire = propKey === "prop_campfire";
-  const isCobblestonePlaza = propKey === "plaza_cobblestone";
+    propKey === "landmark_belltower" ||
+    shaderProfile === "warm_building";
+  const isCampfire =
+    propKey === "prop_campfire" || shaderProfile === "campfire";
+  const isCobblestonePlaza =
+    propKey === "plaza_cobblestone" || shaderProfile === "cobble_plaza";
 
   if (!isTree && !isLantern && !isWarmBuilding && !isCampfire && !isCobblestonePlaza) {
     return;

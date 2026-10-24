@@ -1097,7 +1097,8 @@ function EditableExteriorNode({
   const meta = EXTERIOR_ASSET_CATALOG[node.type];
   if (!meta) return null;
 
-  const canClickIn3D = Boolean(architectMode && meta.clickableIn3D !== false);
+  const isLockedSurface = Boolean(node.lockClick);
+  const canClickIn3D = Boolean(architectMode && meta.clickableIn3D !== false && !isLockedSurface);
 
   return (
     <group
@@ -1304,6 +1305,7 @@ function EditableExteriorNode({
             propKey={node.type}
             calib={propCalib?.[node.type]}
             reloadToken={reloadToken}
+            disableRaycast={Boolean(architectMode && isLockedSurface)}
             fallback={
               node.type === "tree_dead_gnarled" ? (
                 <StylizedGnarledDeadTreeFallback seed={node.seed || 0} />
@@ -1315,6 +1317,41 @@ function EditableExteriorNode({
               )
             }
           />
+        </group>
+      )}
+
+      {/* BỘ RENDER ĐỘNG TỔNG QUÁT CHO MỌI MODEL TRONG "MODEL CONCEPT THEM" (ĐỢT 3) */}
+      {meta.isConcept && meta.propKey && (
+        <group>
+          {meta.aoRadius > 0 && !meta.isSurfaceCandidate && (node.position?.[1] ?? 0) > -0.25 && (
+            <ContactShadowDisc
+              radius={meta.aoRadius}
+              scaleXZ={meta.aoScaleXZ || [1, 1]}
+              opacity={meta.aoOpacity ?? 0.6}
+            />
+          )}
+          <SmartPropGLB
+            propKey={meta.propKey}
+            calib={propCalib?.[meta.propKey]}
+            reloadToken={reloadToken}
+            disableRaycast={Boolean(architectMode && isLockedSurface)}
+          />
+          {windowGlow && meta.shaderProfile === "lantern_glow" && (
+            <sprite
+              raycast={NOOP_RAYCAST}
+              position={[0, Math.max(1.2, (meta.centerHeight || 1.4) * 1.45), 0]}
+              scale={[1.6, 1.6, 1]}
+            >
+              <spriteMaterial
+                map={getSoftGlowHaloTexture()}
+                color="#fbbf24"
+                transparent
+                opacity={isNightActive ? 0.58 : 0.4}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
+          )}
         </group>
       )}
     </group>
@@ -1401,7 +1438,13 @@ function DynamicOctantCulledSceneGraph({
     const buckets = Array.from({ length: 8 }, () => []);
 
     (layoutNodes || []).forEach((node) => {
-      if (node.type === "plaza_cobblestone" || node.type === "prop_campfire") {
+      const distXZ = Math.hypot(node.position?.[0] || 0, node.position?.[2] || 0);
+      if (
+        node.type === "plaza_cobblestone" ||
+        node.type === "prop_campfire" ||
+        node.allowCenterZone ||
+        distXZ < 5.5
+      ) {
         center.push(node);
       } else {
         const sIdx = getOctantSectorIndex(node.position[0] || 0, node.position[2] || 0);

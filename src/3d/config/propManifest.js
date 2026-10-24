@@ -4,7 +4,7 @@
  * - Đợt 2 (6 món mở rộng): Sân đá cổ ngữ, Thông cao, Thông tán rộng, Cây khô vặn xoắn, Cột đèn lồng, Hàng rào đá rêu.
  */
 
-export const ASSET_SYNC_VERSION = 8;
+export const ASSET_SYNC_VERSION = 10;
 export const SKY_ENABLED = false;
 
 export const PROP_MANIFEST = {
@@ -168,6 +168,107 @@ export const PROP_MANIFEST = {
 };
 
 export const PROP_KEYS = Object.keys(PROP_MANIFEST);
+
+let conceptsManifestPromise = null;
+const conceptRegistryListeners = new Set();
+
+export function subscribeConceptManifestChanges(listener) {
+  conceptRegistryListeners.add(listener);
+  return () => conceptRegistryListeners.delete(listener);
+}
+
+/**
+ * Hợp nhất động toàn bộ file .GLB từ thư mục "MODEL CONCEPT THEM" (concepts_manifest.json)
+ * vào PROP_MANIFEST (Đợt 3 — batch: 3) mà không chạm tới 12 model gốc Đợt 1 & Đợt 2!
+ */
+export function registerDynamicConceptProps(conceptsDoc) {
+  const items = Array.isArray(conceptsDoc?.items) ? conceptsDoc.items : [];
+  const activeConceptKeys = new Set();
+
+  items.forEach((it) => {
+    if (!it?.propKey || !it?.url) return;
+    const key = String(it.propKey);
+    // Bảo vệ 100% 12 khe gốc Đợt 1 & Đợt 2
+    if (PROP_MANIFEST[key] && PROP_MANIFEST[key].batch !== 3) return;
+
+    activeConceptKeys.add(key);
+    PROP_MANIFEST[key] = {
+      id: key,
+      batch: 3,
+      isConcept: true,
+      label: it.label || `🧩 ${key}`,
+      shortLabel: it.shortLabel || key,
+      fileName: it.fileName || `${key}.glb`,
+      sourceName: it.sourceName || it.fileName || `${key}.glb`,
+      url: it.url,
+      category: it.category || "props",
+      shaderProfile: it.shaderProfile || "standard",
+      targetHeight: Number(it.targetHeight) > 0 ? Number(it.targetHeight) : 2.0,
+      rawSize: Array.isArray(it.rawSize) ? it.rawSize : [1, 1, 1],
+      hitBoxSize: Array.isArray(it.hitBoxSize) ? it.hitBoxSize : [2, 2, 2],
+      centerHeight: Number(it.centerHeight) > 0 ? Number(it.centerHeight) : 1.0,
+      aoRadius: Number.isFinite(Number(it.aoRadius)) ? Number(it.aoRadius) : 1.0,
+      aoOpacity: Number.isFinite(Number(it.aoOpacity)) ? Number(it.aoOpacity) : 0.6,
+      allowCenterZone: Boolean(it.allowCenterZone),
+      isSurfaceCandidate: Boolean(it.isSurfaceCandidate),
+      defaultSpawnRadius: Number.isFinite(Number(it.defaultSpawnRadius)) ? Number(it.defaultSpawnRadius) : 11.5,
+      defaultSpawnY: Number.isFinite(Number(it.defaultSpawnY)) ? Number(it.defaultSpawnY) : 0,
+      sizeMB: Number(it.sizeMB || 0),
+      mtimeMs: Number(it.mtimeMs || 0),
+      defaultYawDeg: 0,
+      defaultScale: 1.0,
+      defaultYOffset: 0.0,
+      defaultZOffset: 0.0,
+    };
+    if (!PROP_KEYS.includes(key)) {
+      PROP_KEYS.push(key);
+    }
+  });
+
+  // Dọn các key batch=3 cũ nếu người dùng đã xóa file khỏi "MODEL CONCEPT THEM"
+  for (let i = PROP_KEYS.length - 1; i >= 0; i--) {
+    const k = PROP_KEYS[i];
+    if (PROP_MANIFEST[k]?.batch === 3 && !activeConceptKeys.has(k)) {
+      delete PROP_MANIFEST[k];
+      PROP_KEYS.splice(i, 1);
+    }
+  }
+
+  conceptRegistryListeners.forEach((fn) => {
+    try {
+      fn(items);
+    } catch {
+      // ignore
+    }
+  });
+
+  return items;
+}
+
+export async function fetchAndRegisterConceptProps({ bustCache = false } = {}) {
+  if (!bustCache && conceptsManifestPromise) {
+    return conceptsManifestPromise;
+  }
+  const query = bustCache ? `?t=${Date.now()}` : `?v=${ASSET_SYNC_VERSION}`;
+  const req = fetch(`/models/props/concepts_manifest.json${query}`, {
+    cache: bustCache ? "no-store" : "default",
+  })
+    .then(async (res) => {
+      if (!res.ok) return [];
+      const ctype = (res.headers.get("content-type") || "").toLowerCase();
+      if (!ctype.includes("json")) return [];
+      const doc = await res.json();
+      return registerDynamicConceptProps(doc);
+    })
+    .catch(() => []);
+
+  if (!bustCache) {
+    conceptsManifestPromise = req;
+  } else {
+    conceptsManifestPromise = req;
+  }
+  return req;
+}
 
 // Phân luồng 3 đợt nạp ngầm cuốn chiếu (Idle Staggered Preload) giúp vào phòng mượt 60 FPS không khựng GPU
 export const PRELOAD_TIERS = {

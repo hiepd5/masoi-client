@@ -61,6 +61,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [openArchitectCounter, setOpenArchitectCounter] = useState(0);
   const canOpenArchitect = isDevArchitectAllowed();
   const [recapAnimation, setRecapAnimation] = useState(null);
+  const [recapStageState, setRecapStageState] = useState(null);
   const [speakingIds, setSpeakingIds] = useState([]);
   // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -75,6 +76,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [actionFeedback, setActionFeedback] = useState("");
   // Dead player overlay
   const [showDeadOverlay, setShowDeadOverlay] = useState(false);
+  const [showPostGameChat, setShowPostGameChat] = useState(false);
   const prevAliveRef = useRef(true);
   // Mobile tab navigation
   const [mobileTab, setMobileTab] = useState('game');
@@ -132,14 +134,24 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     }
   }, [g.seerLastResult?.targetId]);
 
-  // Dead overlay: hiện 1 lần khi người chơi vừa chết
+  // Dead overlay: hiện 1 lần khi người chơi vừa chết (chỉ khi ván chưa kết thúc!)
   useEffect(() => {
     const isAliveNow = me?.alive !== false;
-    if (prevAliveRef.current === true && !isAliveNow) {
+    if (prevAliveRef.current === true && !isAliveNow && !g.winner) {
       setShowDeadOverlay(true);
     }
     prevAliveRef.current = isAliveNow ?? true;
-  }, [me?.alive]);
+  }, [me?.alive, g.winner]);
+
+  // Ngay khi Kết Game (g.winner): tự động dẹp sạch mọi popup che khuất để mở Rạp Chiếu Replay Không Gian Thật 100vw!
+  useEffect(() => {
+    if (g.winner) {
+      setShowDeadOverlay(false);
+      setTutorialStep(0);
+    } else {
+      setShowPostGameChat(false);
+    }
+  }, [g.winner]);
 
 
   // Smart scroll + unread tracking
@@ -470,7 +482,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const roleBgClass = isNight && me?.role ? `role-bg-${me.role}` : "";
 
   return (
-    <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass}`}>
+    <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass} ${g.winner && viewMode === '3d' ? 'replay-cinema-active' : ''}`}>
       <AmbientSound
         isNight={isNight}
         isTense={g.nightDayPhase === 'day_final_vote'}
@@ -589,9 +601,9 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </button>
       </div>
 
-      {/* Main 2-column layout */}
+      {/* Main 2-column layout (tự mở Full-Screen 100vw Không Gian 3D Thật khi g.winner & !showPostGameChat) */}
       <div
-        className="game-layout"
+        className={`game-layout ${g.winner && viewMode === "3d" && !showPostGameChat ? "replay-fullscreen-mode" : ""}`}
         onTouchStart={e => { touchStartXRef.current = e.touches[0].clientX; }}
         onTouchEnd={e => {
           if (!touchStartXRef.current) return;
@@ -644,6 +656,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     wolfTeammates={g.wolfTeammates || []}
                     speakingIds={speakingIds}
                     reactions={reactions}
+                    recapStageState={recapStageState}
+                    scenePresetId={room.scenePresetId}
                     externalOpenArchitectCounter={openArchitectCounter}
                   />
                 </Suspense>
@@ -1069,21 +1083,27 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       </div>
 
 
-      {/* EndGame overlay stays full width */}
+      {/* EndGame Replay Không Gian Thật 100vw: Phát lại băng ghi hình tương tác thật bằng 8 Nhân vật thật + Khung Ngắm Máy Quay */}
       {g.winner && g.history && (
         <EndGameRecap 
           history={g.history} 
+          replayTimeline={g.replayTimeline || []}
           awards={g.awards || []}
           isHost={me?.isHost} 
           onRestart={() => socketRef.current.emit("room:restart")}
           onAnimate={setRecapAnimation}
+          onStageChange={setRecapStageState}
+          viewMode={viewMode}
+          onToggleViewMode={toggleViewMode}
+          showPostGameChat={showPostGameChat}
+          onTogglePostGameChat={() => setShowPostGameChat((v) => !v)}
           players={room.players}
           winner={g.winner}
         />
       )}
       
-      {/* Tutorial 3 bước — overlay khi game bắt đầu */}
-      {tutorialStep > 0 && me?.role && (
+      {/* Tutorial 3 bước — overlay khi game bắt đầu (tự ẩn khi ván kết thúc) */}
+      {tutorialStep > 0 && me?.role && !g.winner && (
         <div className="role-tutorial-overlay">
           <div className="role-tutorial-card tutorial-3step">
 
@@ -1158,8 +1178,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
       )}
 
-      {/* Dead Player — Spectator overlay */}
-      {showDeadOverlay && (
+      {/* Dead Player — Spectator overlay (tự ẩn ngay khi kết game để nhường chỗ Rạp Chiếu 3D!) */}
+      {showDeadOverlay && !g.winner && (
         <div className="dead-overlay">
           <div className="dead-overlay-card">
             <div className="dead-overlay-emoji">💀</div>
