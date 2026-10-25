@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 
-// Ambient sound system -- loop am thanh theo phase
-// Files can: /audio/ambient_night.mp3, /audio/ambient_day.mp3, /audio/ambient_tense.mp3
-// Neu file khong ton tai -> silent fail (khong crash)
+// Ambient sound system — loop âm thanh theo phase
+// Files cần: /audio/ambient_night.mp3, /audio/ambient_day.mp3, /audio/ambient_tense.mp3
+// Nếu file không tồn tại -> silent fail (không crash)
 
 export default function AmbientSound({ isNight, isTense, enabled }) {
   const audioRef = useRef(null);
@@ -14,14 +14,15 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
         audioRef.current.pause();
         audioRef.current = null;
       }
+      currentSrcRef.current = null;
       return;
     }
 
     const src = isTense
-      ? '/audio/ambient_tense.mp3'
+      ? "/audio/ambient_tense.mp3"
       : isNight
-      ? '/audio/ambient_night.mp3'
-      : '/audio/ambient_day.mp3';
+      ? "/audio/ambient_night.mp3"
+      : "/audio/ambient_day.mp3";
 
     if (currentSrcRef.current === src) return; // already playing
     currentSrcRef.current = src;
@@ -33,7 +34,10 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
       const fadeOut = setInterval(() => {
         vol = Math.max(0, vol - 0.05);
         old.volume = vol;
-        if (vol <= 0) { clearInterval(fadeOut); old.pause(); }
+        if (vol <= 0) {
+          clearInterval(fadeOut);
+          old.pause();
+        }
       }, 50);
     }
 
@@ -46,7 +50,7 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
 
     let vol = 0;
     const fadeIn = setInterval(() => {
-      vol = Math.min(0.18, vol + 0.01); // max volume 18% -- subtle background
+      vol = Math.min(0.18, vol + 0.01); // max volume 18% — subtle background
       if (audioRef.current === audio) audio.volume = vol;
       if (vol >= 0.18) clearInterval(fadeIn);
     }, 80);
@@ -63,6 +67,7 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
         audioRef.current.pause();
         audioRef.current = null;
       }
+      currentSrcRef.current = null;
     };
   }, []);
 

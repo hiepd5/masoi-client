@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
@@ -63,6 +63,14 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const [recapAnimation, setRecapAnimation] = useState(null);
   const [recapStageState, setRecapStageState] = useState(null);
   const [speakingIds, setSpeakingIds] = useState([]);
+  const handleSpeakingChange = useCallback((nextIds) => {
+    setSpeakingIds((prev) => {
+      if (prev.length === nextIds.length && prev.every((id, idx) => id === nextIds[idx])) {
+        return prev;
+      }
+      return nextIds;
+    });
+  }, []);
   // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialSeconds, setTutorialSeconds] = useState(7);
@@ -148,6 +156,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     if (g.winner) {
       setShowDeadOverlay(false);
       setTutorialStep(0);
+      setSpeakingIds((prev) => (prev.length ? [] : prev));
     } else {
       setShowPostGameChat(false);
     }
@@ -956,7 +965,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
               isAlive={me?.alive}
               myId={me?.id}
               wolfTeammates={g.wolfTeammates || []} 
-              onSpeakingChange={setSpeakingIds}
+              onSpeakingChange={handleSpeakingChange}
             />
           )}
 
