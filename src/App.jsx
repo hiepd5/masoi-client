@@ -11,13 +11,16 @@ const WerewolfScene3D = lazy(() => import("./3d/scene/WerewolfScene3D.jsx"));
 export default function App() {
   const { socketRef, connected, roomData, setRoomData, setActiveRoom, reconnectStatus, kicked, clearKicked } = useSocket();
   const [roomCode, setRoomCode] = useState(null);
-  const [standaloneStudioOpen, setStandaloneStudioOpen] = useState(() => {
-    if (typeof window === "undefined") return false;
+  const [standaloneStudioMode, setStandaloneStudioMode] = useState(() => {
+    if (typeof window === "undefined") return null;
     try {
       const p = new URLSearchParams(window.location.search);
-      return isDevArchitectAllowed() && p.get("studio") === "1";
+      if (!isDevArchitectAllowed()) return null;
+      if (p.get("choreo") === "1") return "choreo";
+      if (p.get("studio") === "1") return "architect";
+      return null;
     } catch {
-      return false;
+      return null;
     }
   });
   const canOpenArchitect = isDevArchitectAllowed();
@@ -38,8 +41,8 @@ export default function App() {
     }
   }, [kicked, setActiveRoom, clearKicked]);
 
-  // Cho phép mở Studio Cảnh Quan D5 độc lập 1-Click ngay cả khi chưa tạo phòng / chưa nối Server!
-  if (canOpenArchitect && standaloneStudioOpen) {
+  // Cho phép mở Studio Cảnh Quan D5 hoặc Studio Hoạt Cảnh 9 Vai độc lập 1-Click ngay cả khi chưa tạo phòng!
+  if (canOpenArchitect && standaloneStudioMode) {
     return (
       <div
         style={{
@@ -52,7 +55,7 @@ export default function App() {
           overflow: "hidden",
         }}
       >
-        <Scene3DErrorBoundary onFallback2D={() => setStandaloneStudioOpen(false)}>
+        <Scene3DErrorBoundary onFallback2D={() => setStandaloneStudioMode(null)}>
           <Suspense
             fallback={
               <div
@@ -67,14 +70,17 @@ export default function App() {
                   fontWeight: 800,
                 }}
               >
-                🏗️ Đang khởi tạo Studio Cảnh Quan D5 (Nạp 12/12 Model Tripo Pro)...
+                {standaloneStudioMode === "choreo"
+                  ? "🎬 Đang khởi tạo Studio Hoạt Cảnh 9 Vai (Pre-vis Rig & Đường Nhảy Bezier)..."
+                  : "🏗️ Đang khởi tạo Studio Cảnh Quan D5 (Nạp 12/12 Model Tripo Pro)..."}
               </div>
             }
           >
             <WerewolfScene3D
-              standaloneArchitect
+              standaloneArchitect={standaloneStudioMode === "architect"}
+              standaloneChoreo={standaloneStudioMode === "choreo"}
               scenePresetId={roomData?.scenePresetId || null}
-              onExitStandalone={() => setStandaloneStudioOpen(false)}
+              onExitStandalone={() => setStandaloneStudioMode(null)}
             />
           </Suspense>
         </Scene3DErrorBoundary>
@@ -87,25 +93,46 @@ export default function App() {
       <div className="card">
         <p className="status-text">Đang kết nối tới máy chủ...</p>
         {canOpenArchitect && (
-          <button
-            type="button"
-            onClick={() => setStandaloneStudioOpen(true)}
-            style={{
-              marginTop: "12px",
-              width: "100%",
-              padding: "10px 14px",
-              borderRadius: "10px",
-              fontSize: "13.5px",
-              fontWeight: 800,
-              background: "linear-gradient(135deg, #f59e0b, #d97706)",
-              color: "#0f172a",
-              border: "1px solid #fde047",
-              boxShadow: "0 4px 16px rgba(245, 158, 11, 0.45)",
-              cursor: "pointer",
-            }}
-          >
-            🏗️ Mở Studio Cảnh Quan D5 (3D Ngoại Cảnh)
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setStandaloneStudioMode("choreo")}
+              style={{
+                marginTop: "12px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                fontSize: "13.5px",
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #9333ea, #4f46e5)",
+                color: "#ffffff",
+                border: "1px solid #d8b4fe",
+                boxShadow: "0 4px 16px rgba(147, 51, 234, 0.45)",
+                cursor: "pointer",
+              }}
+            >
+              🎬 Mở Studio Hoạt Cảnh 9 Vai (Test Trước Khi Xây Model)
+            </button>
+            <button
+              type="button"
+              onClick={() => setStandaloneStudioMode("architect")}
+              style={{
+                marginTop: "8px",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: "10px",
+                fontSize: "13.5px",
+                fontWeight: 800,
+                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                color: "#0f172a",
+                border: "1px solid #fde047",
+                boxShadow: "0 4px 16px rgba(245, 158, 11, 0.45)",
+                cursor: "pointer",
+              }}
+            >
+              🏗️ Mở Studio Cảnh Quan D5 (3D Ngoại Cảnh)
+            </button>
+          </>
         )}
       </div>
     );
@@ -138,7 +165,7 @@ export default function App() {
         roomCode={roomCode} 
         roomData={roomData}
         onLeave={handleLeave}
-        onOpenArchitectStudio={canOpenArchitect ? () => setStandaloneStudioOpen(true) : null}
+        onOpenArchitectStudio={canOpenArchitect ? () => setStandaloneStudioMode("architect") : null}
       />
       {import.meta.env.DEV && <DevSandbox socketRef={socketRef} room={roomData} />}
     </>
@@ -146,7 +173,8 @@ export default function App() {
     <Lobby
       socketRef={socketRef}
       onJoined={handleJoined}
-      onOpenArchitectStudio={canOpenArchitect ? () => setStandaloneStudioOpen(true) : null}
+      onOpenArchitectStudio={canOpenArchitect ? () => setStandaloneStudioMode("architect") : null}
+      onOpenChoreoStudio={canOpenArchitect ? () => setStandaloneStudioMode("choreo") : null}
     />
   );
 }

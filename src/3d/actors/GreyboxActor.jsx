@@ -16,6 +16,7 @@ import {
   RoleTorsoSocket3D,
   SleepingMotes3D,
 } from "./RoleSocketAttachment3D.jsx";
+import { evaluateActorChoreography } from "../animation/actorChoreography3D.js";
 
 let sharedOrganicBodyGeos = null;
 function getOrganicBodyGeos() {
@@ -143,11 +144,25 @@ export default function GreyboxActor({
   reloadToken = 0,
   architectMode = false,
   recapActorState = null,
+  choreoActionSpec = null,
+  choreoTiming = null,
+  seatMap = null,
+  gallowsSpot = null,
   onSelect,
 }) {
   const [hovered, setHovered] = useState(false);
+  const [metamorphWolfActive, setMetamorphWolfActive] = useState(false);
 
   const actorRootRef = useRef(null);
+  const actorBodyMoverRef = useRef(null);
+  const footShadowRef = useRef(null);
+  const pelvisGroupRef = useRef(null);
+  const leftThighRef = useRef(null);
+  const rightThighRef = useRef(null);
+  const leftKneeRef = useRef(null);
+  const rightKneeRef = useRef(null);
+  const tunicMatRef = useRef(null);
+  const choreoPoseRef = useRef(null);
   const spineRef = useRef(null);
   const headRef = useRef(null);
   const leftArmRef = useRef(null);
@@ -156,7 +171,14 @@ export default function GreyboxActor({
   const selectRingRef = useRef(null);
   const labelDomRef = useRef(null);
   const labelWorldPos = useMemo(() => new THREE.Vector3(), []);
+  const tempEmissiveColor = useMemo(() => new THREE.Color(), []);
   const { contactAOMap } = useMemo(() => getProceduralGroundAssets(), []);
+
+  useEffect(() => {
+    if (choreoActionSpec?.actionType !== "cursed_blood_metamorph") {
+      setMetamorphWolfActive(false);
+    }
+  }, [choreoActionSpec?.actionType, choreoTiming?.startedAtPerfMs]);
 
   // Trong lúc chiếu lại Story 2A, trạng thái Sống/Chết có thể tua ngược theo từng Đêm/Ngày!
   const actualIsDead = !player.alive;
@@ -176,6 +198,7 @@ export default function GreyboxActor({
 
   // ==================== MA TRẬN BẢO MẬT TẠO HÌNH ZERO-LEAK (8 VAI) ====================
   const authorizedWolfForm = useMemo(() => {
+    if (metamorphWolfActive && hasWinner) return true;
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return false;
       const activeRole = recapActorState?.overrideRole || player.role;
@@ -185,10 +208,11 @@ export default function GreyboxActor({
       (isNight && !actualIsDead && ((isMe && myRole === "wolf") || isWolfTeammate)) ||
       (actualIsDead && player.role === "wolf")
     );
-  }, [hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
+  }, [metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
 
   // Vai trò thực tế được phép gắn Phụ kiện 3D lên nhân vật trên màn hình của người đang xem:
   const visibleCostumeRole = useMemo(() => {
+    if (metamorphWolfActive && hasWinner) return "wolf";
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return null;
       return recapActorState?.overrideRole || player.role || "villager";
@@ -198,14 +222,34 @@ export default function GreyboxActor({
     // Chỉ riêng bản thân (isMe) nhìn thấy phụ kiện vai bí mật của mình trên máy mình!
     if (isMe && myRole) return myRole;
     return null;
-  }, [hasWinner, recapActorState, player.role, authorizedWolfForm, actualIsDead, isMe, myRole]);
+  }, [metamorphWolfActive, hasWinner, recapActorState, player.role, authorizedWolfForm, actualIsDead, isMe, myRole]);
+
+  const showTrialTorchSocket = Boolean(
+    (isMe && phase === "day_final_vote" && myFinalVote === "hang") ||
+      choreoActionSpec?.actionType === "tribunal_torch_stand"
+  );
 
   const isWolfVisual = visibleCostumeRole === "wolf";
   const activeCharSlot = useMemo(
-    () => resolveActiveCharacterSlot({ hasWinner, visibleCostumeRole }),
-    [hasWinner, visibleCostumeRole]
+    () =>
+      resolveActiveCharacterSlot({
+        hasWinner,
+        visibleCostumeRole,
+        seatIndex: seatTransform?.seatIdx ?? 0,
+        preferAltWolf: Boolean(metamorphWolfActive),
+      }),
+    [hasWinner, visibleCostumeRole, seatTransform?.seatIdx, metamorphWolfActive]
   );
   const characterGlbEntry = useOptionalCharacterGlb(activeCharSlot);
+  const isStandingSmartMesh = Boolean(
+    characterGlbEntry && !characterGlbEntry.hasRig && !effectiveIsDead
+  );
+  const htmlBadgeY = effectiveIsDead
+    ? 1.66
+    : isStandingSmartMesh
+      ? (characterGlbEntry.standingHeight || 1.76) + 0.22
+      : 1.54;
+  const htmlBadgeZ = isStandingSmartMesh ? 0.12 : 0;
   const organicGeos = useMemo(() => getOrganicBodyGeos(), []);
   const glowHaloTex = useMemo(() => getSoftGlowHaloTexture(), []);
 
@@ -247,18 +291,111 @@ export default function GreyboxActor({
   const isSleeping =
     isNight && !hasWinner && !effectiveIsDead && !authorizedWolfForm && !isMyActiveNightRole;
 
-  // ==================== PROCEDURAL SPRING ANIMATION 60 FPS ====================
+  // ==================== PROCEDURAL SPRING & SPATIAL CHOREOGRAPHY 60 FPS ====================
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     const breathPhase = t * 2.1 + seed;
 
-    // 1. Thân trên: Thở / Ngủ / Chết / Hoặc Diễn Kịch Story 2A (castLunge, hitRecoil, cheer)
+    // 0. Tính toán Quỹ Đạo Không Gian Rời Ghế & Xương 9 Vai (Wolf Pounce / Guard Clash / Gallows Walk / Cast)
+    let choreo = null;
+    if (choreoActionSpec && !effectiveIsDead) {
+      let progress = 0.5;
+      if (typeof choreoTiming?.manualProgress === "number") {
+        progress = choreoTiming.manualProgress;
+      } else if (choreoTiming?.startedAtPerfMs && choreoTiming?.durationMs > 0) {
+        const nowPerf = typeof performance !== "undefined" ? performance.now() : Date.now();
+        progress = THREE.MathUtils.clamp(
+          (nowPerf - choreoTiming.startedAtPerfMs) / choreoTiming.durationMs,
+          0,
+          1
+        );
+      }
+      choreo = evaluateActorChoreography({
+        choreoRoleAction: choreoActionSpec,
+        progress,
+        seatTransform,
+        seatMap,
+        gallowsSpot,
+        tClock: t,
+      });
+
+      // Chuyển hình trực tiếp Kẻ Bị Nguyền -> Ma Sói đúng khoảnh khắc 42% (ngửa cổ hú trăng!)
+      if (choreoActionSpec.actionType === "cursed_blood_metamorph") {
+        const shouldBeWolf = Boolean(choreo?.overrideCostumeRole === "wolf");
+        if (shouldBeWolf !== metamorphWolfActive) {
+          setMetamorphWolfActive(shouldBeWolf);
+        }
+      }
+    }
+    choreoPoseRef.current = choreo;
+
+    const damp = Math.min(1, delta * (choreo ? 14 : 6.8));
+
+    // Dịch chuyển cụm cơ thể (`actorBodyMoverRef`) độc lập 100% với ghế sồi (`prop_chair` giữ nguyên tại chỗ!)
+    if (actorBodyMoverRef.current) {
+      const goalLX = choreo ? choreo.localX : 0;
+      const goalLY = choreo ? choreo.localY : 0;
+      const goalLZ = choreo ? choreo.localZ : 0;
+      const goalLYaw = choreo ? choreo.localYaw : 0;
+
+      actorBodyMoverRef.current.position.x = THREE.MathUtils.lerp(actorBodyMoverRef.current.position.x, goalLX, damp);
+      actorBodyMoverRef.current.position.y = THREE.MathUtils.lerp(actorBodyMoverRef.current.position.y, goalLY, damp);
+      actorBodyMoverRef.current.position.z = THREE.MathUtils.lerp(actorBodyMoverRef.current.position.z, goalLZ, damp);
+
+      let yawDiff = goalLYaw - actorBodyMoverRef.current.rotation.y;
+      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+      while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+      actorBodyMoverRef.current.rotation.y += yawDiff * damp;
+
+      // Bóng đổ tiếp đất dưới hai bàn chân tự bám mặt sân đá y=0.009 và thu nhỏ mềm khi Sói bật nhảy lên không!
+      if (footShadowRef.current) {
+        const airH = Math.max(0, actorBodyMoverRef.current.position.y);
+        footShadowRef.current.position.y = -airH + 0.009;
+        footShadowRef.current.position.z = choreo ? 0.04 : isStandingSmartMesh ? 0.12 : 0.28;
+        const shadowScale = THREE.MathUtils.clamp(1 - airH * 0.42, 0.42, 1.08);
+        footShadowRef.current.scale.setScalar(shadowScale);
+      }
+    }
+
+    // Nội suy Động Khớp Đùi & Đầu Gối (sitFactor: 1.0 ngồi ghế 0.48m <-> 0.0 đứng thẳng / nhảy / đi bộ)
+    const goalSitFactor = choreo ? choreo.sitFactor : 1.0;
+    const goalHipY = THREE.MathUtils.lerp(0.71, SEAT_TOP_Y, goalSitFactor);
+
+    if (pelvisGroupRef.current) {
+      pelvisGroupRef.current.position.y = THREE.MathUtils.lerp(pelvisGroupRef.current.position.y, goalHipY, damp);
+      const sitHalfPi = goalSitFactor * (Math.PI / 2);
+      const goalLThigh = -sitHalfPi + (choreo ? choreo.leftThighAddX : 0);
+      const goalRThigh = -sitHalfPi + (choreo ? choreo.rightThighAddX : 0);
+      const goalLKnee = sitHalfPi + (choreo ? choreo.leftKneeAddX : 0);
+      const goalRKnee = sitHalfPi + (choreo ? choreo.rightKneeAddX : 0);
+
+      if (leftThighRef.current) {
+        leftThighRef.current.rotation.x = THREE.MathUtils.lerp(leftThighRef.current.rotation.x, goalLThigh, damp);
+      }
+      if (rightThighRef.current) {
+        rightThighRef.current.rotation.x = THREE.MathUtils.lerp(rightThighRef.current.rotation.x, goalRThigh, damp);
+      }
+      if (leftKneeRef.current) {
+        leftKneeRef.current.rotation.x = THREE.MathUtils.lerp(leftKneeRef.current.rotation.x, goalLKnee, damp);
+      }
+      if (rightKneeRef.current) {
+        rightKneeRef.current.rotation.x = THREE.MathUtils.lerp(rightKneeRef.current.rotation.x, goalRKnee, damp);
+      }
+    }
+
+    // 1. Thân trên: Thở / Ngủ / Chết / Hoặc Diễn Kịch Không Gian 9 Vai
     if (spineRef.current) {
       let targetLeanX = 0;
-      let targetPosY = SEAT_TOP_Y;
+      let targetTwistY = 0;
+      let targetPosY = goalHipY;
       let targetPosZ = 0;
 
-      if (effectiveIsDead) {
+      if (choreo) {
+        targetLeanX = choreo.spineLeanX;
+        targetTwistY = choreo.spineTwistY || 0;
+        targetPosY = goalHipY;
+        targetPosZ = 0;
+      } else if (effectiveIsDead) {
         targetLeanX = 0.34;
         targetPosY = SEAT_TOP_Y - 0.02;
       } else if (recapPose === "castLunge") {
@@ -279,17 +416,40 @@ export default function GreyboxActor({
         targetPosY = SEAT_TOP_Y + Math.sin(breathPhase) * 0.009;
       }
 
-      spineRef.current.rotation.x = THREE.MathUtils.lerp(spineRef.current.rotation.x, targetLeanX, delta * 6.5);
-      spineRef.current.position.y = THREE.MathUtils.lerp(spineRef.current.position.y, targetPosY, delta * 6.5);
-      spineRef.current.position.z = THREE.MathUtils.lerp(spineRef.current.position.z, targetPosZ, delta * 6.5);
+      spineRef.current.rotation.x = THREE.MathUtils.lerp(spineRef.current.rotation.x, targetLeanX, damp);
+      spineRef.current.rotation.y = THREE.MathUtils.lerp(spineRef.current.rotation.y, targetTwistY, damp);
+      spineRef.current.position.y = THREE.MathUtils.lerp(spineRef.current.position.y, targetPosY, damp);
+      spineRef.current.position.z = THREE.MathUtils.lerp(spineRef.current.position.z, targetPosZ, damp);
     }
 
-    // 2. Xương Đầu (Head LookAt theo người đang nói Mic / Bị cáo / Mục tiêu Story 2A)
+    // Hiệu ứng bừng sáng áo choàng ở nhịp Climax (Sói đỏ, Khiên lam, Lửa cam, Chán Đời tím)
+    if (tunicMatRef.current) {
+      const hex = choreo?.bodyEmissiveHex || (recapPose === "hitRecoil" || isWolfVictim ? "#ef4444" : null);
+      const inten = choreo?.bodyEmissiveHex
+        ? choreo.bodyEmissiveIntensity || 0
+        : recapPose === "hitRecoil"
+          ? 0.65
+          : isWolfVictim
+            ? 0.45
+            : 0;
+      if (hex && inten > 0.01) {
+        tempEmissiveColor.set(hex);
+        tunicMatRef.current.emissive.copy(tempEmissiveColor);
+        tunicMatRef.current.emissiveIntensity = inten;
+      } else {
+        tunicMatRef.current.emissiveIntensity = 0;
+      }
+    }
+
+    // 2. Xương Đầu (Head LookAt theo người đang nói Mic / Bị cáo / Hoạt Cảnh 9 Vai)
     if (headRef.current) {
       let targetYaw = 0;
       let targetPitch = 0;
 
-      if (effectiveIsDead) {
+      if (choreo) {
+        targetPitch = choreo.headPitchX || 0;
+        targetYaw = choreo.headYawY || 0;
+      } else if (effectiveIsDead) {
         targetPitch = 0.42;
       } else if (recapPose === "hitRecoil") {
         targetPitch = -0.22;
@@ -318,16 +478,23 @@ export default function GreyboxActor({
         targetPitch = Math.cos(t * 1.1 + seed) * 0.04;
       }
 
-      headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetYaw, delta * 5.8);
-      headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, targetPitch, delta * 5.8);
+      headRef.current.rotation.y = THREE.MathUtils.lerp(headRef.current.rotation.y, targetYaw, damp);
+      headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, targetPitch, damp);
     }
 
-    // 3. Đôi cánh tay (Chỉ tay / Diễn thuyết Mic / Sói giương vuốt / Story Cast & Cheer)
+    // 3. Đôi cánh tay (Chỉ tay / Diễn thuyết Mic / Sói chém vuốt / Bảo Vệ giương khiên / Chán Đời dang tay)
     if (rightArmRef.current && leftArmRef.current) {
       let targetRightX = -0.48;
       let targetLeftX = -0.48;
+      let targetRightZ = 0;
+      let targetLeftZ = 0;
 
-      if (effectiveIsDead || isSleeping) {
+      if (choreo) {
+        targetRightX = choreo.rightArmPitchX;
+        targetLeftX = choreo.leftArmPitchX;
+        targetRightZ = choreo.rightArmSpreadZ || 0;
+        targetLeftZ = choreo.leftArmSpreadZ || 0;
+      } else if (effectiveIsDead || isSleeping) {
         targetRightX = -0.28;
         targetLeftX = -0.28;
       } else if (recapPose === "cheer") {
@@ -350,8 +517,10 @@ export default function GreyboxActor({
         targetLeftX = -0.92 + Math.cos(t * 3.8 + seed) * 0.12;
       }
 
-      rightArmRef.current.rotation.x = THREE.MathUtils.lerp(rightArmRef.current.rotation.x, targetRightX, delta * 7);
-      leftArmRef.current.rotation.x = THREE.MathUtils.lerp(leftArmRef.current.rotation.x, targetLeftX, delta * 7);
+      rightArmRef.current.rotation.x = THREE.MathUtils.lerp(rightArmRef.current.rotation.x, targetRightX, damp);
+      leftArmRef.current.rotation.x = THREE.MathUtils.lerp(leftArmRef.current.rotation.x, targetLeftX, damp);
+      rightArmRef.current.rotation.z = THREE.MathUtils.lerp(rightArmRef.current.rotation.z, targetRightZ, damp);
+      leftArmRef.current.rotation.z = THREE.MathUtils.lerp(leftArmRef.current.rotation.z, targetLeftZ, damp);
     }
 
     // 4. Linh hồn Hồn Ma bay dập dềnh phía trên ghế khi nhân vật đã tử nạn
@@ -365,9 +534,12 @@ export default function GreyboxActor({
       selectRingRef.current.rotation.z += delta * 1.6;
     }
 
-    // 6. Kẹp tỷ lệ chữ trên màn hình
+    // 6. Kẹp tỷ lệ chữ trên màn hình bám theo vị trí thực tế của nhân vật (kể cả khi đang bay vồ mồi!)
     if (labelDomRef.current) {
-      labelWorldPos.set(seatTransform.x, 1.5, seatTransform.z);
+      const wx = choreo ? choreo.worldX : seatTransform.x;
+      const wy = (choreo ? choreo.worldY : 0) + htmlBadgeY;
+      const wz = choreo ? choreo.worldZ : seatTransform.z;
+      labelWorldPos.set(wx, wy, wz);
       const dist = state.camera.position.distanceTo(labelWorldPos);
       const clampedScale = THREE.MathUtils.clamp(6.2 / Math.max(dist, 6.2), 0.82, 1.0);
       labelDomRef.current.style.transform = `scale(${clampedScale.toFixed(3)})`;
@@ -390,7 +562,7 @@ export default function GreyboxActor({
         obj.raycast = architectMode ? noop : THREE.Mesh.prototype.raycast;
       }
     });
-  }, [architectMode, reloadToken, effectiveIsDead, visibleCostumeRole]);
+  }, [architectMode, reloadToken, effectiveIsDead, visibleCostumeRole, characterGlbEntry]);
 
   return (
     <group
@@ -398,8 +570,11 @@ export default function GreyboxActor({
       position={[seatTransform.x, 0, seatTransform.z]}
       rotation={[0, seatTransform.facingYaw, 0]}
     >
-      {/* ============ 0. BÓNG TIẾP XÚC MỀM DƯỚI CHÂN GHẾ & GIÀY ============ */}
-      <mesh position={[0, 0.008, -0.02]} rotation={[-Math.PI / 2, 0, 0]}>
+      {/* ============ 0. BÓNG TIẾP XÚC MỀM DƯỚI CHÂN GHẾ (CỐ ĐỊNH TẠI GHẾ) ============ */}
+      <mesh
+        position={[0, 0.008, isStandingSmartMesh ? -0.36 : -0.02]}
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
         <circleGeometry args={[0.58, 22]} />
         <meshBasicMaterial
           map={contactAOMap}
@@ -410,26 +585,17 @@ export default function GreyboxActor({
           polygonOffsetFactor={-1}
         />
       </mesh>
-      <mesh position={[0, 0.009, 0.28]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[0.28, 16]} />
-        <meshBasicMaterial
-          map={contactAOMap}
-          transparent
-          opacity={effectiveIsDead ? 0.14 : 0.44}
-          depthWrite={false}
-          polygonOffset
-          polygonOffsetFactor={-1}
-        />
-      </mesh>
 
-      {/* ============ 1. GHẾ GỖ SỒI CHUẨN CAO 0.48m ============ */}
-      <SmartPropGLB
-        propKey="prop_chair"
-        calib={chairCalib}
-        reloadToken={reloadToken}
-        disableRaycast={architectMode}
-        fallback={<ProceduralOakChair />}
-      />
+      {/* ============ 1. GHẾ GỖ SỒI CHUẨN CAO 0.48m (LÙI NHẸ -0.34m KHI NHÂN VẬT ĐỨNG SMART MESH ĐỂ 0% XUYÊN GHẾ!) ============ */}
+      <group position={[0, 0, isStandingSmartMesh ? -0.34 : 0]}>
+        <SmartPropGLB
+          propKey="prop_chair"
+          calib={chairCalib}
+          reloadToken={reloadToken}
+          disableRaycast={architectMode}
+          fallback={<ProceduralOakChair />}
+        />
+      </group>
 
       {/* ============ 2. VÒNG SÁNG TRẠNG THÁI DƯỚI CHÂN GHẾ ============ */}
       {isMe && (
@@ -484,119 +650,173 @@ export default function GreyboxActor({
         </group>
       )}
 
-      {/* ============ 3. THÂN NHÂN VẬT NGỒI GHẾ + SOCKET ĐẠO CỤ 8 VAI ============ */}
-      <group
-        onClick={architectMode || hasWinner ? undefined : handlePointerClick}
-        onPointerOver={
-          architectMode || hasWinner
-            ? undefined
-            : (e) => {
-                e.stopPropagation();
-                if (!actualIsDead) {
-                  setHovered(true);
-                  document.body.style.cursor = "pointer";
-                }
-              }
-        }
-        onPointerOut={
-          architectMode || hasWinner
-            ? undefined
-            : () => {
-                setHovered(false);
-                document.body.style.cursor = "auto";
-              }
-        }
-      >
-        {/* ƯU TIÊN NHÂN VẬT 3D CÓ XƯƠNG AUTO-RIG .GLB TỪ TRIPO AI (Nếu đã thả file vào client/public/models/characters/) */}
-        {characterGlbEntry ? (
-          <SkinnedCharacterGLB
-            slotKey={activeCharSlot}
-            templateEntry={characterGlbEntry}
-            tunicColor={tunicColor}
-            effectiveIsDead={effectiveIsDead}
-            isWolfVictim={isWolfVictim}
-            recapPose={recapPose}
-            isSleeping={isSleeping}
-            isDefendant={isDefendant}
-            isSpeaking={isSpeaking}
-            hasPointTarget={hasPointTarget}
-            phase={phase}
-            hasWinner={hasWinner}
-            lookTargetWorld={lookTargetWorld}
-            seatTransform={seatTransform}
-            seed={seed}
+      {/* ============ CỤM CƠ THỂ ĐỘNG RỜI GHẾ (actorBodyMoverRef: Sói phóng vồ / Bảo Vệ chắn khiên / Đi bộ Pháp trường) ============ */}
+      <group ref={actorBodyMoverRef}>
+        {/* Bóng chân tiếp đất tự động bám sân đá y=0.009 và thu nhỏ mềm khi bật nhảy lên không trung */}
+        <mesh
+          ref={footShadowRef}
+          position={[0, 0.009, isStandingSmartMesh ? 0.12 : 0.28]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <circleGeometry args={[isStandingSmartMesh ? 0.34 : 0.29, 18]} />
+          <meshBasicMaterial
+            map={contactAOMap}
+            transparent
+            opacity={effectiveIsDead ? 0.14 : 0.52}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-1}
           />
-        ) : (
-          <>
-            {/* Hai đùi & bắp chân giải phẫu bo tròn mềm (CapsuleGeometry) ngồi chuẩn mặt ghế y = 0.48m */}
-            <group position={[0, SEAT_TOP_Y, 0]}>
-              <mesh position={[0, 0.048, 0.07]} scale={[1.15, 0.65, 1.05]} castShadow={!effectiveIsDead}>
-                <sphereGeometry args={[0.175, 20, 16]} />
-                <meshStandardMaterial
-                  color={cloakTrimColor}
-                  transparent={effectiveIsDead}
-                  opacity={bodyOpacity}
-                  roughness={0.9}
-                />
-              </mesh>
+        </mesh>
 
-              {[-0.105, 0.105].map((lx, idx) => (
-                <group key={idx} position={[lx, 0.042, 0.08]}>
-                  <mesh position={[0, 0, 0.085]} rotation={[Math.PI / 2, 0, 0]} castShadow={!effectiveIsDead}>
-                    <capsuleGeometry args={[0.062, 0.19, 10, 16]} />
-                    <meshStandardMaterial
-                      color={pantsColor}
-                      transparent={effectiveIsDead}
-                      opacity={bodyOpacity}
-                      roughness={0.86}
-                    />
-                  </mesh>
-                  <mesh position={[0, -0.21, 0.23]} castShadow={!effectiveIsDead}>
-                    <capsuleGeometry args={[0.052, 0.28, 10, 16]} />
-                    <meshStandardMaterial
-                      color={effectiveIsDead ? pantsColor : "#271c15"}
-                      transparent={effectiveIsDead}
-                      opacity={bodyOpacity}
-                      roughness={0.8}
-                    />
-                  </mesh>
-                  <mesh position={[0, -0.43, 0.275]} scale={[0.96, 0.68, 1.48]}>
-                    <sphereGeometry args={[0.064, 14, 14]} />
-                    <meshStandardMaterial
-                      color={effectiveIsDead ? "#0284c7" : "#1c140f"}
-                      transparent={effectiveIsDead}
-                      opacity={bodyOpacity}
-                      roughness={0.76}
-                    />
-                  </mesh>
-                </group>
-              ))}
-            </group>
-
-            {/* Cụm Xương Sống & Tà Áo Choàng Vải Dạ Rủ Mềm (LatheGeometry 24 cạnh — 0% khối hộp!) */}
-            <group ref={spineRef} position={[0, SEAT_TOP_Y, 0]}>
-              <mesh
-                geometry={organicGeos.tunicGeo}
-                position={[0, 0.01, -0.01]}
-                scale={[isWolfVisual ? 1.24 : 1.04, 1, 0.86]}
-                castShadow={!effectiveIsDead}
-              >
-                <meshStandardMaterial
-                  color={tunicColor}
-                  emissive={
-                    recapPose === "hitRecoil"
-                      ? "#ef4444"
-                      : isWolfVictim
-                        ? "#ef4444"
-                        : "#000000"
+        {/* ============ 3. THÂN NHÂN VẬT + SOCKET ĐẠO CỤ 9 VAI ============ */}
+        <group
+          onClick={architectMode || hasWinner ? undefined : handlePointerClick}
+          onPointerOver={
+            architectMode || hasWinner
+              ? undefined
+              : (e) => {
+                  e.stopPropagation();
+                  if (!actualIsDead) {
+                    setHovered(true);
+                    document.body.style.cursor = "pointer";
                   }
-                  emissiveIntensity={recapPose === "hitRecoil" ? 0.65 : isWolfVictim ? 0.45 : 0}
-                  transparent={effectiveIsDead}
-                  opacity={bodyOpacity}
-                  roughness={0.88}
-                  side={THREE.DoubleSide}
+                }
+          }
+          onPointerOut={
+            architectMode || hasWinner
+              ? undefined
+              : () => {
+                  setHovered(false);
+                  document.body.style.cursor = "auto";
+                }
+          }
+        >
+          {/* ƯU TIÊN NHÂN VẬT 3D .GLB TỪ TRIPO AI (Hỗ trợ Kép Smart Mesh Y=0.00m & Auto-Rig; khi tử nạn ẩn tượng để hiện Hồn Ma!) */}
+          {characterGlbEntry ? (
+            !effectiveIsDead ? (
+              <>
+                <SkinnedCharacterGLB
+                  slotKey={activeCharSlot}
+                  templateEntry={characterGlbEntry}
+                  tunicColor={tunicColor}
+                  effectiveIsDead={effectiveIsDead}
+                  isWolfVictim={isWolfVictim}
+                  recapPose={recapPose}
+                  choreoPoseRef={choreoPoseRef}
+                  isSleeping={isSleeping}
+                  isDefendant={isDefendant}
+                  isSpeaking={isSpeaking}
+                  hasPointTarget={hasPointTarget}
+                  phase={phase}
+                  hasWinner={hasWinner}
+                  lookTargetWorld={lookTargetWorld}
+                  seatTransform={seatTransform}
+                  visibleCostumeRole={visibleCostumeRole}
+                  showTrialTorchSocket={showTrialTorchSocket}
+                  seed={seed}
                 />
-              </mesh>
+                {isSleeping && (
+                  <group
+                    position={[
+                      0,
+                      isStandingSmartMesh
+                        ? (characterGlbEntry.standingHeight || 1.76) - 0.14
+                        : SEAT_TOP_Y + 0.58,
+                      isStandingSmartMesh ? 0.14 : 0.02,
+                    ]}
+                  >
+                    <SleepingMotes3D seed={seed} />
+                  </group>
+                )}
+              </>
+            ) : null
+          ) : (
+            <>
+              {/* Khung Chậu & Khớp Chân 2 Đốt Động (Hông -> Đùi -> Đầu Gối -> Bắp Chân & Ủng) nội suy mượt giữa Ngồi 0.48m & Đứng/Nhảy/Đi bộ! */}
+              <group ref={pelvisGroupRef} position={[0, SEAT_TOP_Y, 0]}>
+                <mesh position={[0, 0.048, 0.05]} scale={[1.15, 0.65, 1.05]} castShadow={!effectiveIsDead}>
+                  <sphereGeometry args={[0.175, 20, 16]} />
+                  <meshStandardMaterial
+                    color={cloakTrimColor}
+                    transparent={effectiveIsDead}
+                    opacity={bodyOpacity}
+                    roughness={0.9}
+                  />
+                </mesh>
+
+                {[-0.105, 0.105].map((lx, idx) => (
+                  <group
+                    key={idx}
+                    ref={idx === 0 ? rightThighRef : leftThighRef}
+                    position={[lx, 0.036, 0.03]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                  >
+                    {/* Đùi (xoay quanh khớp Hông: khi ngồi gập -90° đưa gối ra trước +Z, khi đứng/nhảy duỗi thẳng 0° xuống -Y!) */}
+                    <mesh position={[0, -0.115, 0]} castShadow={!effectiveIsDead}>
+                      <capsuleGeometry args={[0.062, 0.19, 10, 16]} />
+                      <meshStandardMaterial
+                        color={pantsColor}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                        roughness={0.86}
+                      />
+                    </mesh>
+
+                    {/* Khớp Đầu Gối (xoay độc lập để co chân khi Sói nhảy Parabol & bước bộ ra Đài Treo Cổ!) */}
+                    <group
+                      ref={idx === 0 ? rightKneeRef : leftKneeRef}
+                      position={[0, -0.23, 0]}
+                      rotation={[Math.PI / 2, 0, 0]}
+                    >
+                      <mesh position={[0, -0.2, 0]} castShadow={!effectiveIsDead}>
+                        <capsuleGeometry args={[0.052, 0.28, 10, 16]} />
+                        <meshStandardMaterial
+                          color={effectiveIsDead ? pantsColor : "#271c15"}
+                          transparent={effectiveIsDead}
+                          opacity={bodyOpacity}
+                          roughness={0.8}
+                        />
+                      </mesh>
+                      <mesh position={[0, -0.415, 0.045]} scale={[0.96, 0.68, 1.48]}>
+                        <sphereGeometry args={[0.064, 14, 14]} />
+                        <meshStandardMaterial
+                          color={effectiveIsDead ? "#0284c7" : "#1c140f"}
+                          transparent={effectiveIsDead}
+                          opacity={bodyOpacity}
+                          roughness={0.76}
+                        />
+                      </mesh>
+                    </group>
+                  </group>
+                ))}
+              </group>
+
+              {/* Cụm Xương Sống & Tà Áo Choàng Vải Dạ Rủ Mềm (LatheGeometry 24 cạnh — 0% khối hộp!) */}
+              <group ref={spineRef} position={[0, SEAT_TOP_Y, 0]}>
+                <mesh
+                  geometry={organicGeos.tunicGeo}
+                  position={[0, 0.01, -0.01]}
+                  scale={[isWolfVisual ? 1.24 : 1.04, 1, 0.86]}
+                  castShadow={!effectiveIsDead}
+                >
+                  <meshStandardMaterial
+                    ref={tunicMatRef}
+                    color={tunicColor}
+                    emissive={
+                      recapPose === "hitRecoil"
+                        ? "#ef4444"
+                        : isWolfVictim
+                          ? "#ef4444"
+                          : "#000000"
+                    }
+                    emissiveIntensity={recapPose === "hitRecoil" ? 0.65 : isWolfVictim ? 0.45 : 0}
+                    transparent={effectiveIsDead}
+                    opacity={bodyOpacity}
+                    roughness={0.88}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
 
               {/* Choàng vai lông/vải dạ cổ tròn mượt */}
               <mesh
@@ -760,8 +980,12 @@ export default function GreyboxActor({
                     roughness={0.72}
                   />
                 </mesh>
-                {!effectiveIsDead && visibleCostumeRole && (
-                  <RoleHandSocket3D roleKey={visibleCostumeRole} side="right" />
+                {!effectiveIsDead && (visibleCostumeRole || showTrialTorchSocket) && (
+                  <RoleHandSocket3D
+                    roleKey={visibleCostumeRole}
+                    side="right"
+                    showTrialTorch={showTrialTorchSocket}
+                  />
                 )}
               </group>
             </group>
@@ -820,7 +1044,7 @@ export default function GreyboxActor({
 
       {/* ============ 4. BẢNG TÊN & BÓNG THOẠI REPLAY KHÔNG GIAN THẬT (<Html>) ============ */}
       <Html
-        position={[0, effectiveIsDead ? 1.66 : 1.54, 0]}
+        position={[0, htmlBadgeY, htmlBadgeZ]}
         center
         zIndexRange={[15, 0]}
         style={{ pointerEvents: architectMode || hasWinner ? "none" : "auto" }}
@@ -1097,6 +1321,7 @@ export default function GreyboxActor({
           )}
         </div>
       </Html>
+      </group>
     </group>
   );
 }

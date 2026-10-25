@@ -1,9 +1,42 @@
 {
   "schemaVersion": 1,
-  "syncedAt": "2026-10-23T19:47:06.380Z",
+  "syncedAt": "2026-10-25T16:31:09.900Z",
+  "compressedFormat": "webp+meshopt",
   "sourceFolder": "MODEL CONCEPT THEM",
   "totalConcepts": 2,
   "items": [
+    {
+      "propKey": "concept_medieval_stone_wall",
+      "fileName": "concept_medieval_stone_wall.glb",
+      "url": "/models/props/concepts/concept_medieval_stone_wall.glb",
+      "sourceName": "medieval+stone+wall+3d+model.glb",
+      "label": "🧱 Medieval Stone Wall",
+      "shortLabel": "Medieval Stone Wall",
+      "category": "architecture",
+      "shaderProfile": "standard",
+      "targetHeight": 3.2,
+      "rawSize": [
+        0.9995,
+        0.6489,
+        0.1479
+      ],
+      "hitBoxSize": [
+        4.93,
+        3.2,
+        0.73
+      ],
+      "centerHeight": 1.6,
+      "aoRadius": 2.37,
+      "aoOpacity": 0.6,
+      "allowCenterZone": false,
+      "isSurfaceCandidate": false,
+      "defaultSpawnRadius": 14.5,
+      "defaultSpawnY": 0,
+      "rawSizeBytes": 910948,
+      "sizeBytes": 425116,
+      "sizeMB": 0.41,
+      "mtimeMs": 1792927610672
+    },
     {
       "propKey": "concept_4k_round_stone_mosaic",
       "fileName": "concept_4k_round_stone_mosaic.glb",
@@ -31,40 +64,10 @@
       "isSurfaceCandidate": true,
       "defaultSpawnRadius": 0,
       "defaultSpawnY": -1.55,
-      "sizeBytes": 4624208,
-      "sizeMB": 4.41,
-      "mtimeMs": 1792764077149
-    },
-    {
-      "propKey": "concept_medieval_stone_wall",
-      "fileName": "concept_medieval_stone_wall.glb",
-      "url": "/models/props/concepts/concept_medieval_stone_wall.glb",
-      "sourceName": "medieval+stone+wall+3d+model.glb",
-      "label": "🧱 Medieval Stone Wall",
-      "shortLabel": "Medieval Stone Wall",
-      "category": "architecture",
-      "shaderProfile": "standard",
-      "targetHeight": 2.45,
-      "rawSize": [
-        0.9995,
-        0.6489,
-        0.1479
-      ],
-      "hitBoxSize": [
-        3.77,
-        2.45,
-        0.65
-      ],
-      "centerHeight": 1.23,
-      "aoRadius": 1.81,
-      "aoOpacity": 0.6,
-      "allowCenterZone": false,
-      "isSurfaceCandidate": false,
-      "defaultSpawnRadius": 10.8,
-      "defaultSpawnY": 0,
-      "sizeBytes": 910948,
-      "sizeMB": 0.87,
-      "mtimeMs": 1792780483803
+      "rawSizeBytes": 4624208,
+      "sizeBytes": 292796,
+      "sizeMB": 0.28,
+      "mtimeMs": 1792927610933
     }
   ]
 }

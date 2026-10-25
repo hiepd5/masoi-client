@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "presetId": "preset_dau_truong_da_co_tuy_chinh",
+  "name": "🏟️ Đấu Trường Đá Cổ (Tùy chỉnh)",
+  "description": "Bối cảnh tùy chọn dàn dựng bằng D5 Studio & Kho Concept Tripo",
+  "moodHint": "auto",
+  "updatedAtMs": 1792906016321,
+  "updatedAtIso": "2026-10-25T05:26:56.321Z",
+  "note": "Bối cảnh không gian 3D Làng Ma Sói dàn dựng bằng D5 Architect Studio (Không tác động ghế người chơi)",
+  "totalNodes": 5,
+  "nodes": [
+    {
+      "id": "plaza-main",
+      "type": "plaza_cobblestone",
+      "label": "Đĩa Sân Đá Cổ Ngữ",
+      "category": "centerpiece",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 0,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "campfire-main",
+      "type": "prop_campfire",
+      "label": "Bếp Lửa Trại Trung Tâm",
+      "category": "centerpiece",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 0,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": false
+    },
+    {
+      "id": "concept_4k_round_stone_mosaic-dwcdf",
+      "type": "concept_4k_round_stone_mosaic",
+      "label": "4k Round Stone Mosaic #1",
+      "category": "architecture",
+      "position": [
+        0,
+        -8,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-dwkxg",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #1",
+      "category": "architecture",
+      "position": [
+        1.776,
+        0,
+        -7.577
+      ],
+      "rotation": [
+        0,
+        -0.165,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "house_cottage_a-dxdck",
+      "type": "house_cottage_a",
+      "label": "Nhà Gỗ Đá A #1",
+      "category": "architecture",
+      "position": [
+        2.433,
+        0,
+        7.111
+      ],
+      "rotation": [
+        -3.142,
+        1.199,
+        -3.142
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    }
+  ]
+}

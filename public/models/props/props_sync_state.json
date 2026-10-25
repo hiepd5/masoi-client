@@ -1,91 +1,120 @@
 {
-  "syncedAt": "2026-10-23T19:47:06.360Z",
-  "syncedCount": 12,
-  "totalSlots": 12,
+  "syncedAt": "2026-10-25T17:18:35.056Z",
+  "compressedFormat": "webp+meshopt",
+  "syncedCount": 14,
+  "totalSlots": 18,
   "items": {
     "prop_chair": {
       "fileName": "prop_chair.glb",
       "sourceName": "rustic+wooden+chair+3d+model.glb",
-      "sizeBytes": 691132,
-      "sizeMB": 0.66,
-      "mtimeMs": 1792743520969
+      "rawSizeBytes": 691132,
+      "sizeBytes": 93504,
+      "sizeMB": 0.09,
+      "mtimeMs": 1792927609319
     },
     "prop_campfire": {
       "fileName": "prop_campfire.glb",
       "sourceName": "stone+fire+pit+3d+model.glb",
-      "sizeBytes": 902548,
-      "sizeMB": 0.86,
-      "mtimeMs": 1792745447922
+      "rawSizeBytes": 902548,
+      "sizeBytes": 259572,
+      "sizeMB": 0.25,
+      "mtimeMs": 1792927609448
     },
     "prop_gallows": {
       "fileName": "prop_gallows.glb",
       "sourceName": "wooden+platform+3d+model.glb",
-      "sizeBytes": 886296,
-      "sizeMB": 0.85,
-      "mtimeMs": 1792745652082
+      "rawSizeBytes": 886296,
+      "sizeBytes": 342212,
+      "sizeMB": 0.33,
+      "mtimeMs": 1792927609590
     },
     "landmark_belltower": {
       "fileName": "landmark_belltower.glb",
       "sourceName": "medieval+bell+tower+3d+model.glb",
-      "sizeBytes": 1058472,
-      "sizeMB": 1.01,
-      "mtimeMs": 1792748305237
+      "rawSizeBytes": 1058472,
+      "sizeBytes": 432620,
+      "sizeMB": 0.41,
+      "mtimeMs": 1792927609739
     },
     "house_cottage_b": {
       "fileName": "house_cottage_b.glb",
       "sourceName": "thatched+cottage+3d+model.glb",
-      "sizeBytes": 1045796,
-      "sizeMB": 1,
-      "mtimeMs": 1792748136766
+      "rawSizeBytes": 1045796,
+      "sizeBytes": 437920,
+      "sizeMB": 0.42,
+      "mtimeMs": 1792927609884
     },
     "house_cottage_a": {
       "fileName": "house_cottage_a.glb",
       "sourceName": "medieval+cottage+3d+model.glb",
-      "sizeBytes": 960864,
-      "sizeMB": 0.92,
-      "mtimeMs": 1792747718038
+      "rawSizeBytes": 960864,
+      "sizeBytes": 400228,
+      "sizeMB": 0.38,
+      "mtimeMs": 1792927610027
     },
     "plaza_cobblestone": {
       "fileName": "plaza_cobblestone.glb",
       "sourceName": "round+stone+mosaic+3d+model.glb",
-      "sizeBytes": 1598632,
-      "sizeMB": 1.52,
-      "mtimeMs": 1792752846734
+      "rawSizeBytes": 1598632,
+      "sizeBytes": 292456,
+      "sizeMB": 0.28,
+      "mtimeMs": 1792927610199
     },
     "prop_lantern": {
       "fileName": "prop_lantern.glb",
       "sourceName": "medieval+street+lamp+3d+model.glb",
-      "sizeBytes": 1071684,
-      "sizeMB": 1.02,
-      "mtimeMs": 1792753393417
+      "rawSizeBytes": 1071684,
+      "sizeBytes": 230000,
+      "sizeMB": 0.22,
+      "mtimeMs": 1792927610273
     },
     "prop_fence_rock": {
       "fileName": "prop_fence_rock.glb",
       "sourceName": "wooden+fence+3d+model.glb",
-      "sizeBytes": 1000096,
-      "sizeMB": 0.95,
-      "mtimeMs": 1792753541182
+      "rawSizeBytes": 1000096,
+      "sizeBytes": 151548,
+      "sizeMB": 0.14,
+      "mtimeMs": 1792927610348
     },
     "tree_dead_gnarled": {
       "fileName": "tree_dead_gnarled.glb",
       "sourceName": "gnarled+tree+3d+model.glb",
-      "sizeBytes": 755732,
-      "sizeMB": 0.72,
-      "mtimeMs": 1792753313203
+      "rawSizeBytes": 755732,
+      "sizeBytes": 287420,
+      "sizeMB": 0.27,
+      "mtimeMs": 1792927610411
     },
     "tree_pine_wide": {
       "fileName": "tree_pine_wide.glb",
       "sourceName": "evergreen+tree+3d+model.glb",
-      "sizeBytes": 554156,
-      "sizeMB": 0.53,
-      "mtimeMs": 1792753194852
+      "rawSizeBytes": 554156,
+      "sizeBytes": 193200,
+      "sizeMB": 0.18,
+      "mtimeMs": 1792927610471
     },
     "tree_pine_tall": {
       "fileName": "tree_pine_tall.glb",
       "sourceName": "pine+tree+3d+model.glb",
-      "sizeBytes": 523548,
-      "sizeMB": 0.5,
-      "mtimeMs": 1792752978213
+      "rawSizeBytes": 523548,
+      "sizeBytes": 201448,
+      "sizeMB": 0.19,
+      "mtimeMs": 1792927610525
+    },
+    "prop_rune_obelisk": {
+      "fileName": "prop_rune_obelisk.glb",
+      "sourceName": "prop_rune_obelisk_noel.glb",
+      "rawSizeBytes": 930816,
+      "sizeBytes": 411108,
+      "sizeMB": 0.39,
+      "mtimeMs": 1792948714892
+    },
+    "prop_mist_well": {
+      "fileName": "prop_mist_well.glb",
+      "sourceName": "prop_mist_well_noel.glb",
+      "rawSizeBytes": 1157018,
+      "sizeBytes": 543036,
+      "sizeMB": 0.52,
+      "mtimeMs": 1792948715046
     }
   }
 }

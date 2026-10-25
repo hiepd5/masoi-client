@@ -173,6 +173,96 @@ export const EXTERIOR_ASSET_CATALOG = {
     allowCenterZone: false,
     deletable: true,
   },
+  prop_witch_cauldron: {
+    type: "prop_witch_cauldron",
+    propKey: "prop_witch_cauldron",
+    label: "🧪 Vạc Gang Phù Thủy Sôi Thuốc",
+    shortLabel: "Vạc Phù Thủy",
+    category: "props",
+    centerHeight: 0.62,
+    hitBoxSize: [1.25, 1.35, 1.25],
+    aoRadius: 0.85,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.62,
+    defaultSpawnRadius: 9.2,
+    allowCenterZone: false,
+    deletable: true,
+  },
+  prop_village_banner: {
+    type: "prop_village_banner",
+    propKey: "prop_village_banner",
+    label: "🚩 Cờ Hiệu Làng Bắc Âu Bay Gió",
+    shortLabel: "Cờ Hiệu Làng",
+    category: "props",
+    centerHeight: 1.9,
+    hitBoxSize: [1.2, 3.9, 0.9],
+    aoRadius: 0.68,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.55,
+    defaultSpawnRadius: 10.4,
+    allowCenterZone: false,
+    deletable: true,
+  },
+  prop_rune_obelisk: {
+    type: "prop_rune_obelisk",
+    propKey: "prop_rune_obelisk",
+    label: "🗿 Trụ Đá Cổ Ngữ Bắc Âu",
+    shortLabel: "Trụ Đá Rune",
+    category: "props",
+    centerHeight: 1.35,
+    hitBoxSize: [1.15, 2.75, 1.15],
+    aoRadius: 0.92,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.64,
+    defaultSpawnRadius: 11.4,
+    allowCenterZone: false,
+    deletable: true,
+  },
+  prop_cart_brazier: {
+    type: "prop_cart_brazier",
+    propKey: "prop_cart_brazier",
+    label: "🔥 Chảo Lửa Ba Chân Sắt Rèn",
+    shortLabel: "Chảo Lửa Rèn",
+    category: "props",
+    centerHeight: 0.85,
+    hitBoxSize: [1.1, 1.75, 1.1],
+    aoRadius: 0.82,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.6,
+    defaultSpawnRadius: 8.9,
+    allowCenterZone: false,
+    deletable: true,
+  },
+  prop_mist_well: {
+    type: "prop_mist_well",
+    propKey: "prop_mist_well",
+    label: "⛲ Giếng Đá Cổ Bốc Sương",
+    shortLabel: "Giếng Sương Cổ",
+    category: "architecture",
+    centerHeight: 1.2,
+    hitBoxSize: [1.95, 2.45, 1.95],
+    aoRadius: 1.35,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.68,
+    defaultSpawnRadius: 11.8,
+    allowCenterZone: false,
+    deletable: true,
+  },
+  prop_nordic_raven: {
+    type: "prop_nordic_raven",
+    propKey: "prop_nordic_raven",
+    label: "🐦‍⬛ Quạ Đen Bắc Âu Đậu Cọc",
+    shortLabel: "Quạ Đen Cọc",
+    category: "props",
+    centerHeight: 0.5,
+    hitBoxSize: [0.85, 1.1, 0.85],
+    aoRadius: 0.45,
+    aoScaleXZ: [1, 1],
+    aoOpacity: 0.48,
+    defaultSpawnRadius: 9.4,
+    allowCenterZone: false,
+    deletable: true,
+  },
   tree_pine_tall: {
     type: "tree_pine_tall",
     propKey: "tree_pine_tall",
@@ -262,6 +352,12 @@ export const SPAWNABLE_ASSET_TYPES = [
   "house_cottage_b",
   "landmark_belltower",
   "prop_gallows",
+  "prop_mist_well",
+  "prop_witch_cauldron",
+  "prop_village_banner",
+  "prop_rune_obelisk",
+  "prop_cart_brazier",
+  "prop_nordic_raven",
   "prop_lantern",
   "prop_fence_rock",
   "procedural_rock",
@@ -551,6 +647,39 @@ export function buildDefaultVillageNodes(baseRadius = LAYOUT_REF_CIRCLE_RADIUS) 
     );
     rockIdx += 1;
   }
+
+  // 6B. Bộ Công Trình Sống Huyền Bí Bắc Âu (#03 Trụ Đá Cổ Ngữ Rune & #05 Giếng Đá Sương Mù)
+  const heroLandmarks = [
+    {
+      id: "rune-obelisk-noel-1",
+      type: "prop_rune_obelisk",
+      label: "Trụ Đá Cổ Ngữ Rune (#03)",
+      deg: -72,
+      dist: baseRadius + 6.35,
+    },
+    {
+      id: "mist-well-noel-1",
+      type: "prop_mist_well",
+      label: "Giếng Đá Sương Mù Ánh Trăng (#05)",
+      deg: 72,
+      dist: baseRadius + 6.65,
+    },
+  ];
+  heroLandmarks.forEach((hl) => {
+    const rad = (hl.deg * Math.PI) / 180;
+    const x = Math.sin(rad) * hl.dist;
+    const z = Math.cos(rad) * hl.dist;
+    nodes.push(
+      normalizeLayoutNode({
+        id: hl.id,
+        type: hl.type,
+        label: hl.label,
+        position: [x, 0, z],
+        rotation: [0, Math.atan2(-x, -z), 0],
+        scale: [1, 1, 1],
+      })
+    );
+  });
 
   // 7. 84 Cây Rừng Phân Tán Theo Góc Vàng (3 Chủng Loại)
   for (let i = 0; i < 84; i++) {

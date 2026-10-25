@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import SmartPropGLB from "../props/SmartPropGLB.jsx";
+import InstancedExteriorBatch3D, {
+  INSTANCED_EXTERIOR_TYPES,
+} from "../props/InstancedExteriorBatch3D.jsx";
 import { SKY_CANDIDATES, SKY_ENABLED } from "../config/propManifest.js";
 import {
   getOrCreateDarkFantasyEnvMap,
@@ -125,6 +128,26 @@ function resolveMoodKey(isNight, phase, hasWinner) {
   if (phase === "day_reveal") return "dawn";
   if (phase === "day_defense" || phase === "day_final_vote") return "dusk_trial";
   return "day";
+}
+
+function resolvePhaseAccentHex(phase) {
+  switch (phase) {
+    case "night_guard":
+      return "#38bdf8"; // Lam Hộ Vệ
+    case "night_wolf":
+      return "#ef4444"; // Đỏ Huyết Nguyệt Sói Săn
+    case "night_witch":
+      return "#a855f7"; // Tím Giả Kim Phù Thủy
+    case "night_seer":
+      return "#818cf8"; // Chàm Tiên Tri Cổ Ngữ
+    case "day_defense":
+    case "day_final_vote":
+      return "#f43f5e"; // Đỏ Phán Quyết
+    case "day_reveal":
+      return "#f59e0b"; // Vàng Bình Minh
+    default:
+      return "#fb923c"; // Cam Hổ Phách Lửa Ấm
+  }
 }
 
 function getOctantSectorIndex(x, z) {
@@ -720,16 +743,18 @@ function ProceduralCampfirePit() {
   );
 }
 
-function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
+function CampfireNodeContent({ phase, isNightActive, calib, reloadToken }) {
   const heroFlameRef = useRef(null);
   const emberBedMatRef = useRef(null);
   const fireLightRef = useRef(null);
   const embersMeshRef = useRef(null);
+  const runeRingRef = useRef(null);
 
   const fireMatA = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 0.0, opacityScale: 0.95 }), []);
   const fireMatB = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 2.1, opacityScale: 0.85 }), []);
   const fireMatC = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 4.3, opacityScale: 0.8 }), []);
   const fireHaloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+  const phaseAccentHex = resolvePhaseAccentHex(phase);
 
   const emberSeeds = useMemo(
     () =>
@@ -750,6 +775,14 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
     if (heroFlameRef.current) {
       const cam = state.camera.position;
       heroFlameRef.current.rotation.y = Math.atan2(cam.x, cam.z);
+    }
+
+    if (runeRingRef.current) {
+      runeRingRef.current.rotation.z = t * 0.18;
+      if (runeRingRef.current.material) {
+        const baseAlpha = isNightActive ? 0.34 : phase === "day_final_vote" ? 0.28 : 0.12;
+        runeRingRef.current.material.opacity = baseAlpha * (0.72 + 0.28 * Math.sin(t * 2.8));
+      }
     }
 
     if (emberBedMatRef.current) {
@@ -794,6 +827,23 @@ function CampfireNodeContent({ isNightActive, calib, reloadToken }) {
           color="#fb923c"
           transparent
           opacity={isNightActive ? 0.42 : 0.28}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Vòng Cổ Ngữ Bắc Âu (Phase-Reactive Rune Aura) xoay chậm quanh viền đá lửa theo nhịp Đêm/Phán Quyết */}
+      <mesh
+        ref={runeRingRef}
+        raycast={NOOP_RAYCAST}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.022, fireZOffset]}
+      >
+        <ringGeometry args={[0.78 * fireScale, 0.96 * fireScale, 36]} />
+        <meshBasicMaterial
+          color={phaseAccentHex}
+          transparent
+          opacity={0.24}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
         />
@@ -1073,6 +1123,552 @@ function ProceduralBoulderContent() {
   );
 }
 
+// ==================== LIVING PROPS: HOẠT CẢNH SỐNG ĐỘNG TRÊN KHO ĐẠO CỤ HIỆN HỮU & 6 HERO PROPS ====================
+
+function BelltowerNodeContent({ phase, isNightActive, windowGlow, calib, reloadToken }) {
+  const bellRef = useRef(null);
+  const waveRingRef = useRef(null);
+  const isRinging = phase === "day_reveal" || phase === "day_final_vote";
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (bellRef.current) {
+      const amp = isRinging ? 0.38 : 0.03;
+      const freq = isRinging ? 3.8 : 0.9;
+      bellRef.current.rotation.z = Math.sin(t * freq) * amp;
+    }
+    if (waveRingRef.current) {
+      if (!isRinging) {
+        waveRingRef.current.visible = false;
+      } else {
+        waveRingRef.current.visible = true;
+        const cycle = (t * 0.55) % 1;
+        const s = 1.2 + cycle * 9.5;
+        waveRingRef.current.scale.set(s, s, 1);
+        if (waveRingRef.current.material) {
+          waveRingRef.current.material.opacity = (1 - cycle) * 0.32;
+        }
+      }
+    }
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={2.6} opacity={0.72} />
+      <SmartPropGLB
+        propKey="landmark_belltower"
+        calib={calib}
+        reloadToken={reloadToken}
+      />
+      {/* Quả chuông đồng cổ lắc ngân vang tại vòm gác chuông */}
+      <group ref={bellRef} position={[0, 6.35, 0.12]}>
+        <mesh raycast={NOOP_RAYCAST} position={[0, -0.26, 0]}>
+          <cylinderGeometry args={[0.14, 0.32, 0.44, 12]} />
+          <meshStandardMaterial color="#b87a28" metalness={0.82} roughness={0.32} />
+        </mesh>
+      </group>
+      {/* Sóng âm sương mù lan tỏa từ chân tháp khi Bình Minh / Bỏ Phiếu Phán Quyết */}
+      <mesh
+        ref={waveRingRef}
+        raycast={NOOP_RAYCAST}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.08, 0]}
+      >
+        <ringGeometry args={[0.82, 1.0, 36]} />
+        <meshBasicMaterial
+          color={phase === "day_final_vote" ? "#fb7185" : "#fde68a"}
+          transparent
+          opacity={0.25}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {windowGlow && (
+        <>
+          <pointLight
+            position={[0, 5.2, 2.2]}
+            color="#fbbf24"
+            intensity={isNightActive ? 3.1 : 2.1}
+            distance={18}
+            decay={1.5}
+          />
+          <sprite raycast={NOOP_RAYCAST} position={[0, 2.6, 1.35]} scale={[2.4, 2.4, 1]}>
+            <spriteMaterial
+              map={getSoftGlowHaloTexture()}
+              color="#fb923c"
+              transparent
+              opacity={isNightActive ? 0.34 : 0.22}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        </>
+      )}
+    </group>
+  );
+}
+
+function CottageHouseNodeContent({
+  propKey,
+  phase,
+  isNightActive,
+  windowGlow,
+  calib,
+  reloadToken,
+  seed = 0,
+}) {
+  const smokeGroupRef = useRef(null);
+  const mistTex = useMemo(() => getDriftingMistTexture(), []);
+  const isWolfHunt = phase === "night_wolf";
+  const chimneyBaseY = propKey === "house_cottage_a" ? 5.15 : 4.85;
+
+  useFrame((state) => {
+    if (!smokeGroupRef.current) return;
+    const t = state.clock.elapsedTime;
+    const children = smokeGroupRef.current.children;
+    for (let i = 0; i < children.length; i++) {
+      const sp = children[i];
+      const life = (t * 0.24 + i * 0.33 + seed * 0.17) % 1;
+      sp.position.set(
+        0.55 + life * 1.15 + Math.sin(t * 1.1 + i) * 0.12,
+        chimneyBaseY + life * 2.1,
+        -0.35 + life * 0.65
+      );
+      const s = 0.65 + life * 1.55;
+      sp.scale.set(s * 1.25, s * 0.85, 1);
+      if (sp.material) {
+        sp.material.opacity = Math.sin(life * Math.PI) * (isNightActive ? 0.2 : 0.15);
+      }
+    }
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={3.1} scaleXZ={[1.1, 0.95]} opacity={0.72} />
+      <SmartPropGLB propKey={propKey} calib={calib} reloadToken={reloadToken} />
+      {/* Làn khói bếp mảnh bay nghiêng theo hướng gió rừng Bắc Âu */}
+      <group ref={smokeGroupRef}>
+        {[0, 1, 2].map((idx) => (
+          <sprite key={idx} raycast={NOOP_RAYCAST}>
+            <spriteMaterial map={mistTex} color="#cbd5e1" transparent opacity={0.16} depthWrite={false} />
+          </sprite>
+        ))}
+      </group>
+      {windowGlow && (
+        <mesh raycast={NOOP_RAYCAST} position={[0, 0.022, 2.1]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[4.2, 3.2]} />
+          <meshBasicMaterial
+            map={getSoftGlowHaloTexture()}
+            color={isWolfHunt ? "#ea580c" : "#f59e0b"}
+            transparent
+            opacity={(isNightActive ? 0.32 : 0.2) * (isWolfHunt ? 0.58 : 1.0)}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+function LanternNodeContent({ isNightActive, windowGlow, calib, reloadToken, seed = 0 }) {
+  const mothsRef = useRef(null);
+  const haloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+
+  useFrame((state) => {
+    if (!mothsRef.current) return;
+    const t = state.clock.elapsedTime;
+    const children = mothsRef.current.children;
+    for (let i = 0; i < children.length; i++) {
+      const sp = children[i];
+      const a = t * (2.2 + i * 0.7) + seed + i * Math.PI;
+      const r = 0.26 + Math.sin(t * 3.1 + i) * 0.07;
+      sp.position.set(
+        Math.cos(a) * r,
+        2.14 + Math.sin(t * 4.2 + i * 1.7) * 0.11,
+        0.16 + Math.sin(a) * r
+      );
+    }
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.55} opacity={0.58} />
+      <SmartPropGLB
+        propKey="prop_lantern"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={<StylizedIronLanternFallback windowGlow={windowGlow} />}
+      />
+      {windowGlow && (
+        <>
+          <sprite raycast={NOOP_RAYCAST} position={[0, 2.12, 0.14]} scale={[1.55, 1.55, 1]}>
+            <spriteMaterial
+              map={haloTex}
+              color="#fbbf24"
+              transparent
+              opacity={isNightActive ? 0.62 : 0.44}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+          <mesh raycast={NOOP_RAYCAST} position={[0, 0.018, 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[2.5, 2.5]} />
+            <meshBasicMaterial
+              map={haloTex}
+              color="#f59e0b"
+              transparent
+              opacity={isNightActive ? 0.28 : 0.18}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          {isNightActive && (
+            <group ref={mothsRef}>
+              {[0, 1].map((mi) => (
+                <sprite key={mi} raycast={NOOP_RAYCAST} scale={[0.09, 0.09, 1]}>
+                  <spriteMaterial
+                    map={haloTex}
+                    color="#fef08a"
+                    transparent
+                    opacity={0.78}
+                    blending={THREE.AdditiveBlending}
+                    depthWrite={false}
+                  />
+                </sprite>
+              ))}
+            </group>
+          )}
+        </>
+      )}
+    </group>
+  );
+}
+
+function WitchCauldronNodeContent({ phase, calib, reloadToken }) {
+  const bubblesRef = useRef(null);
+  const haloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+  const isWitchPhase = phase === "night_witch";
+
+  useFrame((state) => {
+    if (!bubblesRef.current) return;
+    const t = state.clock.elapsedTime;
+    const children = bubblesRef.current.children;
+    for (let i = 0; i < children.length; i++) {
+      const sp = children[i];
+      const life = (t * (isWitchPhase ? 0.72 : 0.44) + i * 0.19) % 1;
+      const a = i * 1.25 + t * 0.8;
+      const r = 0.08 + (i % 3) * 0.08;
+      sp.position.set(Math.cos(a) * r, 0.88 + life * 0.78, Math.sin(a) * r);
+      const s = Math.sin(life * Math.PI) * (isWitchPhase ? 0.22 : 0.15);
+      sp.scale.set(s, s, 1);
+    }
+  });
+
+  const brewHex = isWitchPhase ? "#c084fc" : "#34d399";
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.85} opacity={0.64} />
+      <SmartPropGLB
+        propKey="prop_witch_cauldron"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={
+          <group>
+            <mesh position={[0, 0.48, 0]} castShadow receiveShadow>
+              <sphereGeometry args={[0.46, 18, 14]} />
+              <meshStandardMaterial color="#23272e" metalness={0.76} roughness={0.44} />
+            </mesh>
+            <mesh position={[0, 0.82, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.38, 0.055, 10, 24]} />
+              <meshStandardMaterial color="#1f242b" metalness={0.8} roughness={0.38} />
+            </mesh>
+            <mesh position={[0, 0.81, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <circleGeometry args={[0.35, 20]} />
+              <meshStandardMaterial color={brewHex} emissive={brewHex} emissiveIntensity={1.65} roughness={0.15} />
+            </mesh>
+          </group>
+        }
+      />
+      <group ref={bubblesRef}>
+        {[0, 1, 2, 3, 4].map((bi) => (
+          <sprite key={bi} raycast={NOOP_RAYCAST}>
+            <spriteMaterial
+              map={haloTex}
+              color={bi % 2 === 0 ? "#34d399" : "#c084fc"}
+              transparent
+              opacity={0.76}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        ))}
+      </group>
+      <sprite raycast={NOOP_RAYCAST} position={[0, 0.96, 0]} scale={[1.35, 1.35, 1]}>
+        <spriteMaterial
+          map={haloTex}
+          color={brewHex}
+          transparent
+          opacity={isWitchPhase ? 0.54 : 0.34}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+    </group>
+  );
+}
+
+function VillageBannerNodeContent({ calib, reloadToken, seed = 0 }) {
+  const clothRef = useRef(null);
+
+  useFrame((state) => {
+    if (!clothRef.current) return;
+    const t = state.clock.elapsedTime;
+    clothRef.current.rotation.z = Math.sin(t * 2.8 + seed) * 0.12;
+    clothRef.current.rotation.x = Math.cos(t * 2.1 + seed) * 0.08;
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.68} opacity={0.56} />
+      <SmartPropGLB
+        propKey="prop_village_banner"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={
+          <group>
+            <mesh position={[0, 0.16, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[0.24, 0.32, 0.32, 7]} />
+              <meshStandardMaterial color="#3f4a56" roughness={0.92} flatShading />
+            </mesh>
+            <mesh position={[0, 1.92, 0]} castShadow>
+              <cylinderGeometry args={[0.048, 0.068, 3.65, 8]} />
+              <meshStandardMaterial color="#4a2f1d" roughness={0.86} />
+            </mesh>
+            <mesh position={[0, 3.55, 0]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.036, 0.036, 1.05, 8]} />
+              <meshStandardMaterial color="#4a2f1d" roughness={0.86} />
+            </mesh>
+            <group ref={clothRef} position={[0, 3.52, 0.04]}>
+              <mesh position={[0, -0.95, 0]} castShadow>
+                <planeGeometry args={[0.84, 1.9, 2, 6]} />
+                <meshStandardMaterial color="#7f2936" roughness={0.88} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          </group>
+        }
+      />
+    </group>
+  );
+}
+
+function RuneObeliskNodeContent({ phase, isNightActive, calib, reloadToken }) {
+  const haloRef = useRef(null);
+  const accentHex = resolvePhaseAccentHex(phase);
+
+  useFrame((state) => {
+    if (!haloRef.current?.material) return;
+    const t = state.clock.elapsedTime;
+    haloRef.current.material.opacity =
+      (isNightActive ? 0.44 : 0.24) * (0.72 + 0.28 * Math.sin(t * 2.6));
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.92} opacity={0.64} />
+      <SmartPropGLB
+        propKey="prop_rune_obelisk"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={
+          <group>
+            <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[0.56, 0.68, 0.4, 6]} />
+              <meshStandardMaterial color="#36414d" roughness={0.92} flatShading />
+            </mesh>
+            <mesh position={[0, 1.42, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[0.24, 0.42, 2.25, 5]} />
+              <meshStandardMaterial color="#3f4a56" roughness={0.9} flatShading />
+            </mesh>
+            <mesh position={[0, 1.45, 0.26]}>
+              <planeGeometry args={[0.14, 1.45]} />
+              <meshStandardMaterial color={accentHex} emissive={accentHex} emissiveIntensity={1.8} />
+            </mesh>
+          </group>
+        }
+      />
+      <sprite ref={haloRef} raycast={NOOP_RAYCAST} position={[0, 1.55, 0]} scale={[1.65, 2.2, 1]}>
+        <spriteMaterial
+          map={getSoftGlowHaloTexture()}
+          color={accentHex}
+          transparent
+          opacity={0.34}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+    </group>
+  );
+}
+
+function CartBrazierNodeContent({ isNightActive, calib, reloadToken }) {
+  const flameRef = useRef(null);
+  const fireMat = useMemo(() => createVolumetricFireMaterial({ phaseOffset: 1.3, opacityScale: 0.9 }), []);
+  const haloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+
+  useFrame((state) => {
+    if (flameRef.current) {
+      const cam = state.camera.position;
+      flameRef.current.rotation.y = Math.atan2(cam.x, cam.z);
+    }
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.82} opacity={0.6} />
+      <SmartPropGLB
+        propKey="prop_cart_brazier"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={
+          <group>
+            {[-0.26, 0, 0.26].map((lx, i) => (
+              <mesh key={i} position={[Math.cos(i * 2.09) * 0.28, 0.55, Math.sin(i * 2.09) * 0.28]} rotation={[0.15, i * 2.09, 0]} castShadow>
+                <cylinderGeometry args={[0.032, 0.045, 1.15, 7]} />
+                <meshStandardMaterial color="#23272e" metalness={0.78} roughness={0.42} />
+              </mesh>
+            ))}
+            <mesh position={[0, 1.05, 0]} castShadow>
+              <cylinderGeometry args={[0.42, 0.22, 0.28, 12]} />
+              <meshStandardMaterial color="#23272e" metalness={0.78} roughness={0.44} />
+            </mesh>
+          </group>
+        }
+      />
+      <mesh raycast={NOOP_RAYCAST} ref={flameRef} position={[0, 1.42, 0]} material={fireMat}>
+        <planeGeometry args={[0.62, 0.78, 1, 8]} />
+      </mesh>
+      <sprite raycast={NOOP_RAYCAST} position={[0, 1.35, 0]} scale={[1.45, 1.45, 1]}>
+        <spriteMaterial
+          map={haloTex}
+          color="#fb923c"
+          transparent
+          opacity={isNightActive ? 0.52 : 0.34}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+    </group>
+  );
+}
+
+function MistWellNodeContent({ isNightActive, calib, reloadToken }) {
+  const mistRef = useRef(null);
+  const mistTex = useMemo(() => getDriftingMistTexture(), []);
+
+  useFrame((state) => {
+    if (!mistRef.current) return;
+    const t = state.clock.elapsedTime;
+    const children = mistRef.current.children;
+    for (let i = 0; i < children.length; i++) {
+      const sp = children[i];
+      const life = (t * 0.22 + i * 0.33) % 1;
+      sp.position.set(
+        Math.sin(t * 0.8 + i * 2) * 0.28,
+        0.78 + life * 0.95,
+        Math.cos(t * 0.7 + i * 2) * 0.28
+      );
+      const s = 1.05 + life * 1.15;
+      sp.scale.set(s * 1.35, s * 0.65, 1);
+      if (sp.material) {
+        sp.material.opacity = Math.sin(life * Math.PI) * (isNightActive ? 0.34 : 0.22);
+      }
+    }
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={1.35} opacity={0.68} />
+      <SmartPropGLB
+        propKey="prop_mist_well"
+        calib={calib}
+        reloadToken={reloadToken}
+        fallback={
+          <group>
+            <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
+              <cylinderGeometry args={[0.78, 0.86, 0.84, 14]} />
+              <meshStandardMaterial color="#3f4a56" roughness={0.92} />
+            </mesh>
+            {[-0.68, 0.68].map((px, pi) => (
+              <mesh key={pi} position={[px, 1.35, 0]} castShadow>
+                <boxGeometry args={[0.11, 1.5, 0.11]} />
+                <meshStandardMaterial color="#4a2f1d" roughness={0.88} />
+              </mesh>
+            ))}
+            <mesh position={[0, 2.15, 0]} rotation={[0, Math.PI / 4, 0]} castShadow>
+              <coneGeometry args={[1.15, 0.68, 4]} />
+              <meshStandardMaterial color="#3b2618" roughness={0.9} />
+            </mesh>
+          </group>
+        }
+      />
+      <group ref={mistRef}>
+        {[0, 1, 2].map((mi) => (
+          <sprite key={mi} raycast={NOOP_RAYCAST}>
+            <spriteMaterial map={mistTex} color="#bae6fd" transparent opacity={0.28} depthWrite={false} />
+          </sprite>
+        ))}
+      </group>
+    </group>
+  );
+}
+
+function NordicRavenNodeContent({ calib, reloadToken, seed = 0 }) {
+  const birdPivotRef = useRef(null);
+
+  useFrame((state) => {
+    if (!birdPivotRef.current) return;
+    const t = state.clock.elapsedTime + seed;
+    const twitch = Math.sin(t * 1.7) > 0.72 ? Math.sin(t * 9.0) * 0.26 : 0;
+    birdPivotRef.current.rotation.y = Math.sin(t * 0.65) * 0.22 + twitch;
+    birdPivotRef.current.position.y = Math.max(0, Math.sin(t * 2.1) - 0.88) * 0.18;
+  });
+
+  return (
+    <group>
+      <ContactShadowDisc radius={0.45} opacity={0.48} />
+      <group ref={birdPivotRef}>
+        <SmartPropGLB
+          propKey="prop_nordic_raven"
+          calib={calib}
+          reloadToken={reloadToken}
+          fallback={
+            <group>
+              <mesh position={[0, 0.34, 0]} castShadow receiveShadow>
+                <cylinderGeometry args={[0.11, 0.15, 0.68, 7]} />
+                <meshStandardMaterial color="#4a2f1d" roughness={0.92} />
+              </mesh>
+              <mesh position={[0, 0.76, 0]} rotation={[0.35, 0, 0]} scale={[0.85, 1.25, 0.9]} castShadow>
+                <sphereGeometry args={[0.12, 12, 12]} />
+                <meshStandardMaterial color="#18181b" roughness={0.62} />
+              </mesh>
+              <mesh position={[0, 0.91, 0.08]} castShadow>
+                <sphereGeometry args={[0.075, 12, 12]} />
+                <meshStandardMaterial color="#18181b" roughness={0.58} />
+              </mesh>
+              <mesh position={[0, 0.9, 0.17]} rotation={[Math.PI / 2, 0, 0]}>
+                <coneGeometry args={[0.028, 0.09, 6]} />
+                <meshStandardMaterial color="#27272a" roughness={0.5} />
+              </mesh>
+            </group>
+          }
+        />
+      </group>
+    </group>
+  );
+}
+
 /**
  * Render bất kỳ Thực Thể Ngoại Cảnh nào theo đúng gốc tọa độ chân đế (y=0)
  * và kết nối thẳng vào nodeGroupRefs cho Gizmo 3 trục D5!
@@ -1173,6 +1769,7 @@ function EditableExteriorNode({
 
       {node.type === "prop_campfire" && (
         <CampfireNodeContent
+          phase={phase}
           isNightActive={isNightActive}
           calib={propCalib?.prop_campfire}
           reloadToken={reloadToken}
@@ -1189,97 +1786,84 @@ function EditableExteriorNode({
       )}
 
       {node.type === "landmark_belltower" && (
-        <group>
-          <ContactShadowDisc radius={2.6} opacity={0.72} />
-          <SmartPropGLB
-            propKey="landmark_belltower"
-            calib={propCalib?.landmark_belltower}
-            reloadToken={reloadToken}
-          />
-          {windowGlow && (
-            <>
-              <pointLight
-                position={[0, 5.2, 2.2]}
-                color="#fbbf24"
-                intensity={isNightActive ? 3.1 : 2.1}
-                distance={18}
-                decay={1.5}
-              />
-              <sprite raycast={NOOP_RAYCAST} position={[0, 2.6, 1.35]} scale={[2.4, 2.4, 1]}>
-                <spriteMaterial
-                  map={getSoftGlowHaloTexture()}
-                  color="#fb923c"
-                  transparent
-                  opacity={isNightActive ? 0.34 : 0.22}
-                  blending={THREE.AdditiveBlending}
-                  depthWrite={false}
-                />
-              </sprite>
-            </>
-          )}
-        </group>
+        <BelltowerNodeContent
+          phase={phase}
+          isNightActive={isNightActive}
+          windowGlow={windowGlow}
+          calib={propCalib?.landmark_belltower}
+          reloadToken={reloadToken}
+        />
       )}
 
       {(node.type === "house_cottage_a" || node.type === "house_cottage_b") && (
-        <group>
-          <ContactShadowDisc radius={3.1} scaleXZ={[1.1, 0.95]} opacity={0.72} />
-          <SmartPropGLB
-            propKey={node.type}
-            calib={propCalib?.[node.type]}
-            reloadToken={reloadToken}
-          />
-          {windowGlow && (
-            <mesh raycast={NOOP_RAYCAST} position={[0, 0.022, 2.1]} rotation={[-Math.PI / 2, 0, 0]}>
-              <planeGeometry args={[4.2, 3.2]} />
-              <meshBasicMaterial
-                map={getSoftGlowHaloTexture()}
-                color="#f59e0b"
-                transparent
-                opacity={isNightActive ? 0.32 : 0.2}
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-              />
-            </mesh>
-          )}
-        </group>
+        <CottageHouseNodeContent
+          propKey={node.type}
+          phase={phase}
+          isNightActive={isNightActive}
+          windowGlow={windowGlow}
+          calib={propCalib?.[node.type]}
+          reloadToken={reloadToken}
+          seed={node.seed || 0}
+        />
       )}
 
       {node.type === "prop_lantern" && (
-        <group>
-          <ContactShadowDisc radius={0.55} opacity={0.58} />
-          <SmartPropGLB
-            propKey="prop_lantern"
-            calib={propCalib?.prop_lantern}
-            reloadToken={reloadToken}
-            fallback={<StylizedIronLanternFallback windowGlow={windowGlow} />}
-          />
-          {windowGlow && (
-            <>
-              {/* Quầng sáng sương ấm tỏa ra từ bầu đèn lồng sắt y hệt Ảnh Concept (0 tải GPU Shadow!) */}
-              <sprite raycast={NOOP_RAYCAST} position={[0, 2.12, 0.14]} scale={[1.55, 1.55, 1]}>
-                <spriteMaterial
-                  map={getSoftGlowHaloTexture()}
-                  color="#fbbf24"
-                  transparent
-                  opacity={isNightActive ? 0.62 : 0.44}
-                  blending={THREE.AdditiveBlending}
-                  depthWrite={false}
-                />
-              </sprite>
-              <mesh raycast={NOOP_RAYCAST} position={[0, 0.018, 0.18]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[2.5, 2.5]} />
-                <meshBasicMaterial
-                  map={getSoftGlowHaloTexture()}
-                  color="#f59e0b"
-                  transparent
-                  opacity={isNightActive ? 0.28 : 0.18}
-                  blending={THREE.AdditiveBlending}
-                  depthWrite={false}
-                />
-              </mesh>
-            </>
-          )}
-        </group>
+        <LanternNodeContent
+          isNightActive={isNightActive}
+          windowGlow={windowGlow}
+          calib={propCalib?.prop_lantern}
+          reloadToken={reloadToken}
+          seed={node.seed || 0}
+        />
+      )}
+
+      {node.type === "prop_witch_cauldron" && (
+        <WitchCauldronNodeContent
+          phase={phase}
+          calib={propCalib?.prop_witch_cauldron}
+          reloadToken={reloadToken}
+        />
+      )}
+
+      {node.type === "prop_village_banner" && (
+        <VillageBannerNodeContent
+          calib={propCalib?.prop_village_banner}
+          reloadToken={reloadToken}
+          seed={node.seed || 0}
+        />
+      )}
+
+      {node.type === "prop_rune_obelisk" && (
+        <RuneObeliskNodeContent
+          phase={phase}
+          isNightActive={isNightActive}
+          calib={propCalib?.prop_rune_obelisk}
+          reloadToken={reloadToken}
+        />
+      )}
+
+      {node.type === "prop_cart_brazier" && (
+        <CartBrazierNodeContent
+          isNightActive={isNightActive}
+          calib={propCalib?.prop_cart_brazier}
+          reloadToken={reloadToken}
+        />
+      )}
+
+      {node.type === "prop_mist_well" && (
+        <MistWellNodeContent
+          isNightActive={isNightActive}
+          calib={propCalib?.prop_mist_well}
+          reloadToken={reloadToken}
+        />
+      )}
+
+      {node.type === "prop_nordic_raven" && (
+        <NordicRavenNodeContent
+          calib={propCalib?.prop_nordic_raven}
+          reloadToken={reloadToken}
+          seed={node.seed || 0}
+        />
       )}
 
       {node.type === "prop_fence_rock" && (
@@ -1566,7 +2150,16 @@ function DynamicOctantCulledSceneGraph({
         />
       ))}
 
-      {/* 8 Phân Khu Góc Ngoại Vi (Nhà cổ, Tháp chuông, Đài treo cổ, Đèn, Rào, Đá, Rừng cây) */}
+      {/* LỚP AUTO-INSTANCEDMESH (< 40 Draw Calls) CHO TOÀN BỘ RỪNG THÔNG & HÀNG RÀO ĐÁ KHI CHƠI (!architectMode) */}
+      <InstancedExteriorBatch3D
+        layoutNodes={layoutNodes}
+        propStatuses={propStatuses}
+        propCalib={propCalib}
+        reloadToken={reloadToken}
+        architectMode={architectMode}
+      />
+
+      {/* 8 Phân Khu Góc Ngoại Vi (Nhà cổ, Tháp chuông, Đài treo cổ, Đèn, Hero Props; Cây & Rào tự động tách lẻ khi bật D5 Mode) */}
       {sectorBuckets.map((bucket, sIdx) => (
         <group
           key={`octant-sector-${sIdx}`}
@@ -1574,25 +2167,34 @@ function DynamicOctantCulledSceneGraph({
             sectorRefs.current[sIdx] = el;
           }}
         >
-          {bucket.map((node) => (
-            <EditableExteriorNode
-              key={node.id}
-              node={node}
-              circleRadius={circleRadius}
-              pal={pal}
-              phase={phase}
-              isNightActive={isNightActive}
-              windowGlow={windowGlow}
-              propCalib={propCalib}
-              propStatuses={propStatuses}
-              reloadToken={reloadToken}
-              architectMode={architectMode}
-              isGizmoDragging={isGizmoDragging}
-              lastGizmoDragEndMsRef={lastGizmoDragEndMsRef}
-              registerNodeRef={registerNodeRef}
-              onSelectNode={onSelectNode}
-            />
-          ))}
+          {bucket.map((node) => {
+            if (
+              !architectMode &&
+              INSTANCED_EXTERIOR_TYPES.includes(node.type) &&
+              propStatuses?.[node.type] === "loaded"
+            ) {
+              return null;
+            }
+            return (
+              <EditableExteriorNode
+                key={node.id}
+                node={node}
+                circleRadius={circleRadius}
+                pal={pal}
+                phase={phase}
+                isNightActive={isNightActive}
+                windowGlow={windowGlow}
+                propCalib={propCalib}
+                propStatuses={propStatuses}
+                reloadToken={reloadToken}
+                architectMode={architectMode}
+                isGizmoDragging={isGizmoDragging}
+                lastGizmoDragEndMsRef={lastGizmoDragEndMsRef}
+                registerNodeRef={registerNodeRef}
+                onSelectNode={onSelectNode}
+              />
+            );
+          })}
         </group>
       ))}
     </group>
@@ -1773,25 +2375,34 @@ export default function VillageEnvironment3D({
     [activeNodes]
   );
 
-  // ĐIỂM CẬP NHẬT DUY NHẤT (~0.002ms CPU/frame) điều khiển đồng bộ Gió Rừng 2 Chiều, Cửa Sổ Ấm & Sân Đá Ẩm!
+  const targetPhaseColor = useMemo(() => new THREE.Color(), []);
+
+  // ĐIỂM CẬP NHẬT DUY NHẤT (~0.002ms CPU/frame) điều khiển đồng bộ Gió Rừng 2 Chiều, Cửa Sổ Ấm, Sân Đá Ẩm & Cổ Ngữ Pha Đêm!
   useFrame((state, delta) => {
     CINEMATIC_SHARED_UNIFORMS.uTime.value = state.clock.elapsedTime;
     const isTrial = phase === "day_defense" || phase === "day_final_vote";
+    const isWolfHunt = phase === "night_wolf";
     const windGoal = architectMode ? 0.22 : isNightActive ? 1.18 : isTrial ? 1.32 : 0.95;
     CINEMATIC_SHARED_UNIFORMS.uWindStrength.value = THREE.MathUtils.lerp(
       CINEMATIC_SHARED_UNIFORMS.uWindStrength.value,
       windGoal,
       Math.min(1, delta * 2.5)
     );
+    const warmGoal = (pal.warmGlow ?? 1.25) * (isWolfHunt && !architectMode ? 0.72 : 1.0);
     CINEMATIC_SHARED_UNIFORMS.uWarmGlowIntensity.value = THREE.MathUtils.lerp(
       CINEMATIC_SHARED_UNIFORMS.uWarmGlowIntensity.value,
-      pal.warmGlow ?? 1.25,
+      warmGoal,
       Math.min(1, delta * 2.5)
     );
     CINEMATIC_SHARED_UNIFORMS.uNightFactor.value = THREE.MathUtils.lerp(
       CINEMATIC_SHARED_UNIFORMS.uNightFactor.value,
       isNightActive ? 1.0 : 0.58,
       Math.min(1, delta * 2.5)
+    );
+    targetPhaseColor.set(resolvePhaseAccentHex(phase));
+    CINEMATIC_SHARED_UNIFORMS.uPhaseAccentColor.value.lerp(
+      targetPhaseColor,
+      Math.min(1, delta * 3.0)
     );
     if (primaryCampfire?.position) {
       CINEMATIC_SHARED_UNIFORMS.uFireWorldPos.value.set(

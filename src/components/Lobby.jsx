@@ -35,7 +35,12 @@ function suggestName() {
   return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
 }
 
-export default function Lobby({ socketRef, onJoined, onOpenArchitectStudio = null }) {
+export default function Lobby({
+  socketRef,
+  onJoined,
+  onOpenArchitectStudio = null,
+  onOpenChoreoStudio = null,
+}) {
   const [name, setName] = useState(() => sessionStorage.getItem('ws_name') || '');
   const [roomCode, setRoomCode] = useState('');
   const [error, setError] = useState('');
@@ -239,7 +244,34 @@ export default function Lobby({ socketRef, onJoined, onOpenArchitectStudio = nul
         </div>
         <p className="subtitle">Chơi cùng bạn bè từ xa</p>
 
-        {/* Nút Cam Mở Trực Tiếp Studio Cảnh Quan D5 (Chỉ hiện ở Dev/Localhost — Ẩn 100% trên Production) */}
+        {/* Cụm Nút Dev Mở Trực Tiếp Studio Hoạt Cảnh 9 Vai & Studio Cảnh Quan D5 (Chỉ hiện ở Dev/Localhost — Ẩn 100% trên Production) */}
+        {onOpenChoreoStudio && (
+          <button
+            type="button"
+            onClick={onOpenChoreoStudio}
+            style={{
+              width: '100%',
+              margin: '0 0 9px 0',
+              padding: '10px 14px',
+              borderRadius: 11,
+              fontSize: 13.5,
+              fontWeight: 800,
+              background: 'linear-gradient(135deg, #9333ea, #4f46e5)',
+              color: '#ffffff',
+              border: '1.5px solid #d8b4fe',
+              boxShadow: '0 4px 16px rgba(147, 51, 234, 0.45)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+            title="Diễn thử 1-Click đủ 9 Nhân Vật (Sói lao vồ Bezier, Bảo Vệ chắn khiên, Pháp trường...) trước khi xây model trên Tripo AI"
+          >
+            🎬 Mở Studio Hoạt Cảnh 9 Vai (Test Trước Khi Xây Model)
+          </button>
+        )}
+
         {onOpenArchitectStudio && (
           <button
             type="button"

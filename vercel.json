@@ -1,7 +1,7 @@
 {
   "headers": [
     {
-      "source": "/models/props/(.*)\\.glb",
+      "source": "/models/(props|characters|hand_props|roles)/(.*)\\.glb",
       "headers": [
         {
           "key": "Cache-Control",

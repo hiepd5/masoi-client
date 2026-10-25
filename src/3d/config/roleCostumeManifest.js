@@ -5,6 +5,8 @@
  *   qua /api/role-models (Localhost) hoặc /models/roles/roles_manifest.json (Production) với 0 lỗi 404!
  */
 
+import { ASSET_SYNC_VERSION } from "./propManifest.js";
+
 const SERVER_API_BASE = import.meta.env.PROD
   ? ""
   : "http://localhost:3001";
@@ -133,7 +135,7 @@ export async function ensureRoleGlbManifestLoaded(force = false) {
       // Ưu tiên API quét trực tiếp trên Localhost, fallback sang manifest tĩnh trên Cloud
       const apiUrl = SERVER_API_BASE
         ? `${SERVER_API_BASE}/api/role-models`
-        : "/models/roles/roles_manifest.json";
+        : `/models/roles/roles_manifest.json?v=${ASSET_SYNC_VERSION}`;
       const res = await fetch(apiUrl, { cache: "no-cache" });
       if (res.ok) {
         const data = await res.json();
@@ -146,7 +148,10 @@ export async function ensureRoleGlbManifestLoaded(force = false) {
     }
 
     try {
-      const staticRes = await fetch("/models/roles/roles_manifest.json", { cache: "no-cache" });
+      const staticRes = await fetch(
+        `/models/roles/roles_manifest.json?v=${ASSET_SYNC_VERSION}`,
+        { cache: "no-cache" }
+      );
       if (staticRes.ok) {
         const data = await staticRes.json();
         cachedRoleGlbs = data?.roles && typeof data.roles === "object" ? data.roles : {};

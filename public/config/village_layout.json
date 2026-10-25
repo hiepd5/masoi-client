@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAtMs": 1792784544236,
-  "updatedAtIso": "2026-10-23T19:42:24.236Z",
+  "updatedAtMs": 1792946393031,
+  "updatedAtIso": "2026-10-25T16:39:53.031Z",
   "note": "Bố cục không gian Làng Ma Sói 3D được dàn dựng bằng D5 Architect Studio (Không tác động ghế ngồi người chơi)",
-  "totalNodes": 153,
+  "totalNodes": 154,
   "nodes": [
     {
       "id": "plaza-main",
@@ -54,31 +54,6 @@
       "allowCenterZone": true,
       "lockClick": false,
       "deletable": false
-    },
-    {
-      "id": "gallows-north",
-      "type": "prop_gallows",
-      "label": "Đài Treo Cổ Hướng Bắc",
-      "category": "architecture",
-      "position": [
-        -0.546,
-        0,
-        10.393
-      ],
-      "rotation": [
-        -3.134,
-        -0.068,
-        3.142
-      ],
-      "scale": [
-        0.894,
-        0.95,
-        0.894
-      ],
-      "seed": 0,
-      "allowCenterZone": false,
-      "lockClick": false,
-      "deletable": true
     },
     {
       "id": "belltower-north",
@@ -3826,6 +3801,56 @@
         0.998
       ],
       "seed": 5.64,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "rune-obelisk-noel-1",
+      "type": "prop_rune_obelisk",
+      "label": "Trụ Đá Cổ Ngữ Rune (#03)",
+      "category": "props",
+      "position": [
+        -8.464,
+        0,
+        2.75
+      ],
+      "rotation": [
+        -3.142,
+        1.219,
+        -3.142
+      ],
+      "scale": [
+        1.882,
+        1.882,
+        1.882
+      ],
+      "seed": 0.37,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "mist-well-noel-1",
+      "type": "prop_mist_well",
+      "label": "Giếng Đá Sương Mù Ánh Trăng (#05)",
+      "category": "architecture",
+      "position": [
+        8.464,
+        0,
+        2.75
+      ],
+      "rotation": [
+        3.142,
+        -1.233,
+        3.142
+      ],
+      "scale": [
+        1.9,
+        1.9,
+        1.9
+      ],
+      "seed": 0.37,
       "allowCenterZone": false,
       "lockClick": false,
       "deletable": true

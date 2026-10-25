@@ -4,6 +4,7 @@ import { Grid } from "@react-three/drei";
 import * as THREE from "three";
 import CameraController3D from "../camera/CameraController3D.jsx";
 import GreyboxActor from "../actors/GreyboxActor.jsx";
+import ActionChoreoVfx3D from "../actors/ActionChoreoVfx3D.jsx";
 import StoryVfxLayer3D from "../effects/StoryVfxLayer3D.jsx";
 import VillageEnvironment3D from "../environment/VillageEnvironment3D.jsx";
 import { computeCircleRadius, getSeatTransform } from "../utils/seatLayout.js";
@@ -41,12 +42,27 @@ import {
   triggerSyncTripoConceptsOnServer,
 } from "../editor/defaultVillageLayout.js";
 
-// Tách rời 100% mã nguồn D5 Architect Studio khỏi Bundle của người chơi trên Web Production!
+import {
+  STUDIO_CHOREO_SCENARIOS,
+  resolveGallowsStageSpot,
+} from "../animation/actorChoreography3D.js";
+
+// Tách rời 100% mã nguồn D5 Architect Studio & Studio Hoạt Cảnh 9 Vai khỏi Bundle của người chơi trên Web Production!
 const ArchitectGizmo3D = lazy(() =>
   import("../editor/ArchitectSceneEditor.jsx").then((m) => ({ default: m.ArchitectGizmo3D }))
 );
 const ArchitectOverlayHUD = lazy(() =>
   import("../editor/ArchitectSceneEditor.jsx").then((m) => ({ default: m.ArchitectOverlayHUD }))
+);
+const ChoreographyDebugArcs3D = lazy(() =>
+  import("../components/ChoreographyDebugOverlay3D.jsx").then((m) => ({
+    default: m.ChoreographyDebugArcs3D,
+  }))
+);
+const ChoreographyStudioHUD = lazy(() =>
+  import("../components/ChoreographyDebugOverlay3D.jsx").then((m) => ({
+    default: m.ChoreographyStudioHUD,
+  }))
 );
 
 const MAX_UNDO_STEPS = 30;
@@ -118,8 +134,10 @@ export default function WerewolfScene3D({
   speakingIds = [],
   reactions = [],
   recapStageState = null,
+  liveMicroChoreo = null,
   scenePresetId = null,
   standaloneArchitect = false,
+  standaloneChoreo = false,
   onExitStandalone = null,
   externalOpenArchitectCounter = 0,
 }) {
@@ -146,8 +164,20 @@ export default function WerewolfScene3D({
   const [propStatuses, setPropStatuses] = useState({});
   const [propDiagnostics, setPropDiagnostics] = useState({});
 
+  // ================== TRẠNG THÁI STUDIO DIỄN THỬ HOẠT CẢNH 9 VAI (PRE-VIS RIG STUDIO) ==================
+  const [choreoStudioOpen, setChoreoStudioOpen] = useState(() => Boolean(standaloneChoreo && isDevSetup));
+  const [choreoScenarioId, setChoreoScenarioId] = useState("wolf_solo_pounce");
+  const [choreoIsPlaying, setChoreoIsPlaying] = useState(true);
+  const [choreoLoop, setChoreoLoop] = useState(true);
+  const [choreoSpeed, setChoreoSpeed] = useState(1);
+  const [choreoProgress, setChoreoProgress] = useState(0);
+  const [choreoCycleTick, setChoreoCycleTick] = useState(0);
+  const [choreoCameraPreset, setChoreoCameraPreset] = useState("director"); // 'director' | 'high' | 'closeup' | 'free'
+  const [choreoShowArcs, setChoreoShowArcs] = useState(true);
+  const [choreoShowRigGuide, setChoreoShowRigGuide] = useState(true);
+
   // ================== TRẠNG THÁI D5 ARCHITECT SCENE EDITOR & MULTI-SCENE PRESETS ==================
-  const [architectMode, setArchitectMode] = useState(() => Boolean(standaloneArchitect && isDevSetup));
+  const [architectMode, setArchitectMode] = useState(() => Boolean(standaloneArchitect && !standaloneChoreo && isDevSetup));
   const [studioMood, setStudioMood] = useState(() => (standaloneArchitect ? "day" : "auto")); // 'auto' | 'day' | 'dawn' | 'dusk_trial' | 'night'
   const [studioSeatCount, setStudioSeatCount] = useState(8); // 6 | 8 | 12 (ghế tham chiếu khóa cứng trong Studio)
   const [presetsIndex, setPresetsIndex] = useState(null);
@@ -779,14 +809,183 @@ export default function WerewolfScene3D({
 
   const numPlayers = orderedPlayers.length || 6;
   const circleRadius = useMemo(() => computeCircleRadius(numPlayers), [numPlayers]);
+  const gallowsSpot = useMemo(
+    () => resolveGallowsStageSpot(layoutNodes, circleRadius),
+    [layoutNodes, circleRadius]
+  );
 
-  // Chế độ xem thử ánh sáng 4 buổi trong D5 Studio + Tự đổi bầu trời Đêm/Ngày theo nhịp phim Story 2A!
+  // ================== BỘ PHÁT THỜI GIAN THỰC CHO STUDIO DIỄN THỬ HOẠT CẢNH 9 VAI ==================
+  const activeChoreoScenario = useMemo(
+    () =>
+      STUDIO_CHOREO_SCENARIOS.find((s) => s.id === choreoScenarioId) || STUDIO_CHOREO_SCENARIOS[0],
+    [choreoScenarioId]
+  );
+
+  useEffect(() => {
+    if (!isDevSetup || !choreoStudioOpen || !choreoIsPlaying) return undefined;
+    let rafId = 0;
+    let prevTs = performance.now();
+    const durMs = Math.max(1200, activeChoreoScenario.durationMs || 4800);
+
+    const step = (nowTs) => {
+      const dt = Math.min(80, Math.max(0, nowTs - prevTs));
+      prevTs = nowTs;
+      setChoreoProgress((prev) => {
+        const next = prev + (dt * choreoSpeed) / durMs;
+        if (next >= 1) {
+          if (choreoLoop) {
+            setChoreoCycleTick((c) => c + 1);
+            return next - 1;
+          }
+          setChoreoIsPlaying(false);
+          return 1;
+        }
+        return next;
+      });
+      rafId = requestAnimationFrame(step);
+    };
+
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [isDevSetup, choreoStudioOpen, choreoIsPlaying, choreoLoop, choreoSpeed, activeChoreoScenario]);
+
+  const studioSimStage = useMemo(() => {
+    if (!isDevSetup || !choreoStudioOpen || architectMode) return null;
+    const ids = orderedPlayers.map((p) => p.id);
+    if (ids.length === 0) return null;
+    const built = activeChoreoScenario.buildMap(ids);
+    const actorStates = {};
+    orderedPlayers.forEach((p, idx) => {
+      const assignedRole = built.roles?.[p.id] || (idx % 2 === 0 ? "villager" : "villager");
+      actorStates[p.id] = {
+        simAlive: true,
+        isRevealed: !activeChoreoScenario.inGameCloakPreview,
+        overrideRole: assignedRole,
+        enduringFire: Boolean(built.enduringIds?.includes(p.id)),
+      };
+    });
+
+    let shotType = activeChoreoScenario.defaultShotType || "high_pack_hunt";
+    if (choreoCameraPreset === "high") shotType = "high_pack_hunt";
+    else if (choreoCameraPreset === "closeup") shotType = "actor_portrait";
+
+    const cameraShot =
+      choreoCameraPreset === "free"
+        ? null
+        : {
+            shotKey: `studio_${activeChoreoScenario.id}_${choreoCameraPreset}_${choreoCycleTick}`,
+            shotType,
+            sourceId: built.sourceId,
+            targetId: built.targetId,
+            dollySpeedScale: 1,
+            followDirector: true,
+            relockToken: choreoCycleTick,
+            shakeStrength: activeChoreoScenario.vfxType ? 0.72 : 0,
+            shakeDelayMs: Math.round((activeChoreoScenario.durationMs || 4800) * 0.41 / Math.max(0.25, choreoSpeed)),
+          };
+
+    const vfxCue =
+      activeChoreoScenario.vfxType && choreoProgress >= 0.12
+        ? {
+            cueId: `studio_vfx_${activeChoreoScenario.id}_${choreoCycleTick}`,
+            vfxType: activeChoreoScenario.vfxType,
+            sourceId: built.sourceId,
+            coActorIds: built.coActorIds,
+            targetId: built.targetId,
+            votesDetail: built.votesDetail || {},
+            isHanged: Boolean(built.isHanged),
+            isWolfResult: true,
+          }
+        : null;
+
+    return {
+      mood: activeChoreoScenario.mood || "night",
+      inGameCloakPreview: Boolean(activeChoreoScenario.inGameCloakPreview),
+      wolfIds: Object.entries(built.roles || {})
+        .filter(([, r]) => r === "wolf")
+        .map(([pid]) => pid),
+      actorStates,
+      actorChoreoMap: built.choreo || null,
+      choreoTiming: { manualProgress: choreoProgress },
+      cameraShot,
+      vfxCue,
+      lookAtSeatId: built.targetId || built.sourceId || null,
+    };
+  }, [
+    isDevSetup,
+    choreoStudioOpen,
+    architectMode,
+    orderedPlayers,
+    activeChoreoScenario,
+    choreoCameraPreset,
+    choreoCycleTick,
+    choreoSpeed,
+    choreoProgress,
+  ]);
+
+  const effectiveRecapStage = studioSimStage || (hasWinner ? recapStageState : null);
+
+  // Hoạt cảnh ngắn 3D + VFX trực tiếp trên máy người thực hiện trong trận (100% Zero-Leak)
+  const liveLocalChoreoStage = useMemo(() => {
+    if (
+      hasWinner ||
+      studioSimStage ||
+      architectMode ||
+      !liveMicroChoreo?.actionType ||
+      !liveMicroChoreo?.actorId ||
+      liveMicroChoreo.actorId !== me?.id
+    ) {
+      return null;
+    }
+    const map = {
+      [liveMicroChoreo.actorId]: {
+        actionType: liveMicroChoreo.actionType,
+        targetId: liveMicroChoreo.targetId || null,
+        slotIndex: 0,
+        totalSlots: 1,
+      },
+    };
+    if (
+      (liveMicroChoreo.actionType === "wolf_pounce" ||
+        liveMicroChoreo.actionType === "witch_poison_throw") &&
+      liveMicroChoreo.targetId &&
+      liveMicroChoreo.targetId !== liveMicroChoreo.actorId
+    ) {
+      map[liveMicroChoreo.targetId] = {
+        actionType: "victim_hit_recoil",
+        targetId: liveMicroChoreo.actorId,
+      };
+    }
+    return {
+      actorChoreoMap: map,
+      choreoTiming: {
+        startedAtPerfMs: liveMicroChoreo.startedAtPerfMs,
+        durationMs: liveMicroChoreo.durationMs || 2800,
+      },
+    };
+  }, [hasWinner, studioSimStage, architectMode, liveMicroChoreo, me?.id]);
+
+  const effectiveChoreoMap =
+    effectiveRecapStage?.actorChoreoMap || liveLocalChoreoStage?.actorChoreoMap || null;
+  const effectiveChoreoTiming =
+    effectiveRecapStage?.choreoTiming || liveLocalChoreoStage?.choreoTiming || null;
+
+  // Chế độ xem thử ánh sáng 4 buổi trong D5 Studio + Tự đổi bầu trời Đêm/Ngày theo nhịp phim Story 2A & Studio 9 Vai!
   const effectiveEnvironmentMood = useMemo(() => {
     if (architectMode && studioMood && studioMood !== "auto") {
       if (studioMood === "day") return { isNight: false, phase: "day_discuss", hasWinner: false };
       if (studioMood === "dawn") return { isNight: false, phase: "day_reveal", hasWinner: false };
       if (studioMood === "dusk_trial") return { isNight: false, phase: "day_final_vote", hasWinner: false };
       if (studioMood === "night") return { isNight: true, phase: "night_wolf", hasWinner: false };
+    }
+    if (studioSimStage) {
+      if (studioSimStage.inGameCloakPreview) {
+        return { isNight: true, phase: "night_wolf", hasWinner: false };
+      }
+      if (studioSimStage.mood === "dusk_trial") {
+        return { isNight: false, phase: "day_final_vote", hasWinner: true };
+      }
+      return { isNight: true, phase: "night_wolf", hasWinner: true };
     }
     if (!architectMode && hasWinner && recapStageState?.mood) {
       if (recapStageState.mood === "night") {
@@ -804,7 +1003,7 @@ export default function WerewolfScene3D({
       phase: phase || "day_discuss",
       hasWinner: Boolean(hasWinner),
     };
-  }, [architectMode, studioMood, hasWinner, recapStageState?.mood, isNight, phase]);
+  }, [architectMode, studioMood, studioSimStage, hasWinner, recapStageState?.mood, isNight, phase]);
 
   const seatMap = useMemo(() => {
     const map = {};
@@ -817,14 +1016,14 @@ export default function WerewolfScene3D({
   const mySeatTransform = (me && seatMap[me.id]) || getSeatTransform(0, numPlayers, circleRadius);
 
   const lookTargetWorld = useMemo(() => {
-    if (hasWinner && recapStageState?.lookAtSeatId && seatMap[recapStageState.lookAtSeatId]) {
-      return seatMap[recapStageState.lookAtSeatId];
+    if (effectiveRecapStage?.lookAtSeatId && seatMap[effectiveRecapStage.lookAtSeatId]) {
+      return seatMap[effectiveRecapStage.lookAtSeatId];
     }
     if (defendantId && seatMap[defendantId]) return seatMap[defendantId];
     const activeSpeakerId = speakingIds?.[0];
     if (activeSpeakerId && seatMap[activeSpeakerId]) return seatMap[activeSpeakerId];
     return null;
-  }, [hasWinner, recapStageState?.lookAtSeatId, defendantId, speakingIds, seatMap]);
+  }, [effectiveRecapStage?.lookAtSeatId, defendantId, speakingIds, seatMap]);
 
   const loadedGlbCount = PROP_KEYS.filter((k) => propStatuses[k] === "loaded").length;
 
@@ -908,6 +1107,7 @@ export default function WerewolfScene3D({
                 type="button"
                 onClick={() => {
                   setShowPropTuner(false);
+                  setChoreoStudioOpen(false);
                   setArchitectMode(true);
                 }}
                 style={{
@@ -926,6 +1126,39 @@ export default function WerewolfScene3D({
                 title="Mở Không Gian Sắp Xếp Cảnh Quan Kiểu D5 Render (3 Mũi Tên X·Y·Z + Scale Đa Chiều + Bay WASD — Chỉ Dev mới thấy!)"
               >
                 🏗️ Dựng Cảnh D5 {hasUnsavedDraft ? "*" : ""}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPropTuner(false);
+                  setChoreoStudioOpen((open) => {
+                    const next = !open;
+                    if (next) {
+                      setChoreoProgress(0);
+                      setChoreoIsPlaying(true);
+                    }
+                    return next;
+                  });
+                }}
+                style={{
+                  width: "auto",
+                  margin: 0,
+                  padding: "5px 12px",
+                  borderRadius: "999px",
+                  fontSize: "11.5px",
+                  fontWeight: 800,
+                  background: choreoStudioOpen
+                    ? "linear-gradient(135deg, #9333ea, #4f46e5)"
+                    : "rgba(88, 28, 135, 0.78)",
+                  color: "#ffffff",
+                  border: "1px solid rgba(216, 180, 254, 0.62)",
+                  boxShadow: choreoStudioOpen ? "0 2px 12px rgba(147, 51, 234, 0.55)" : "none",
+                  cursor: "pointer",
+                }}
+                title="Diễn thử 1-Click toàn bộ 9 Nhân Vật & Đường nhảy Bezier trước khi tạo model Tripo AI"
+              >
+                🎬 Diễn Thử 9 Vai
               </button>
 
               <button
@@ -1437,9 +1670,21 @@ export default function WerewolfScene3D({
           </Suspense>
         )}
 
-        {/* Điều khiển Camera Kép (Gameplay + Đạo diễn Replay Không Gian Thật + Bay WASD/Orbit cho Dev D5) */}
+        {/* Đường Cong Quỹ Đạo Nhảy Bezier 3D & Vòng Cấm Lửa Trại (Chỉ hiện khi Dev bật trong Studio Hoạt Cảnh 9 Vai) */}
+        {isDevSetup && choreoStudioOpen && !architectMode && (
+          <Suspense fallback={null}>
+            <ChoreographyDebugArcs3D
+              visible={choreoShowArcs}
+              actorChoreoMap={effectiveRecapStage?.actorChoreoMap || null}
+              seatMap={seatMap}
+              gallowsSpot={gallowsSpot}
+            />
+          </Suspense>
+        )}
+
+        {/* Điều khiển Camera Kép (Gameplay + Đạo diễn Replay Không Gian Thật + Studio 9 Vai + Bay WASD/Orbit cho Dev D5) */}
         <CameraController3D
-          cameraMode={cameraMode}
+          cameraMode={studioSimStage && choreoCameraPreset === "free" ? "overview" : cameraMode}
           mySeatTransform={mySeatTransform}
           circleRadius={circleRadius}
           resetCounter={resetCounter}
@@ -1447,26 +1692,44 @@ export default function WerewolfScene3D({
           isGizmoDragging={isGizmoDragging}
           focusRequest={focusRequest}
           cameraStateRef={cameraStateRef}
-          recapShot={hasWinner ? recapStageState?.cameraShot || null : null}
-          onRecapManualOrbit={recapStageState?.onManualOrbit || null}
+          recapShot={!architectMode ? effectiveRecapStage?.cameraShot || null : null}
+          onRecapManualOrbit={
+            studioSimStage
+              ? () => setChoreoCameraPreset("free")
+              : recapStageState?.onManualOrbit || null
+          }
           seatMap={seatMap}
         />
 
         {/* Tầng Hiệu Ứng Kể Chuyện Điện Ảnh 3D (Đường đạn Móng Vuốt, Bình Độc, Khiên Bảo Vệ, Tia Phiếu, Spotlight MVP) */}
-        {hasWinner && !architectMode && (
+        {(hasWinner || Boolean(studioSimStage?.vfxCue)) && !architectMode && (
           <StoryVfxLayer3D
-            activeCue={recapStageState?.vfxCue || null}
+            activeCue={effectiveRecapStage?.vfxCue || null}
             seatMap={seatMap}
             circleRadius={circleRadius}
+          />
+        )}
+
+        {/* Tầng VFX Thực Chiến Khớp Xương 1:1 (Bình Độc Vỡ, Trảo Sói Chữ X, Khiên Rune Lam, Tiên Dược, Hào Quang Hóa Sói) */}
+        {!architectMode && effectiveChoreoMap && effectiveChoreoTiming && (
+          <ActionChoreoVfx3D
+            actorChoreoMap={effectiveChoreoMap}
+            choreoTiming={effectiveChoreoTiming}
+            seatMap={seatMap}
           />
         )}
 
         {/* Vòng Ghế Gỗ Sồi & Nhân Vật (Bị khóa cứng tương tác chuột 100% khi bật D5 Mode!) */}
         {orderedPlayers.map((p) => {
           const seatTransform = seatMap[p.id];
-          const isMe = p.id === me?.id;
-          const isWolfVictim = p.id === wolfVictimId && myRole === "witch";
-          const isWolfTeammate = wolfTeammates.includes(p.id);
+          const isMe = studioSimStage?.inGameCloakPreview
+            ? studioSimStage.wolfIds?.[0] === p.id
+            : p.id === me?.id;
+          const effectiveMyRole = studioSimStage?.inGameCloakPreview ? "wolf" : myRole;
+          const isWolfVictim = p.id === wolfVictimId && effectiveMyRole === "witch";
+          const isWolfTeammate = studioSimStage?.inGameCloakPreview
+            ? Boolean(studioSimStage.wolfIds?.includes(p.id) && !isMe)
+            : wolfTeammates.includes(p.id);
           const isSpeaking = speakingIds.includes(p.id);
 
           let wolfPicksOnThis = 0;
@@ -1490,6 +1753,21 @@ export default function WerewolfScene3D({
           const seerRes = seerLastResult?.targetId === p.id ? seerLastResult.result : null;
           const playerReactions = reactions.filter((r) => r.name === p.name);
 
+          // In-Game Zero-Leak Wolf Night Stalk: chỉ trên màn hình phe Sói ban đêm mới thấy đồng đội nhổm dậy rình mồi!
+          const inGameWolfTargetId =
+            !hasWinner &&
+            !studioSimStage &&
+            phase === "night_wolf" &&
+            ((isMe && effectiveMyRole === "wolf") || isWolfTeammate)
+              ? wolfPicksVisible?.[p.id]?.targetId || null
+              : null;
+
+          const activeChoreoSpec =
+            effectiveChoreoMap?.[p.id] ||
+            (inGameWolfTargetId
+              ? { actionType: "wolf_stalk_preview", targetId: inGameWolfTargetId }
+              : null);
+
           return (
             <GreyboxActor
               key={p.id}
@@ -1499,10 +1777,10 @@ export default function WerewolfScene3D({
               isMe={isMe}
               isNight={effectiveEnvironmentMood.isNight}
               phase={effectiveEnvironmentMood.phase}
-              myRole={myRole}
+              myRole={effectiveMyRole}
               hasWinner={effectiveEnvironmentMood.hasWinner}
-              isSelected={!architectMode && selectedPlayerId === p.id}
-              selectedActionMeta={!architectMode && selectedPlayerId === p.id ? selectedActionMeta : null}
+              isSelected={!architectMode && !studioSimStage && selectedPlayerId === p.id}
+              selectedActionMeta={!architectMode && !studioSimStage && selectedPlayerId === p.id ? selectedActionMeta : null}
               isDefendant={p.id === defendantId}
               isWolfVictim={isWolfVictim}
               isWolfTeammate={isWolfTeammate}
@@ -1518,12 +1796,64 @@ export default function WerewolfScene3D({
               chairCalib={propCalib?.prop_chair}
               reloadToken={reloadToken}
               architectMode={architectMode}
-              recapActorState={hasWinner ? recapStageState?.actorStates?.[p.id] || null : null}
+              recapActorState={effectiveRecapStage?.actorStates?.[p.id] || null}
+              choreoActionSpec={activeChoreoSpec}
+              choreoTiming={effectiveChoreoTiming}
+              seatMap={seatMap}
+              gallowsSpot={gallowsSpot}
               onSelect={onSelectPlayer}
             />
           );
         })}
       </Canvas>
+
+      {/* ==================== BẢNG ĐIỀU KHIỂN STUDIO HOẠT CẢNH 9 VAI (CHỈ DEV — 0 KB TRÊN PRODUCTION) ==================== */}
+      {isDevSetup && choreoStudioOpen && !architectMode && (
+        <Suspense fallback={null}>
+          <ChoreographyStudioHUD
+            activeScenarioId={choreoScenarioId}
+            onSelectScenario={(nextId) => {
+              setChoreoScenarioId(nextId);
+              setChoreoProgress(0);
+              setChoreoCycleTick((c) => c + 1);
+              setChoreoIsPlaying(true);
+              if (choreoCameraPreset === "free") {
+                setChoreoCameraPreset("director");
+              }
+            }}
+            isPlaying={choreoIsPlaying}
+            onTogglePlay={() => setChoreoIsPlaying((v) => !v)}
+            onReplayFromStart={() => {
+              setChoreoProgress(0);
+              setChoreoCycleTick((c) => c + 1);
+              setChoreoIsPlaying(true);
+            }}
+            loopEnabled={choreoLoop}
+            onToggleLoop={() => setChoreoLoop((v) => !v)}
+            speedScale={choreoSpeed}
+            onChangeSpeed={setChoreoSpeed}
+            progress={choreoProgress}
+            onScrubProgress={(val) => {
+              setChoreoIsPlaying(false);
+              setChoreoProgress(val);
+            }}
+            cameraPreset={choreoCameraPreset}
+            onChangeCameraPreset={setChoreoCameraPreset}
+            showDebugArcs={choreoShowArcs}
+            onToggleDebugArcs={() => setChoreoShowArcs((v) => !v)}
+            showRigGuide={choreoShowRigGuide}
+            onToggleRigGuide={() => setChoreoShowRigGuide((v) => !v)}
+            standaloneMode={Boolean(standaloneChoreo && onExitStandalone)}
+            onCloseStudio={() => {
+              if (standaloneChoreo && onExitStandalone) {
+                onExitStandalone();
+              } else {
+                setChoreoStudioOpen(false);
+              }
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Lớp phủ Viền Tối Điện Ảnh (Cinematic Vignette — 0ms GPU, gom sáng vào đống lửa & vòng ghế đúng chất Concept; tự ẩn khi bật D5 Mode) */}
       {!architectMode && (

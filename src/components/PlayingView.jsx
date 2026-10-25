@@ -62,7 +62,33 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const canOpenArchitect = isDevArchitectAllowed();
   const [recapAnimation, setRecapAnimation] = useState(null);
   const [recapStageState, setRecapStageState] = useState(null);
+  const [liveMicroChoreo, setLiveMicroChoreo] = useState(null);
+  const microChoreoTimerRef = useRef(null);
   const [speakingIds, setSpeakingIds] = useState([]);
+
+  // Kích hoạt hoạt cảnh ngắn 3D + VFX ngay trên màn hình người thực hiện (100% Zero-Leak — không phát sang máy người khác!)
+  const triggerMyMicroChoreo = useCallback(
+    (actionType, targetId = null, durationMs = 2800) => {
+      if (!me?.id || !actionType) return;
+      if (microChoreoTimerRef.current) {
+        clearTimeout(microChoreoTimerRef.current);
+      }
+      const nowPerf = typeof performance !== "undefined" ? performance.now() : Date.now();
+      const token = `${nowPerf}_${Math.random()}`;
+      setLiveMicroChoreo({
+        token,
+        actorId: me.id,
+        actionType,
+        targetId,
+        startedAtPerfMs: nowPerf,
+        durationMs,
+      });
+      microChoreoTimerRef.current = setTimeout(() => {
+        setLiveMicroChoreo((prev) => (prev?.token === token ? null : prev));
+      }, durationMs + 90);
+    },
+    [me?.id]
+  );
   const handleSpeakingChange = useCallback((nextIds) => {
     setSpeakingIds((prev) => {
       if (prev.length === nextIds.length && prev.every((id, idx) => id === nextIds[idx])) {
@@ -187,13 +213,18 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     });
   }
 
-  // Reset hasActed khi chuyển phase
+  // Reset hasActed & hoạt cảnh ngắn khi chuyển phase
   useEffect(() => {
     setHasActed(false);
     setSelectedId(null);
     setMySkipVote(false);
     setShowSeerPopover(false);
     setActionFeedback("");
+    setLiveMicroChoreo(null);
+    if (microChoreoTimerRef.current) {
+      clearTimeout(microChoreoTimerRef.current);
+      microChoreoTimerRef.current = null;
+    }
   }, [g.nightDayPhase]);
 
   const isNight = g.nightDayPhase.startsWith("night_");
@@ -322,45 +353,50 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
+    const targetNow = selectedId;
 
     if (g.nightDayPhase === "night_guard") {
       SFX.vote();
-      socketRef.current.emit("action:guardProtect", { targetId: selectedId }, (res) => {
+      socketRef.current.emit("action:guardProtect", { targetId: targetNow }, (res) => {
         if (res?.error) {
           flashActionFeedback(`⚠️ ${res.error}`);
           return;
         }
+        triggerMyMicroChoreo("guard_patrol_cast", targetNow, 2600);
         setHasActed(true);
         setSelectedId(null);
       });
     } else if (g.nightDayPhase === "night_wolf") {
       SFX.select();
-      socketRef.current.emit("action:wolfPick", { targetId: selectedId }, (res) => {
+      socketRef.current.emit("action:wolfPick", { targetId: targetNow }, (res) => {
         if (res?.error) {
           flashActionFeedback(`⚠️ ${res.error}`);
           return;
         }
+        triggerMyMicroChoreo("wolf_pounce", targetNow, 3200);
         setSelectedId(null); // Ẩn nút nổi sau khi chọn (vẫn click lại ghế khác để đổi mục tiêu được)
       });
     } else if (g.nightDayPhase === "night_witch") {
       // Witch action is handled separately via specific buttons
     } else if (g.nightDayPhase === "night_seer") {
       SFX.select();
-      socketRef.current.emit("action:seerCheck", { targetId: selectedId }, (res) => {
+      socketRef.current.emit("action:seerCheck", { targetId: targetNow }, (res) => {
         if (res?.error) {
           flashActionFeedback(`⚠️ ${res.error}`);
           return;
         }
+        triggerMyMicroChoreo("seer_divine_cast", targetNow, 2800);
         setHasActed(true);
         setSelectedId(null);
       });
     } else if (g.nightDayPhase === "day_nominate") {
       SFX.vote();
-      socketRef.current.emit("action:nominationVote", { targetId: selectedId }, (res) => {
+      socketRef.current.emit("action:nominationVote", { targetId: targetNow }, (res) => {
         if (res?.error) {
           flashActionFeedback(`⚠️ ${res.error}`);
           return;
         }
+        triggerMyMicroChoreo("day_accuse_stand", targetNow, 2100);
         setHasActed(true);
         setSelectedId(null);
       });
@@ -368,10 +404,16 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   }
 
   function handleWitch(save, poisonTargetId) {
+    const savedVictimId = g.witchInfo?.victimId || null;
     socketRef.current.emit("action:witchDecide", { save, poisonTargetId }, (res) => {
       if (res?.error) {
         flashActionFeedback(`⚠️ ${res.error}`);
         return;
+      }
+      if (poisonTargetId) {
+        triggerMyMicroChoreo("witch_poison_throw", poisonTargetId, 3000);
+      } else if (save && savedVictimId) {
+        triggerMyMicroChoreo("witch_elixir_cast", savedVictimId, 2800);
       }
       setHasActed(true);
       setSelectedId(null);
@@ -666,6 +708,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     speakingIds={speakingIds}
                     reactions={reactions}
                     recapStageState={recapStageState}
+                    liveMicroChoreo={liveMicroChoreo}
                     scenePresetId={room.scenePresetId}
                     externalOpenArchitectCounter={openArchitectCounter}
                   />
@@ -910,7 +953,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                         disabled={Boolean(g.finalVotes?.[me.id])}
                         onClick={() => {
                           SFX.vote();
-                          socketRef.current.emit("action:finalVote", { decision: "hang" }, () => setHasActed(true));
+                          const defNow = g.hotSeatQueue?.[g.hotSeatIndex] || null;
+                          socketRef.current.emit("action:finalVote", { decision: "hang" }, (res) => {
+                            if (!res?.error) {
+                              triggerMyMicroChoreo("tribunal_torch_stand", defNow, 2600);
+                            }
+                            setHasActed(true);
+                          });
                         }}
                       >
                         🪢 Treo ({hangCount})

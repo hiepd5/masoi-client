@@ -444,6 +444,7 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
               cueId: `cue_${seqKey}`,
               vfxType: "wolf_attack",
               sourceId: frame.actorId,
+              coActorIds: packIds,
               targetId: frame.targetId,
             },
             soundKey: "wolf_attack",
@@ -651,7 +652,8 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
           if (frame.targetId) {
             simRoleMap[frame.targetId] = "wolf";
             overrides[frame.targetId] = {
-              overrideRole: "wolf",
+              // Khởi đầu là Kẻ Bị Nguyền co giật ôm đầu; đúng nhịp 42% (~950ms) tự bung cánh hú trăng hóa Sói!
+              overrideRole: "cursed",
               pose: "cheer",
               badgeText: "🌑➡️🐺 HÓA THÀNH SÓI!",
               badgeColor: "#9333ea",
@@ -928,11 +930,13 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
             }
           });
           if (frame.targetId) {
+            const wasAliveBeforeVerdict = simAliveMap[frame.targetId] !== false;
             if (frame.kind === "day_verdict" && isHanged) {
               simAliveMap[frame.targetId] = false;
             }
             overrides[frame.targetId] = {
-              simAlive: frame.kind === "day_verdict" ? !isHanged : simAliveMap[frame.targetId],
+              // Giữ người thật trong suốt cảnh bước bộ lên Đài Treo Cổ đón phán quyết; từ cảnh sau tự hóa Hồn Ma!
+              simAlive: frame.kind === "day_verdict" && isHanged ? wasAliveBeforeVerdict : simAliveMap[frame.targetId],
               pose: isHanged ? null : "cheer",
               badgeText: isHanged ? "🪢 BỊ TREO CỔ!" : "🕊️ ĐƯỢC THA BỔNG!",
               badgeColor: isHanged ? "#dc2626" : "#16a34a",
@@ -1256,6 +1260,7 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
       const defName = playerById[verdictEv.targetId]?.name || verdictEv.targetName || "Bị cáo";
       const defRole = verdictEv.targetRole || simRoleMap[verdictEv.targetId] || "villager";
       const roleLabel = ROLE_LABELS[defRole] || defRole;
+      const wasAliveBeforeTribunal = simAliveMap[verdictEv.targetId] !== false;
       if (isHanged) simAliveMap[verdictEv.targetId] = false;
       beats.push({
         id: `day_${dayNum}_tribunal`,
@@ -1285,6 +1290,7 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
         lookAtSeatId: verdictEv.targetId,
         actorStates: cloneActorSnapshot({
           [verdictEv.targetId]: {
+            simAlive: isHanged ? wasAliveBeforeTribunal : simAliveMap[verdictEv.targetId],
             pose: isHanged ? null : "cheer",
             badgeText: isHanged ? "🪢 TREO CỔ!" : "🕊️ THA BỔNG!",
             badgeColor: isHanged ? "#dc2626" : "#16a34a",
@@ -1296,6 +1302,204 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
 
   beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap));
   return beats;
+}
+
+/**
+ * Chuyển hóa mỗi nhịp Kịch Bản (`currentBeat`) thành Bảng Phân Vai Hoạt Cảnh Không Gian 3D (`actorChoreoMap`)
+ * + tỉ lệ điểm nổ Climax (`impactFraction`) để khớp 1:1 mili-giây với Camera Shake!
+ */
+function deriveBeatActorChoreography(beat, players = []) {
+  if (!beat?.vfxCue) return { map: null, impactFraction: null, baseChoreoMs: 3900 };
+  const cue = beat.vfxCue;
+  const states = beat.actorStates || {};
+  const map = {};
+  let impactFraction = null;
+  let baseChoreoMs = 3900;
+
+  const findAliveWolves = () =>
+    players
+      .filter((p) => {
+        const st = states[p.id];
+        const aliveNow = st && typeof st.simAlive === "boolean" ? st.simAlive : p.alive !== false;
+        const roleNow = st?.overrideRole || p.role;
+        return aliveNow && roleNow === "wolf";
+      })
+      .map((p) => p.id);
+
+  switch (cue.vfxType) {
+    case "wolf_attack": {
+      const pack =
+        Array.isArray(cue.coActorIds) && cue.coActorIds.length > 0
+          ? cue.coActorIds
+          : cue.sourceId
+            ? [cue.sourceId]
+            : findAliveWolves();
+      pack.forEach((wid, idx) => {
+        if (wid && wid !== cue.targetId) {
+          map[wid] = {
+            actionType: "wolf_pounce",
+            targetId: cue.targetId,
+            slotIndex: idx,
+            totalSlots: pack.length,
+          };
+        }
+      });
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "victim_hit_recoil",
+          targetId: pack[0] || cue.sourceId,
+        };
+      }
+      impactFraction = 0.43;
+      baseChoreoMs = 4100;
+      break;
+    }
+
+    case "guard_block": {
+      // ĐỐI KHÁNG KÉP: Bảo Vệ phóng ra dựng khiên chắn + Đàn Sói lao vào bị hất bật ngửa!
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "guard_intercept",
+          targetId: cue.targetId,
+        };
+      }
+      const wolves = findAliveWolves().filter((wid) => wid !== cue.sourceId && wid !== cue.targetId);
+      wolves.forEach((wid, idx) => {
+        map[wid] = {
+          actionType: "wolf_blocked_recoil",
+          targetId: cue.targetId,
+          slotIndex: idx,
+          totalSlots: wolves.length,
+        };
+      });
+      impactFraction = 0.36;
+      baseChoreoMs = 4200;
+      break;
+    }
+
+    case "guard_aim": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "guard_patrol_cast",
+          targetId: cue.targetId,
+        };
+      }
+      baseChoreoMs = 3600;
+      break;
+    }
+
+    case "witch_save": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "witch_elixir_cast",
+          targetId: cue.targetId,
+        };
+      }
+      baseChoreoMs = 3700;
+      break;
+    }
+
+    case "witch_poison": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "witch_poison_throw",
+          targetId: cue.targetId,
+        };
+      }
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "victim_hit_recoil",
+          targetId: cue.sourceId,
+        };
+      }
+      impactFraction = 0.42;
+      baseChoreoMs = 3800;
+      break;
+    }
+
+    case "seer_scan": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "seer_divine_cast",
+          targetId: cue.targetId,
+        };
+      }
+      baseChoreoMs = 3800;
+      break;
+    }
+
+    case "tough_guy_endure": {
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "tough_iron_roar",
+          targetId: cue.targetId,
+        };
+      }
+      baseChoreoMs = 3900;
+      break;
+    }
+
+    case "cursed_transform": {
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "cursed_blood_metamorph",
+          targetId: cue.targetId,
+        };
+      }
+      impactFraction = 0.42;
+      baseChoreoMs = 4200;
+      break;
+    }
+
+    case "day_point": {
+      const votesSnap = cue.votesDetail || {};
+      const voters = Object.entries(votesSnap).filter(([, tid]) => tid === cue.targetId);
+      if (voters.length > 1) {
+        voters.forEach(([vid], idx) => {
+          map[vid] = { actionType: "day_accuse_stand", targetId: cue.targetId, slotIndex: idx };
+        });
+      } else if (cue.sourceId) {
+        map[cue.sourceId] = { actionType: "day_accuse_stand", targetId: cue.targetId };
+      }
+      baseChoreoMs = 3500;
+      break;
+    }
+
+    case "day_tribunal": {
+      const votesObj = cue.votesDetail || {};
+      Object.entries(votesObj).forEach(([vid, dec], idx) => {
+        if (vid !== cue.targetId && dec === "hang") {
+          map[vid] = {
+            actionType: "tribunal_torch_stand",
+            targetId: cue.targetId,
+            slotIndex: idx,
+          };
+        }
+      });
+      if (cue.isHanged && cue.targetId) {
+        const defPlayer = players.find((p) => p.id === cue.targetId);
+        const defRole = states[cue.targetId]?.overrideRole || defPlayer?.role;
+        map[cue.targetId] = {
+          actionType: defRole === "tanner" ? "gallows_walk_tanner_win" : "gallows_walk_hang",
+          targetId: cue.targetId,
+        };
+        impactFraction = 0.46;
+        baseChoreoMs = 4600;
+      } else {
+        baseChoreoMs = 3800;
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  return {
+    map: Object.keys(map).length > 0 ? map : null,
+    impactFraction,
+    baseChoreoMs,
+  };
 }
 
 export default function EndGameRecap({
@@ -1467,12 +1671,15 @@ export default function EndGameRecap({
     return () => clearInterval(timer);
   }, [players]);
 
-  // NHỊP 1 -> NHỊP 2: Chờ máy quay lướt êm về sau vai nhân vật (act1SetupMs) rồi mới kích hoạt tung chiêu VFX & âm thanh!
+  const act2StartPerfRef = useRef(0);
+
+  // NHỊP 1 -> NHỊP 2: Chờ máy quay lướt êm về sau vai nhân vật (act1SetupMs) rồi mới kích hoạt tung chiêu VFX, Hoạt cảnh Không gian & Âm thanh!
   useEffect(() => {
     if (!currentBeat) return undefined;
     const setupDelay = Math.max(220, (currentBeat.act1SetupMs ?? 900) / recapSpeed);
     setAct2Armed(false);
     const armTimer = setTimeout(() => {
+      act2StartPerfRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
       setAct2Armed(true);
       const audioEngine = getCinemaAudioEngine();
       audioEngine?.setSpeakerMuted(!speechEnabled);
@@ -1481,7 +1688,7 @@ export default function EndGameRecap({
     return () => clearTimeout(armTimer);
   }, [currentBeat?.id, recapSpeed, speechEnabled]);
 
-  // Đồng bộ trạng thái Sân Khấu 3D theo Nhịp 1 (Chuẩn bị góc cá nhân) -> Nhịp 2 (Tung đòn VFX)
+  // Đồng bộ trạng thái Sân Khấu 3D theo Nhịp 1 (Chuẩn bị góc cá nhân) -> Nhịp 2 (Tung đòn VFX + Hoạt Cảnh Không Gian 9 Vai)
   useEffect(() => {
     if (!currentBeat) return;
 
@@ -1507,12 +1714,21 @@ export default function EndGameRecap({
       });
     }
 
+    const choreoInfo = deriveBeatActorChoreography(currentBeat, players);
+    const setupDelayMs = Math.max(220, (currentBeat.act1SetupMs ?? 900) / recapSpeed);
+    const choreoDurationMs = Math.max(1600, (choreoInfo.baseChoreoMs || 3900) / recapSpeed);
+    const syncedShakeDelayMs =
+      choreoInfo.impactFraction !== null
+        ? Math.round(setupDelayMs + choreoInfo.impactFraction * choreoDurationMs)
+        : currentBeat.cameraShot?.shakeDelayMs;
+
     onStageChange?.({
       beatId: currentBeat.id,
       mood: currentBeat.mood,
       cameraShot: currentBeat.cameraShot
         ? {
             ...currentBeat.cameraShot,
+            shakeDelayMs: syncedShakeDelayMs,
             dollySpeedScale: recapSpeed,
             followDirector,
             relockToken,
@@ -1520,6 +1736,14 @@ export default function EndGameRecap({
         : null,
       onManualOrbit: handleManualOrbit,
       vfxCue: act2Armed || currentBeat.kind === "reveal" ? currentBeat.vfxCue : null,
+      actorChoreoMap: act2Armed ? choreoInfo.map : null,
+      choreoTiming:
+        act2Armed && choreoInfo.map
+          ? {
+              startedAtPerfMs: act2StartPerfRef.current || (typeof performance !== "undefined" ? performance.now() : Date.now()),
+              durationMs: choreoDurationMs,
+            }
+          : null,
       lookAtSeatId: currentBeat.lookAtSeatId,
       actorStates,
     });

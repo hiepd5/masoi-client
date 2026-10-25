@@ -3,13 +3,24 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import {
   ROLE_COSTUME_MANIFEST,
   ensureRoleGlbManifestLoaded,
   getAvailableRoleGlbs,
   subscribeRoleGlbs,
 } from "../config/roleCostumeManifest.js";
+import {
+  get3DModelRenderMode,
+  subscribe3DModelRenderMode,
+} from "../config/seasonalEventRegistry.js";
+import { ASSET_SYNC_VERSION } from "../config/propManifest.js";
 import { getSoftGlowHaloTexture } from "../shaders/villageCinematicShaders.js";
+
+function withAssetVersion(url) {
+  if (!url) return null;
+  return url.includes("?") ? url : `${url}?v=${ASSET_SYNC_VERSION}`;
+}
 
 let sharedRoleLoader = null;
 function getRoleGltfLoader() {
@@ -18,12 +29,136 @@ function getRoleGltfLoader() {
     const draco = new DRACOLoader();
     draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
     loader.setDRACOLoader(draco);
+    loader.setMeshoptDecoder(MeshoptDecoder);
     sharedRoleLoader = loader;
   }
   return sharedRoleLoader;
 }
 
 const loadedRoleSceneCache = new Map();
+const loadedHandPropSceneCache = new Map();
+
+const HAND_PROP_TARGET_SIZES = {
+  guard_shield: 0.44,
+  witch_elixir: 0.16,
+  witch_poison: 0.16,
+  seer_orb: 0.2,
+  trial_torch: 0.48,
+  tanner_noose: 0.28,
+};
+
+let availableHandGlbs = {};
+let handManifestPromise = null;
+const handGlbListeners = new Set();
+
+function notifyHandGlbListeners() {
+  handGlbListeners.forEach((fn) => {
+    try {
+      fn(availableHandGlbs);
+    } catch {
+      // ignore
+    }
+  });
+}
+
+function ensureHandPropManifestLoaded() {
+  if (handManifestPromise) return handManifestPromise;
+  const parseDoc = async (res) => {
+    if (!res?.ok) return null;
+    const ctype = (res.headers.get("content-type") || "").toLowerCase();
+    if (!ctype.includes("json")) return null;
+    return await res.json();
+  };
+
+  const manifestUrl = `/models/hand_props/hand_props_manifest.json?v=${ASSET_SYNC_VERSION}`;
+  const fetchTask = import.meta.env?.DEV
+    ? fetch(`http://${window.location.hostname || "localhost"}:3001/api/hand-prop-models`)
+        .then(parseDoc)
+        .catch(() => null)
+        .then((doc) => doc || fetch(manifestUrl).then(parseDoc).catch(() => null))
+    : fetch(manifestUrl).then(parseDoc).catch(() => null);
+
+  handManifestPromise = fetchTask.then((doc) => {
+    if (doc?.handProps && typeof doc.handProps === "object") {
+      availableHandGlbs = doc.handProps;
+      notifyHandGlbListeners();
+    }
+    return availableHandGlbs;
+  });
+  return handManifestPromise;
+}
+
+function useOptionalHandPropGlb(handKey) {
+  const [glbMap, setGlbMap] = useState(() => availableHandGlbs);
+  const [renderMode, setRenderMode] = useState(() => get3DModelRenderMode());
+  const [sceneTemplate, setSceneTemplate] = useState(null);
+
+  useEffect(() => {
+    ensureHandPropManifestLoaded();
+    const cb = (next) => setGlbMap({ ...next });
+    handGlbListeners.add(cb);
+    const unsubMode = subscribe3DModelRenderMode((m) => setRenderMode(m));
+    return () => {
+      handGlbListeners.delete(cb);
+      unsubMode();
+    };
+  }, []);
+
+  const glbUrl = withAssetVersion(
+    handKey && renderMode !== "procedural_classic" ? glbMap?.[handKey] : null
+  );
+
+  useEffect(() => {
+    if (!glbUrl || !handKey) {
+      setSceneTemplate(null);
+      return undefined;
+    }
+    if (loadedHandPropSceneCache.has(glbUrl)) {
+      setSceneTemplate(loadedHandPropSceneCache.get(glbUrl));
+      return undefined;
+    }
+
+    let cancelled = false;
+    const targetSize = HAND_PROP_TARGET_SIZES[handKey] || 0.28;
+
+    getRoleGltfLoader().load(
+      glbUrl,
+      (gltf) => {
+        if (cancelled || !gltf?.scene) return;
+        const root = gltf.scene.clone(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+        const scale = targetSize / maxDim;
+        const wrapper = new THREE.Group();
+        // Căn tâm 3 trục về đúng điểm cầm nắm (Grip Pivot 0,0,0) theo chuẩn Art Bible
+        root.position.set(-center.x * scale, -center.y * scale, -center.z * scale);
+        root.scale.setScalar(scale);
+        wrapper.add(root);
+
+        loadedHandPropSceneCache.set(glbUrl, wrapper);
+        setSceneTemplate(wrapper);
+      },
+      undefined,
+      () => {
+        if (!cancelled) setSceneTemplate(null);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [glbUrl, handKey]);
+
+  return useMemo(() => {
+    if (!sceneTemplate) return null;
+    return sceneTemplate.clone(true);
+  }, [sceneTemplate]);
+}
 
 // Các hình học điêu khắc mượt (Lathe / Bezier Tube) tạo 1 lần dùng chung cho cả 18 ghế (0% hình hộp!)
 let sharedSculptGeos = null;
@@ -102,7 +237,7 @@ function useOptionalRoleGlb(roleKey) {
     return subscribeRoleGlbs((next) => setGlbMap({ ...next }));
   }, []);
 
-  const glbUrl = roleKey ? glbMap?.[roleKey] : null;
+  const glbUrl = withAssetVersion(roleKey ? glbMap?.[roleKey] : null);
 
   useEffect(() => {
     if (!glbUrl || !roleKey) {
@@ -434,6 +569,10 @@ export function RoleTorsoSocket3D({
   const orbRef = useRef(null);
   const geos = useMemo(() => getSharedSculptGeometries(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
+  const seerOrbGlb = useOptionalHandPropGlb(roleKey === "seer" ? "seer_orb" : null);
+  const witchElixirGlb = useOptionalHandPropGlb(roleKey === "witch" && !isGhost ? "witch_elixir" : null);
+  const witchPoisonGlb = useOptionalHandPropGlb(roleKey === "witch" && !isGhost ? "witch_poison" : null);
+  const tannerNooseGlb = useOptionalHandPropGlb(roleKey === "tanner" ? "tanner_noose" : null);
 
   useFrame((state) => {
     if (orbRef.current) {
@@ -447,24 +586,30 @@ export function RoleTorsoSocket3D({
 
   return (
     <group>
-      {/* TIÊN TRI: Quả Cầu Pha Lê Huyền Ảnh + Quầng Sáng Mềm */}
+      {/* TIÊN TRI: Quả Cầu Pha Lê Huyền Ảnh + Quầng Sáng Mềm (Ưu tiên prop_hand_seer_orb.glb) */}
       {roleKey === "seer" && (
         <group ref={orbRef} position={[0, 0.41, 0.27]}>
-          <mesh>
-            <sphereGeometry args={[0.066, 20, 20]} />
-            <meshStandardMaterial
-              color="#e9d5ff"
-              emissive="#9333ea"
-              emissiveIntensity={1.25}
-              transparent
-              opacity={isGhost ? 0.45 : 0.88}
-              roughness={0.08}
-            />
-          </mesh>
-          <mesh rotation={[Math.PI / 3, 0.4, 0]}>
-            <torusGeometry args={[0.095, 0.007, 8, 28]} />
-            <meshStandardMaterial color="#fde047" metalness={0.88} roughness={0.2} />
-          </mesh>
+          {seerOrbGlb ? (
+            <primitive object={seerOrbGlb} />
+          ) : (
+            <>
+              <mesh>
+                <sphereGeometry args={[0.066, 20, 20]} />
+                <meshStandardMaterial
+                  color="#e9d5ff"
+                  emissive="#9333ea"
+                  emissiveIntensity={1.25}
+                  transparent
+                  opacity={isGhost ? 0.45 : 0.88}
+                  roughness={0.08}
+                />
+              </mesh>
+              <mesh rotation={[Math.PI / 3, 0.4, 0]}>
+                <torusGeometry args={[0.095, 0.007, 8, 28]} />
+                <meshStandardMaterial color="#fde047" metalness={0.88} roughness={0.2} />
+              </mesh>
+            </>
+          )}
           {!isGhost && (
             <sprite scale={[0.32, 0.32, 1]}>
               <spriteMaterial
@@ -480,20 +625,24 @@ export function RoleTorsoSocket3D({
         </group>
       )}
 
-      {/* PHÙ THỦY: 2 Bình Thủy Tinh Giả Kim Đeo Hông (Xanh Cứu & Tím Độc) */}
+      {/* PHÙ THỦY: 2 Bình Thủy Tinh Giả Kim Đeo Hông (Ưu tiên prop_hand_witch_elixir.glb & prop_hand_witch_poison.glb) */}
       {roleKey === "witch" && !isGhost && (
         <group position={[0, 0.175, 0.175]}>
           <group position={[-0.088, 0, 0]} rotation={[0, 0, 0.18]}>
-            <mesh geometry={geos.flaskGeo}>
-              <meshStandardMaterial
-                color="#34d399"
-                emissive="#10b981"
-                emissiveIntensity={1.15}
-                roughness={0.14}
-                transparent
-                opacity={0.92}
-              />
-            </mesh>
+            {witchElixirGlb ? (
+              <primitive object={witchElixirGlb} position={[0, 0.05, 0]} />
+            ) : (
+              <mesh geometry={geos.flaskGeo}>
+                <meshStandardMaterial
+                  color="#34d399"
+                  emissive="#10b981"
+                  emissiveIntensity={1.15}
+                  roughness={0.14}
+                  transparent
+                  opacity={0.92}
+                />
+              </mesh>
+            )}
             <sprite position={[0, 0.045, 0.02]} scale={[0.16, 0.16, 1]}>
               <spriteMaterial
                 map={glowTex}
@@ -506,16 +655,20 @@ export function RoleTorsoSocket3D({
             </sprite>
           </group>
           <group position={[0.088, 0, 0]} rotation={[0, 0, -0.18]}>
-            <mesh geometry={geos.flaskGeo}>
-              <meshStandardMaterial
-                color="#c084fc"
-                emissive="#9333ea"
-                emissiveIntensity={1.15}
-                roughness={0.14}
-                transparent
-                opacity={0.92}
-              />
-            </mesh>
+            {witchPoisonGlb ? (
+              <primitive object={witchPoisonGlb} position={[0, 0.05, 0]} />
+            ) : (
+              <mesh geometry={geos.flaskGeo}>
+                <meshStandardMaterial
+                  color="#c084fc"
+                  emissive="#9333ea"
+                  emissiveIntensity={1.15}
+                  roughness={0.14}
+                  transparent
+                  opacity={0.92}
+                />
+              </mesh>
+            )}
             <sprite position={[0, 0.045, 0.02]} scale={[0.16, 0.16, 1]}>
               <spriteMaterial
                 map={glowTex}
@@ -572,17 +725,23 @@ export function RoleTorsoSocket3D({
         </mesh>
       )}
 
-      {/* KẺ CHÁN ĐỜI: Vòng Dây Thừng Bện Quấn Quanh Vai Cổ */}
+      {/* KẺ CHÁN ĐỜI: Vòng Dây Thừng Bện Quấn Quanh Vai Cổ (Ưu tiên prop_hand_tanner_noose.glb) */}
       {roleKey === "tanner" && (
         <group position={[0, 0.55, 0.01]}>
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[0.148, 0.021, 10, 24]} />
-            <meshStandardMaterial color="#92400e" roughness={0.95} transparent={isGhost} opacity={opacity} />
-          </mesh>
-          <mesh position={[0.045, -0.075, 0.142]} rotation={[0.15, 0, -0.1]}>
-            <capsuleGeometry args={[0.015, 0.095, 6, 10]} />
-            <meshStandardMaterial color="#78350f" roughness={0.95} />
-          </mesh>
+          {tannerNooseGlb ? (
+            <primitive object={tannerNooseGlb} position={[0.12, -0.32, 0.14]} />
+          ) : (
+            <>
+              <mesh rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.148, 0.021, 10, 24]} />
+                <meshStandardMaterial color="#92400e" roughness={0.95} transparent={isGhost} opacity={opacity} />
+              </mesh>
+              <mesh position={[0.045, -0.075, 0.142]} rotation={[0.15, 0, -0.1]}>
+                <capsuleGeometry args={[0.015, 0.095, 6, 10]} />
+                <meshStandardMaterial color="#78350f" roughness={0.95} />
+              </mesh>
+            </>
+          )}
         </group>
       )}
 
@@ -610,15 +769,114 @@ export function RoleTorsoSocket3D({
 }
 
 /**
- * SOCKET 3: ĐẠO CỤ CẦM TAY ĐIÊU KHẮC MƯỢT
+ * SOCKET 3: ĐẠO CỤ CẦM TAY ĐIÊU KHẮC MƯỢT & KHE CẮM NÓNG .GLB TRIPO AI
  */
-export function RoleHandSocket3D({ roleKey, side = "left", isGhost = false, opacity = 1 }) {
+export function RoleHandSocket3D({
+  roleKey,
+  side = "left",
+  isGhost = false,
+  opacity = 1,
+  showTrialTorch = false,
+  boneAttached = false,
+}) {
   const geos = useMemo(() => getSharedSculptGeometries(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
+  const guardShieldGlb = useOptionalHandPropGlb(
+    roleKey === "guard" && side === "left" ? "guard_shield" : null
+  );
+  const trialTorchGlb = useOptionalHandPropGlb(
+    showTrialTorch && side === "right" && !isGhost ? "trial_torch" : null
+  );
+  const witchElixirGlb = useOptionalHandPropGlb(
+    roleKey === "witch" && side === "left" && boneAttached && !isGhost ? "witch_elixir" : null
+  );
+  const witchPoisonGlb = useOptionalHandPropGlb(
+    roleKey === "witch" && side === "right" && boneAttached && !isGhost ? "witch_poison" : null
+  );
+  const seerOrbGlb = useOptionalHandPropGlb(
+    roleKey === "seer" && side === "center" && !isGhost ? "seer_orb" : null
+  );
+
+  // ĐUỐC PHÁN QUYẾT SẮT RÈN (Ưu tiên prop_hand_trial_torch.glb khi người chơi giơ đuốc bỏ phiếu Treo Cổ)
+  if (showTrialTorch && side === "right" && !isGhost) {
+    const pos = boneAttached ? [0, -0.02, 0.04] : [0, -0.36, 0.06];
+    const rot = boneAttached ? [0.45, 0, 0] : [1.05, 0, 0];
+    return (
+      <group position={pos} rotation={rot}>
+        {trialTorchGlb ? (
+          <primitive object={trialTorchGlb} position={[0, 0.14, 0]} />
+        ) : (
+          <>
+            <mesh position={[0, 0.14, 0]}>
+              <cylinderGeometry args={[0.028, 0.016, 0.34, 10]} />
+              <meshStandardMaterial color="#3f2716" roughness={0.88} />
+            </mesh>
+            <mesh position={[0, 0.28, 0]}>
+              <cylinderGeometry args={[0.044, 0.026, 0.075, 8]} />
+              <meshStandardMaterial color="#23272e" metalness={0.78} roughness={0.42} />
+            </mesh>
+          </>
+        )}
+        <mesh position={[0, 0.36, 0]}>
+          <coneGeometry args={[0.042, 0.13, 10]} />
+          <meshStandardMaterial color="#fef08a" emissive="#f97316" emissiveIntensity={2.2} roughness={0.2} />
+        </mesh>
+        <sprite position={[0, 0.38, 0]} scale={[0.36, 0.36, 1]}>
+          <spriteMaterial
+            map={glowTex}
+            color="#fb923c"
+            transparent
+            opacity={0.82}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
+      </group>
+    );
+  }
 
   if (!roleKey) return null;
 
-  if (roleKey === "wolf") {
+  // TIÊN TRI: Quả Cầu Pha Lê Huyền Ảnh nâng giữa hai lòng bàn tay (boneAttached center)
+  if (roleKey === "seer" && side === "center" && !isGhost) {
+    return (
+      <group>
+        {seerOrbGlb ? (
+          <primitive object={seerOrbGlb} />
+        ) : (
+          <>
+            <mesh>
+              <sphereGeometry args={[0.078, 22, 22]} />
+              <meshStandardMaterial
+                color="#f3e8ff"
+                emissive="#9333ea"
+                emissiveIntensity={1.45}
+                transparent
+                opacity={0.9}
+                roughness={0.08}
+              />
+            </mesh>
+            <mesh rotation={[Math.PI / 3, 0.4, 0]}>
+              <torusGeometry args={[0.11, 0.008, 8, 28]} />
+              <meshStandardMaterial color="#fde047" metalness={0.9} roughness={0.18} />
+            </mesh>
+          </>
+        )}
+        <sprite scale={[0.38, 0.38, 1]}>
+          <spriteMaterial
+            map={glowTex}
+            color="#c084fc"
+            transparent
+            opacity={0.75}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
+      </group>
+    );
+  }
+
+  if (roleKey === "wolf" && !boneAttached) {
     return (
       <group position={[0, -0.38, 0.03]}>
         {[-0.024, 0, 0.024].map((cx, ci) => (
@@ -637,34 +895,106 @@ export function RoleHandSocket3D({ roleKey, side = "left", isGhost = false, opac
     );
   }
 
-  // BẢO VỆ: Khiên Tròn Bắc Âu Vòm Nổi Bọc Viền Thép (Viking Round Targe)
+  // BẢO VỆ: Khiên Tròn Bắc Âu Vòm Nổi Bọc Viền Thép (Ưu tiên prop_hand_guard_shield.glb)
   if (roleKey === "guard" && side === "left") {
+    const pos = boneAttached ? [0.06, 0.04, 0.08] : [0.085, -0.25, 0.065];
+    const rot = boneAttached ? [0.12, 0.25, 0] : [0.22, 0.38, 0];
     return (
-      <group position={[0.085, -0.25, 0.065]} rotation={[0.22, 0.38, 0]}>
-        <mesh rotation={[0, 0, -Math.PI / 2]} scale={[1, 0.22, 1]}>
-          <sphereGeometry args={[0.205, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
-          <meshStandardMaterial
-            color="#1e3a5f"
-            roughness={0.68}
-            metalness={0.28}
-            side={THREE.DoubleSide}
-            transparent={isGhost}
-            opacity={opacity}
-          />
-        </mesh>
-        <mesh rotation={[0, Math.PI / 2, 0]}>
-          <torusGeometry args={[0.2, 0.016, 10, 28]} />
-          <meshStandardMaterial color="#cbd5e1" metalness={0.85} roughness={0.26} />
-        </mesh>
-        <mesh position={[0.032, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
-          <sphereGeometry args={[0.052, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
-          <meshStandardMaterial color="#fbbf24" metalness={0.88} roughness={0.22} />
-        </mesh>
+      <group position={pos} rotation={rot}>
+        {guardShieldGlb ? (
+          <primitive object={guardShieldGlb} />
+        ) : (
+          <>
+            <mesh rotation={[0, 0, -Math.PI / 2]} scale={[1, 0.22, 1]}>
+              <sphereGeometry args={[0.205, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
+              <meshStandardMaterial
+                color="#1e3a5f"
+                roughness={0.68}
+                metalness={0.28}
+                side={THREE.DoubleSide}
+                transparent={isGhost}
+                opacity={opacity}
+              />
+            </mesh>
+            <mesh rotation={[0, Math.PI / 2, 0]}>
+              <torusGeometry args={[0.2, 0.016, 10, 28]} />
+              <meshStandardMaterial color="#cbd5e1" metalness={0.85} roughness={0.26} />
+            </mesh>
+            <mesh position={[0.032, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+              <sphereGeometry args={[0.052, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.5]} />
+              <meshStandardMaterial color="#fbbf24" metalness={0.88} roughness={0.22} />
+            </mesh>
+          </>
+        )}
       </group>
     );
   }
 
-  // PHÙ THỦY: Trượng Gỗ Xoắn Đính Tinh Cầu Lục Bảo
+  // PHÙ THỦY TRÊN XƯƠNG BÀN TAY THẬT: Tay Trái cầm Bình Tiên Dược Xanh, Tay Phải cầm Bình Độc Tím!
+  if (roleKey === "witch" && boneAttached && !isGhost) {
+    if (side === "left") {
+      return (
+        <group position={[0.02, -0.02, 0.05]}>
+          {witchElixirGlb ? (
+            <primitive object={witchElixirGlb} />
+          ) : (
+            <mesh geometry={geos.flaskGeo} scale={[1.22, 1.22, 1.22]}>
+              <meshStandardMaterial
+                color="#34d399"
+                emissive="#10b981"
+                emissiveIntensity={1.45}
+                roughness={0.12}
+                transparent
+                opacity={0.94}
+              />
+            </mesh>
+          )}
+          <sprite position={[0, 0.055, 0.02]} scale={[0.22, 0.22, 1]}>
+            <spriteMaterial
+              map={glowTex}
+              color="#34d399"
+              transparent
+              opacity={0.68}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        </group>
+      );
+    }
+    if (side === "right") {
+      return (
+        <group position={[-0.02, -0.02, 0.05]}>
+          {witchPoisonGlb ? (
+            <primitive object={witchPoisonGlb} />
+          ) : (
+            <mesh geometry={geos.flaskGeo} scale={[1.25, 1.25, 1.25]}>
+              <meshStandardMaterial
+                color="#d8b4fe"
+                emissive="#9333ea"
+                emissiveIntensity={1.55}
+                roughness={0.12}
+                transparent
+                opacity={0.95}
+              />
+            </mesh>
+          )}
+          <sprite position={[0, 0.055, 0.02]} scale={[0.24, 0.24, 1]}>
+            <spriteMaterial
+              map={glowTex}
+              color="#c084fc"
+              transparent
+              opacity={0.72}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        </group>
+      );
+    }
+  }
+
+  // PHÙ THỦY (Fallback Procedural cũ): Trượng Gỗ Xoắn Đính Tinh Cầu Lục Bảo
   if (roleKey === "witch" && side === "right" && !isGhost) {
     return (
       <group position={[0, -0.37, 0.045]} rotation={[1.22, 0, 0]}>

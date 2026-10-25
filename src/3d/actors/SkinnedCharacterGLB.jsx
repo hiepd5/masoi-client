@@ -3,6 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import {
   CHARACTER_SLOTS,
@@ -11,6 +12,7 @@ import {
   subscribeCharacterManifest,
 } from "../config/characterManifest.js";
 import { SEAT_TOP_Y } from "../utils/seatLayout.js";
+import { RoleHandSocket3D } from "./RoleSocketAttachment3D.jsx";
 
 let sharedCharLoader = null;
 function getCharacterGltfLoader() {
@@ -19,6 +21,7 @@ function getCharacterGltfLoader() {
     const draco = new DRACOLoader();
     draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
     loader.setDRACOLoader(draco);
+    loader.setMeshoptDecoder(MeshoptDecoder);
     sharedCharLoader = loader;
   }
   return sharedCharLoader;
@@ -26,41 +29,64 @@ function getCharacterGltfLoader() {
 
 const characterAssetCache = new Map();
 
-// Bộ từ điển nhận diện xương tự động tương thích Tripo Auto-Rig / Mixamo / Blender Rigify / GLTF Humanoid
+// Bộ từ điển 20 xương chuẩn hóa tương thích Kép: Auto-Rig Nội Bộ / Tripo Studio Auto-Rig / Mixamo / Blender Rigify
 const BONE_PATTERNS = {
   hips: /^(mixamorig:?hips|hips|pelvis|bip001_?pelvis|root_?hip|def[-_]spine)$/i,
-  spine: /^(mixamorig:?spine1?|spine0?1?|chest|torso|upper_?body|def[-_]spine\.?00[12])$/i,
+  spine: /^(mixamorig:?spine|spine|spine_?01|def[-_]spine\.?001)$/i,
+  chest: /^(mixamorig:?spine[12]|chest|upper_?chest|torso|spine_?02|def[-_]spine\.?00[23])$/i,
   neck: /^(mixamorig:?neck|neck|neck_?01|def[-_]spine\.?004)$/i,
   head: /^(mixamorig:?head|head|head_?01|def[-_]spine\.?00[56])$/i,
+  jaw: /^(mixamorig:?jaw|jaw|chin|mandible|wolf_?jaw|def[-_]jaw)$/i,
+  tail: /^(mixamorig:?tail1?|tail|tail_?01|wolf_?tail|def[-_]tail\.?001?)$/i,
   leftUpLeg: /^(mixamorig:?leftupleg|leftupleg|thigh[_.]?l|l[_.]?thigh|upleg[_.]?l|left_?thigh|def[-_]thigh\.l)$/i,
   rightUpLeg: /^(mixamorig:?rightupleg|rightupleg|thigh[_.]?r|r[_.]?thigh|upleg[_.]?r|right_?thigh|def[-_]thigh\.r)$/i,
   leftLeg: /^(mixamorig:?leftleg|leftleg|calf[_.]?l|shin[_.]?l|l[_.]?calf|lowerleg[_.]?l|left_?shin|def[-_]shin\.l)$/i,
   rightLeg: /^(mixamorig:?rightleg|rightleg|calf[_.]?r|shin[_.]?r|r[_.]?calf|lowerleg[_.]?r|right_?shin|def[-_]shin\.r)$/i,
+  leftFoot: /^(mixamorig:?leftfoot|leftfoot|foot[_.]?l|l[_.]?foot|ankle[_.]?l|def[-_]foot\.l)$/i,
+  rightFoot: /^(mixamorig:?rightfoot|rightfoot|foot[_.]?r|r[_.]?foot|ankle[_.]?r|def[-_]foot\.r)$/i,
   leftArm: /^(mixamorig:?leftarm|leftarm|upperarm[_.]?l|l[_.]?upperarm|arm[_.]?l|left_?upper_?arm|def[-_]upper_arm\.l)$/i,
   rightArm: /^(mixamorig:?rightarm|rightarm|upperarm[_.]?r|r[_.]?upperarm|arm[_.]?r|right_?upper_?arm|def[-_]upper_arm\.r)$/i,
   leftForeArm: /^(mixamorig:?leftforearm|leftforearm|lowerarm[_.]?l|forearm[_.]?l|l[_.]?forearm|def[-_]forearm\.l)$/i,
   rightForeArm: /^(mixamorig:?rightforearm|rightforearm|lowerarm[_.]?r|forearm[_.]?r|r[_.]?forearm|def[-_]forearm\.r)$/i,
+  leftHand: /^(mixamorig:?lefthand|lefthand|hand[_.]?l|l[_.]?hand|wrist[_.]?l|def[-_]hand\.l)$/i,
+  rightHand: /^(mixamorig:?righthand|righthand|hand[_.]?r|r[_.]?hand|wrist[_.]?r|def[-_]hand\.r)$/i,
 };
 
 const BONE_SUBSTRING_FALLBACKS = {
   hips: ["hips", "pelvis"],
-  spine: ["spine1", "spine", "chest"],
+  spine: ["spine"],
+  chest: ["chest", "spine2", "spine1", "torso"],
   neck: ["neck"],
   head: ["head"],
+  jaw: ["jaw", "mandible", "chin"],
+  tail: ["tail"],
   leftUpLeg: ["leftupleg", "thigh_l", "thigh.l", "l_thigh", "upleg_l"],
   rightUpLeg: ["rightupleg", "thigh_r", "thigh.r", "r_thigh", "upleg_r"],
   leftLeg: ["leftleg", "calf_l", "calf.l", "shin_l", "shin.l", "l_calf"],
   rightLeg: ["rightleg", "calf_r", "calf.r", "shin_r", "shin.r", "r_calf"],
+  leftFoot: ["leftfoot", "foot_l", "foot.l", "l_foot", "ankle_l"],
+  rightFoot: ["rightfoot", "foot_r", "foot.r", "r_foot", "ankle_r"],
   leftArm: ["leftarm", "upperarm_l", "upperarm.l", "l_upperarm"],
   rightArm: ["rightarm", "upperarm_r", "upperarm.r", "r_upperarm"],
   leftForeArm: ["leftforearm", "forearm_l", "forearm.l", "lowerarm_l", "l_forearm"],
   rightForeArm: ["rightforearm", "forearm_r", "forearm.r", "lowerarm_r", "r_forearm"],
+  leftHand: ["lefthand", "hand_l", "hand.l", "l_hand", "wrist_l"],
+  rightHand: ["righthand", "hand_r", "hand.r", "r_hand", "wrist_r"],
 };
 
+const WORLD_X = new THREE.Vector3(1, 0, 0);
+const WORLD_Y = new THREE.Vector3(0, 1, 0);
+const WORLD_Z = new THREE.Vector3(0, 0, 1);
+
+/**
+ * Nhận diện xương & quy đổi Trục Thế Giới Nhân Vật (+X/+Y/+Z) sang Trục Cục Bộ Từng Xương
+ * (Chống xoạc/gãy khớp 100% dù file đến từ Auto-Rig Nội Bộ hay Tripo Studio / Mixamo / Blender)
+ */
 function mapHumanoidBones(root) {
   const bones = {};
   const allBones = [];
 
+  root.updateMatrixWorld(true);
   root.traverse((obj) => {
     if (obj.isBone) {
       allBones.push(obj);
@@ -73,11 +99,15 @@ function mapHumanoidBones(root) {
     }
   });
 
-  // Fallback tìm theo chuỗi con nếu rig đặt tiền tố lạ từ Tripo AI
   Object.entries(BONE_SUBSTRING_FALLBACKS).forEach(([slot, tokens]) => {
     if (bones[slot]) return;
     for (const token of tokens) {
-      const found = allBones.find((b) => (b.name || "").toLowerCase().includes(token));
+      const found = allBones.find((b) => {
+        const nm = (b.name || "").toLowerCase();
+        if (slot === "spine" && bones.chest === b) return false;
+        if (slot === "chest" && bones.spine === b) return false;
+        return nm.includes(token);
+      });
       if (found) {
         bones[slot] = found;
         break;
@@ -86,19 +116,59 @@ function mapHumanoidBones(root) {
   });
 
   const restQuats = {};
-  const restPos = {};
+  const restWorldPos = {};
+  const localAxes = {};
+  const tmpWQuat = new THREE.Quaternion();
+  const tmpWPos = new THREE.Vector3();
+
   Object.entries(bones).forEach(([slot, bone]) => {
-    if (bone) {
-      restQuats[slot] = bone.quaternion.clone();
-      restPos[slot] = bone.position.clone();
-    }
+    if (!bone) return;
+    restQuats[slot] = bone.quaternion.clone();
+    bone.getWorldPosition(tmpWPos);
+    restWorldPos[slot] = tmpWPos.clone();
+
+    bone.getWorldQuaternion(tmpWQuat);
+    const invWorldQuat = tmpWQuat.clone().invert();
+    localAxes[slot] = {
+      x: WORLD_X.clone().applyQuaternion(invWorldQuat).normalize(),
+      y: WORLD_Y.clone().applyQuaternion(invWorldQuat).normalize(),
+      z: WORLD_Z.clone().applyQuaternion(invWorldQuat).normalize(),
+    };
   });
 
-  return { bones, restQuats, restPos, hasRig: Boolean(bones.hips || bones.spine || bones.head) };
+  // Tự động đo góc dang nách A-Pose/T-Pose gốc để khép tay tự nhiên xuống hông/đùi khi ngồi ghế!
+  let adductLZ = 0;
+  let adductRZ = 0;
+  if (restWorldPos.leftArm && (restWorldPos.leftHand || restWorldPos.leftForeArm)) {
+    const s = restWorldPos.leftArm;
+    const w = restWorldPos.leftHand || restWorldPos.leftForeArm;
+    const alpha = Math.atan2(Math.max(0, w.x - s.x), Math.max(0.05, s.y - w.y));
+    adductLZ = -Math.max(0, alpha - 0.24) * 0.82;
+  }
+  if (restWorldPos.rightArm && (restWorldPos.rightHand || restWorldPos.rightForeArm)) {
+    const s = restWorldPos.rightArm;
+    const w = restWorldPos.rightHand || restWorldPos.rightForeArm;
+    const alpha = Math.atan2(Math.max(0, s.x - w.x), Math.max(0.05, s.y - w.y));
+    adductRZ = Math.max(0, alpha - 0.24) * 0.82;
+  }
+
+  const upLegRawY = restWorldPos.leftUpLeg?.y ?? restWorldPos.hips?.y ?? null;
+
+  return {
+    bones,
+    restQuats,
+    restWorldPos,
+    localAxes,
+    adductLZ,
+    adductRZ,
+    upLegRawY,
+    boneCount: allBones.length,
+    hasRig: Boolean(bones.hips || bones.spine || bones.head),
+  };
 }
 
 export function useOptionalCharacterGlb(slotKey) {
-  const [, setManifestTick] = useState(0);
+  const [manifestTick, setManifestTick] = useState(0);
   const [templateEntry, setTemplateEntry] = useState(null);
 
   useEffect(() => {
@@ -106,7 +176,10 @@ export function useOptionalCharacterGlb(slotKey) {
     return subscribeCharacterManifest(() => setManifestTick((n) => n + 1));
   }, []);
 
-  const glbUrl = getCharacterGlbUrl(slotKey);
+  const glbUrl = useMemo(() => {
+    void manifestTick;
+    return getCharacterGlbUrl(slotKey);
+  }, [slotKey, manifestTick]);
 
   useEffect(() => {
     if (!glbUrl || !slotKey) {
@@ -127,6 +200,13 @@ export function useOptionalCharacterGlb(slotKey) {
         if (cancelled || !gltf?.scene) return;
         const rawScene = gltf.scene;
         rawScene.updateMatrixWorld(true);
+        // Cập nhật ma trận Skeleton trước khi tính Box3 để Meshopt-quantized SkinnedMesh trả đúng kích thước mét 1:1!
+        rawScene.traverse((obj) => {
+          if (obj.isSkinnedMesh && obj.skeleton) {
+            obj.skeleton.update();
+          }
+        });
+
         const box = new THREE.Box3().setFromObject(rawScene);
         const size = new THREE.Vector3();
         const center = new THREE.Vector3();
@@ -134,15 +214,25 @@ export function useOptionalCharacterGlb(slotKey) {
         box.getCenter(center);
 
         const rawHeight = Math.max(size.y, 0.01);
-        const normScale = (slotMeta.standingHeight || 1.68) / rawHeight;
+        const targetStandH = slotMeta.standingHeight || 1.76;
+        const normScale = targetStandH / rawHeight;
+        const probeRig = mapHumanoidBones(rawScene);
+        const upLegHeightMeters =
+          typeof probeRig.upLegRawY === "number"
+            ? (probeRig.upLegRawY - box.min.y) * normScale
+            : targetStandH * 0.455;
 
         const entry = {
           scene: rawScene,
+          animations: Array.isArray(gltf.animations) ? gltf.animations : [],
+          hasRig: Boolean(probeRig.hasRig),
+          boneCount: probeRig.boneCount || 0,
           normScale,
           minY: box.min.y,
           centerX: center.x,
           centerZ: center.z,
-          standingHeight: slotMeta.standingHeight || 1.68,
+          standingHeight: targetStandH,
+          upLegHeightMeters,
         };
         characterAssetCache.set(glbUrl, entry);
         setTemplateEntry(entry);
@@ -162,10 +252,9 @@ export function useOptionalCharacterGlb(slotKey) {
 }
 
 /**
- * Hiển thị Nhân Vật 3D Có Xương Auto-Rig (.GLB Tripo AI):
- * - Nhân bản độc lập từng ghế bằng `SkeletonUtils.clone` (không chung xương giữa 18 ghế).
- * - Tự động bẻ khớp Đùi (~82°) & Đầu gối (~86°) ngồi khít mặt ghế sồi `SEAT_TOP_Y = 0.48m`.
- * - Lái mượt xương Sống, Đầu (LookAt) và 2 Cánh Tay ở 60 FPS!
+ * Hiển thị Nhân Vật 3D (.GLB) — Hỗ Trợ Kép 18–20 Xương SkinnedMesh & Smart Mesh Fallback:
+ * - Tự động bẻ khớp Đùi (-81°), Đầu gối (+85°), Khuỷu tay (-33°) ngồi khít mặt ghế sồi `SEAT_TOP_Y = 0.48m` (bàn chân chạm phẳng đá Y=0).
+ * - Tự động đồng bộ Ma Trận Xương Bàn Tay Thật (`LeftHand` / `RightHand`) cho Khiên `#17`, Bình Độc / Tiên Dược Phù Thủy, Cầu Pha Lê Tiên Tri & Đuốc Phán Quyết!
  */
 export default function SkinnedCharacterGLB({
   slotKey,
@@ -174,6 +263,7 @@ export default function SkinnedCharacterGLB({
   effectiveIsDead = false,
   isWolfVictim = false,
   recapPose = null,
+  choreoPoseRef = null,
   isSleeping = false,
   isDefendant = false,
   isSpeaking = false,
@@ -182,101 +272,203 @@ export default function SkinnedCharacterGLB({
   hasWinner = false,
   lookTargetWorld = null,
   seatTransform,
+  visibleCostumeRole = null,
+  showTrialTorchSocket = false,
   seed = 0,
 }) {
   const slotMeta = CHARACTER_SLOTS[slotKey] || CHARACTER_SLOTS.villager_cloak;
   const wrapperRef = useRef(null);
+  const leftHandSocketRef = useRef(null);
+  const rightHandSocketRef = useRef(null);
+  const centerOrbSocketRef = useRef(null);
 
   const clonedBundle = useMemo(() => {
-    if (!templateEntry?.scene) return null;
+    if (!templateEntry?.scene || effectiveIsDead) return null;
     const clonedRoot = cloneSkeleton(templateEntry.scene);
     const rigInfo = mapHumanoidBones(clonedRoot);
+    const emissiveMats = [];
 
     clonedRoot.traverse((obj) => {
       if (obj.isMesh) {
-        obj.castShadow = !effectiveIsDead;
+        obj.castShadow = true;
         obj.receiveShadow = true;
-        obj.frustumCulled = false; // SkinnedMesh gập xương ngồi không bị cắt nhầm bounding box
+        obj.frustumCulled = false;
         if (obj.material) {
           const mat = obj.material.clone();
-          if (slotMeta.tintableCloak && tunicColor && !effectiveIsDead) {
+          if (slotMeta.tintableCloak && tunicColor) {
             const tint = new THREE.Color(tunicColor);
-            mat.color.lerp(tint, 0.42);
+            mat.color.lerp(tint, slotMeta.tintStrength ?? 0.24);
           }
-          if (effectiveIsDead) {
-            mat.transparent = true;
-            mat.opacity = 0.26;
-            mat.color.set("#38bdf8");
+          if (mat.emissive) {
+            emissiveMats.push(mat);
           }
           obj.material = mat;
         }
       }
     });
 
-    // Áp tư thế ngồi chuẩn mặt ghế sồi SEAT_TOP_Y = 0.48m lên khớp Đùi & Đầu Gối
-    const { bones, restQuats } = rigInfo;
-    const thighBend = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -1.42);
-    const kneeBend = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 1.48);
-
-    if (bones.leftUpLeg && restQuats.leftUpLeg) {
-      bones.leftUpLeg.quaternion.copy(restQuats.leftUpLeg).multiply(thighBend);
-    }
-    if (bones.rightUpLeg && restQuats.rightUpLeg) {
-      bones.rightUpLeg.quaternion.copy(restQuats.rightUpLeg).multiply(thighBend);
-    }
-    if (bones.leftLeg && restQuats.leftLeg) {
-      bones.leftLeg.quaternion.copy(restQuats.leftLeg).multiply(kneeBend);
-    }
-    if (bones.rightLeg && restQuats.rightLeg) {
-      bones.rightLeg.quaternion.copy(restQuats.rightLeg).multiply(kneeBend);
+    // Hỗ trợ trộn mượt AnimationClip gốc nếu người dùng xuất file có sẵn clip từ Tripo Studio
+    let mixer = null;
+    if (templateEntry.animations && templateEntry.animations.length > 0) {
+      mixer = new THREE.AnimationMixer(clonedRoot);
+      const idleClip =
+        templateEntry.animations.find((c) => /idle|stand|sit/i.test(c.name || "")) ||
+        templateEntry.animations[0];
+      if (idleClip) {
+        const action = mixer.clipAction(idleClip);
+        action.setEffectiveWeight(0.35);
+        action.play();
+      }
     }
 
-    return { clonedRoot, rigInfo };
-  }, [templateEntry, slotMeta.tintableCloak, tunicColor, effectiveIsDead]);
+    if (rigInfo.hasRig) {
+      const { bones, restQuats, localAxes } = rigInfo;
+      const qThighL = new THREE.Quaternion().setFromAxisAngle(localAxes.leftUpLeg?.x || WORLD_X, -1.42);
+      const qThighR = new THREE.Quaternion().setFromAxisAngle(localAxes.rightUpLeg?.x || WORLD_X, -1.42);
+      const qKneeL = new THREE.Quaternion().setFromAxisAngle(localAxes.leftLeg?.x || WORLD_X, 1.48);
+      const qKneeR = new THREE.Quaternion().setFromAxisAngle(localAxes.rightLeg?.x || WORLD_X, 1.48);
+
+      if (bones.leftUpLeg && restQuats.leftUpLeg) {
+        bones.leftUpLeg.quaternion.copy(restQuats.leftUpLeg).multiply(qThighL);
+      }
+      if (bones.rightUpLeg && restQuats.rightUpLeg) {
+        bones.rightUpLeg.quaternion.copy(restQuats.rightUpLeg).multiply(qThighR);
+      }
+      if (bones.leftLeg && restQuats.leftLeg) {
+        bones.leftLeg.quaternion.copy(restQuats.leftLeg).multiply(qKneeL);
+      }
+      if (bones.rightLeg && restQuats.rightLeg) {
+        bones.rightLeg.quaternion.copy(restQuats.rightLeg).multiply(qKneeR);
+      }
+    }
+
+    return { clonedRoot, rigInfo, emissiveMats, mixer };
+  }, [templateEntry, slotMeta.tintableCloak, slotMeta.tintStrength, tunicColor, effectiveIsDead]);
+
+  useEffect(() => {
+    return () => {
+      if (clonedBundle?.mixer) {
+        clonedBundle.mixer.stopAllAction();
+      }
+    };
+  }, [clonedBundle]);
 
   const animStateRef = useRef({
+    sitFactor: 1,
     spineX: 0,
+    spineY: 0,
     headY: 0,
     headX: 0,
-    armRX: 0,
-    armLX: 0,
+    armRX: -0.36,
+    armLX: -0.36,
+    armRZ: 0,
+    armLZ: 0,
+    foreArmRX: -0.56,
+    foreArmLX: -0.56,
+    thighLX: -1.42,
+    thighRX: -1.42,
+    kneeLX: 1.48,
+    kneeRX: 1.48,
+    footLX: -0.05,
+    footRX: -0.05,
+    jawOpen: 0,
+    tailPitch: 0,
+    tailYaw: 0,
+    bodyPitchX: 0,
+    bodyYawY: 0,
+    bodyRollZ: 0,
   });
 
   const qTempX = useMemo(() => new THREE.Quaternion(), []);
   const qTempY = useMemo(() => new THREE.Quaternion(), []);
-  const axisX = useMemo(() => new THREE.Vector3(1, 0, 0), []);
-  const axisY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const qTempZ = useMemo(() => new THREE.Quaternion(), []);
+  const tempColor = useMemo(() => new THREE.Color(), []);
+  const invWrapperMat = useMemo(() => new THREE.Matrix4(), []);
+  const tempBoneMat = useMemo(() => new THREE.Matrix4(), []);
+  const tempPosL = useMemo(() => new THREE.Vector3(), []);
+  const tempPosR = useMemo(() => new THREE.Vector3(), []);
+  const tempQuat = useMemo(() => new THREE.Quaternion(), []);
+  const tempScale = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((state, delta) => {
-    if (!clonedBundle) return;
-    const { rigInfo } = clonedBundle;
-    const { bones, restQuats } = rigInfo;
+    if (!clonedBundle || effectiveIsDead) return;
+    const { rigInfo, emissiveMats, mixer, clonedRoot } = clonedBundle;
+    if (mixer) mixer.update(Math.min(0.05, delta));
+
+    const { bones, restQuats, localAxes, adductLZ, adductRZ } = rigInfo;
     const t = state.clock.elapsedTime;
     const breath = t * 2.1 + seed;
     const st = animStateRef.current;
+    const choreo = choreoPoseRef?.current || null;
+    const damp = Math.min(1, delta * (choreo ? 14.5 : 7.2));
 
-    // 1. Thân trên (Spine)
-    let goalSpineX = Math.sin(breath) * 0.03;
-    if (effectiveIsDead) goalSpineX = 0.34;
-    else if (recapPose === "castLunge") goalSpineX = 0.28 + Math.sin(t * 7.5) * 0.06;
-    else if (recapPose === "hitRecoil") goalSpineX = -0.26 + Math.sin(t * 18) * 0.05;
-    else if (recapPose === "cheer") goalSpineX = -0.08 + Math.sin(t * 6.5) * 0.05;
-    else if (isSleeping) goalSpineX = 0.2;
-    else if (isDefendant || recapPose === "defend") goalSpineX = -0.07;
+    // 0. Nội suy Động Khớp Đùi - Đầu Gối - Cổ Chân (Ngồi ghế sồi 0.48m <-> Đứng thẳng / Bật nhảy Parabol / Đi bộ Pháp trường)
+    const goalSit = choreo ? choreo.sitFactor : 1.0;
+    st.sitFactor = THREE.MathUtils.lerp(st.sitFactor, goalSit, damp);
 
-    st.spineX = THREE.MathUtils.lerp(st.spineX, goalSpineX, delta * 6.5);
-    if (bones.spine && restQuats.spine) {
-      qTempX.setFromAxisAngle(axisX, st.spineX);
-      bones.spine.quaternion.copy(restQuats.spine).multiply(qTempX);
+    if (rigInfo.hasRig) {
+      const idleFootTap = !choreo && !isSleeping ? Math.sin(t * 1.6 + seed * 1.7) * 0.025 : 0;
+      const goalThighL = st.sitFactor * -1.42 + (choreo ? choreo.leftThighAddX : 0);
+      const goalThighR = st.sitFactor * -1.42 + (choreo ? choreo.rightThighAddX : 0);
+      const goalKneeL = st.sitFactor * 1.48 + (choreo ? choreo.leftKneeAddX : idleFootTap);
+      const goalKneeR = st.sitFactor * 1.48 + (choreo ? choreo.rightKneeAddX : -idleFootTap);
+      const goalFootL = st.sitFactor * -0.06 + (choreo?.leftFootPitch || 0);
+      const goalFootR = st.sitFactor * -0.06 + (choreo?.rightFootPitch || 0);
+
+      st.thighLX = THREE.MathUtils.lerp(st.thighLX, goalThighL, damp);
+      st.thighRX = THREE.MathUtils.lerp(st.thighRX, goalThighR, damp);
+      st.kneeLX = THREE.MathUtils.lerp(st.kneeLX, goalKneeL, damp);
+      st.kneeRX = THREE.MathUtils.lerp(st.kneeRX, goalKneeR, damp);
+      st.footLX = THREE.MathUtils.lerp(st.footLX, goalFootL, damp);
+      st.footRX = THREE.MathUtils.lerp(st.footRX, goalFootR, damp);
+
+      if (bones.leftUpLeg && restQuats.leftUpLeg) {
+        qTempZ.setFromAxisAngle(localAxes.leftUpLeg?.z || WORLD_Z, st.sitFactor * 0.075);
+        qTempX.setFromAxisAngle(localAxes.leftUpLeg?.x || WORLD_X, st.thighLX);
+        bones.leftUpLeg.quaternion.copy(restQuats.leftUpLeg).multiply(qTempZ).multiply(qTempX);
+      }
+      if (bones.rightUpLeg && restQuats.rightUpLeg) {
+        qTempZ.setFromAxisAngle(localAxes.rightUpLeg?.z || WORLD_Z, -st.sitFactor * 0.075);
+        qTempX.setFromAxisAngle(localAxes.rightUpLeg?.x || WORLD_X, st.thighRX);
+        bones.rightUpLeg.quaternion.copy(restQuats.rightUpLeg).multiply(qTempZ).multiply(qTempX);
+      }
+      if (bones.leftLeg && restQuats.leftLeg) {
+        qTempX.setFromAxisAngle(localAxes.leftLeg?.x || WORLD_X, st.kneeLX);
+        bones.leftLeg.quaternion.copy(restQuats.leftLeg).multiply(qTempX);
+      }
+      if (bones.rightLeg && restQuats.rightLeg) {
+        qTempX.setFromAxisAngle(localAxes.rightLeg?.x || WORLD_X, st.kneeRX);
+        bones.rightLeg.quaternion.copy(restQuats.rightLeg).multiply(qTempX);
+      }
+      if (bones.leftFoot && restQuats.leftFoot) {
+        qTempX.setFromAxisAngle(localAxes.leftFoot?.x || WORLD_X, st.footLX);
+        bones.leftFoot.quaternion.copy(restQuats.leftFoot).multiply(qTempX);
+      }
+      if (bones.rightFoot && restQuats.rightFoot) {
+        qTempX.setFromAxisAngle(localAxes.rightFoot?.x || WORLD_X, st.footRX);
+        bones.rightFoot.quaternion.copy(restQuats.rightFoot).multiply(qTempX);
+      }
     }
 
-    // 2. Xương Đầu (Head LookAt)
+    // 1. Xương Sống & Lồng Ngực (Spine + Chest chia đôi độ uốn tự nhiên)
+    let goalSpineX = Math.sin(breath) * 0.032 + (st.sitFactor * 0.04);
+    let goalSpineY = 0;
+    if (choreo) {
+      goalSpineX = choreo.spineLeanX;
+      goalSpineY = choreo.spineTwistY || 0;
+    } else if (recapPose === "castLunge") goalSpineX = 0.28 + Math.sin(t * 7.5) * 0.06;
+    else if (recapPose === "hitRecoil") goalSpineX = -0.26 + Math.sin(t * 18) * 0.05;
+    else if (recapPose === "cheer") goalSpineX = -0.08 + Math.sin(t * 6.5) * 0.05;
+    else if (isSleeping) goalSpineX = 0.17 + Math.sin(t * 1.1 + seed) * 0.02;
+    else if (isDefendant || recapPose === "defend") goalSpineX = -0.05;
+
+    // 2. Xương Đầu (Head LookAt theo người đang bật Mic & Choreography Pitch/Yaw)
     let goalHeadY = Math.sin(t * 0.75 + seed) * 0.14;
     let goalHeadX = Math.cos(t * 1.1 + seed) * 0.04;
 
-    if (effectiveIsDead) {
-      goalHeadX = 0.4;
-      goalHeadY = 0;
+    if (choreo) {
+      goalHeadX = choreo.headPitchX || 0;
+      goalHeadY = choreo.headYawY || 0;
     } else if (recapPose === "hitRecoil") {
       goalHeadX = -0.22;
       goalHeadY = Math.sin(t * 22) * 0.18;
@@ -284,11 +476,11 @@ export default function SkinnedCharacterGLB({
       goalHeadX = -0.14 + Math.sin(t * 6) * 0.08;
       goalHeadY = Math.sin(t * 3.5 + seed) * 0.22;
     } else if (isSleeping) {
-      goalHeadX = 0.34;
+      goalHeadX = 0.29 + Math.sin(t * 1.2 + seed) * 0.03;
       goalHeadY = Math.sin(t * 0.6 + seed) * 0.05;
     } else if (isSpeaking) {
       goalHeadX = Math.sin(t * 11) * 0.09;
-      goalHeadY = Math.cos(t * 6.5) * 0.12;
+      goalHeadY = Math.cos(t * 6.5) * 0.14;
     } else if (lookTargetWorld && seatTransform) {
       const dx = lookTargetWorld.x - seatTransform.x;
       const dz = lookTargetWorld.z - seatTransform.z;
@@ -297,83 +489,339 @@ export default function SkinnedCharacterGLB({
         let relYaw = worldAngle - seatTransform.facingYaw;
         while (relYaw > Math.PI) relYaw -= Math.PI * 2;
         while (relYaw < -Math.PI) relYaw += Math.PI * 2;
-        goalHeadY = THREE.MathUtils.clamp(relYaw * 0.75, -0.85, 0.85);
+        goalHeadY = THREE.MathUtils.clamp(relYaw * 0.68, -0.82, 0.82);
+        if (!choreo) goalSpineY = THREE.MathUtils.clamp(relYaw * 0.22, -0.28, 0.28);
       }
     }
 
-    st.headY = THREE.MathUtils.lerp(st.headY, goalHeadY, delta * 5.8);
-    st.headX = THREE.MathUtils.lerp(st.headX, goalHeadX, delta * 5.8);
-    const headBone = bones.head || bones.neck;
-    const headRest = bones.head ? restQuats.head : restQuats.neck;
-    if (headBone && headRest) {
-      qTempY.setFromAxisAngle(axisY, st.headY);
-      qTempX.setFromAxisAngle(axisX, st.headX);
-      headBone.quaternion.copy(headRest).multiply(qTempY).multiply(qTempX);
+    st.spineX = THREE.MathUtils.lerp(st.spineX, goalSpineX, damp);
+    st.spineY = THREE.MathUtils.lerp(st.spineY, goalSpineY, damp);
+    st.headY = THREE.MathUtils.lerp(st.headY, goalHeadY, damp);
+    st.headX = THREE.MathUtils.lerp(st.headX, goalHeadX, damp);
+
+    if (rigInfo.hasRig) {
+      const hasBothSpineAndChest = Boolean(bones.spine && bones.chest && bones.spine !== bones.chest);
+      const spineShare = hasBothSpineAndChest ? 0.52 : 1.0;
+
+      if (bones.spine && restQuats.spine) {
+        qTempY.setFromAxisAngle(localAxes.spine?.y || WORLD_Y, st.spineY * spineShare);
+        qTempX.setFromAxisAngle(localAxes.spine?.x || WORLD_X, st.spineX * spineShare);
+        bones.spine.quaternion.copy(restQuats.spine).multiply(qTempY).multiply(qTempX);
+      }
+      if (hasBothSpineAndChest && bones.chest && restQuats.chest) {
+        const chestBreath = Math.sin(breath) * 0.018;
+        qTempY.setFromAxisAngle(localAxes.chest?.y || WORLD_Y, st.spineY * 0.48);
+        qTempX.setFromAxisAngle(localAxes.chest?.x || WORLD_X, st.spineX * 0.48 + chestBreath);
+        bones.chest.quaternion.copy(restQuats.chest).multiply(qTempY).multiply(qTempX);
+      }
+
+      const headBone = bones.head || bones.neck;
+      const headSlot = bones.head ? "head" : "neck";
+      if (headBone && restQuats[headSlot]) {
+        qTempY.setFromAxisAngle(localAxes[headSlot]?.y || WORLD_Y, st.headY);
+        qTempX.setFromAxisAngle(localAxes[headSlot]?.x || WORLD_X, st.headX);
+        headBone.quaternion.copy(restQuats[headSlot]).multiply(qTempY).multiply(qTempX);
+      }
     }
 
-    // 3. Xương Cánh Tay (Arm Gesture)
-    let goalArmR = -0.22;
-    let goalArmL = -0.22;
-    if (recapPose === "cheer") {
-      goalArmR = -1.9 + Math.sin(t * 7 + seed) * 0.2;
-      goalArmL = -1.9 + Math.cos(t * 7 + seed) * 0.2;
+    // 3. Cánh Tay Trên + Cẳng Tay (Vai -> Khuỷu -> Bàn tay) & Tự Động Hạ Tay Từ A-Pose Đặt Lên Đùi Khi Ngồi!
+    const effectiveTorch = Boolean(showTrialTorchSocket || choreo?.showTrialTorchOverride);
+    let goalArmR = -0.34;
+    let goalArmL = visibleCostumeRole === "guard" ? -0.62 : -0.34;
+    let goalSpreadR = 0;
+    let goalSpreadL = 0;
+    let goalForeR = -0.58;
+    let goalForeL = visibleCostumeRole === "guard" ? -0.88 : -0.58;
+
+    if (choreo) {
+      goalArmR = choreo.rightArmPitchX * 0.88;
+      goalArmL = choreo.leftArmPitchX * 0.88;
+      goalSpreadR = choreo.rightArmSpreadZ || 0;
+      goalSpreadL = choreo.leftArmSpreadZ || 0;
+      goalForeR = choreo.rightForeArmBend ?? -0.56;
+      goalForeL = choreo.leftForeArmBend ?? -0.56;
+    } else if (recapPose === "cheer") {
+      goalArmR = -1.95 + Math.sin(t * 7 + seed) * 0.2;
+      goalArmL = -1.95 + Math.cos(t * 7 + seed) * 0.2;
+      goalSpreadR = -0.32;
+      goalSpreadL = 0.32;
+      goalForeR = -0.42;
+      goalForeL = -0.42;
     } else if (recapPose === "castLunge") {
       goalArmR = -1.25 + Math.sin(t * 10) * 0.22;
       goalArmL = -1.05 + Math.cos(t * 10) * 0.18;
+      goalForeR = -0.35;
+      goalForeL = -0.65;
     } else if (recapPose === "hitRecoil") {
-      goalArmR = -0.85;
-      goalArmL = -0.85;
+      goalArmR = -0.95;
+      goalArmL = -0.95;
+      goalForeR = -1.18;
+      goalForeL = -1.18;
+    } else if (effectiveTorch) {
+      goalArmR = -1.55 + Math.sin(t * 4.2 + seed) * 0.08;
+      goalForeR = -0.35;
     } else if (hasPointTarget && (phase === "day_nominate" || phase === "day_defense")) {
-      goalArmR = -1.18;
-      goalArmL = -0.2;
+      goalArmR = -1.25;
+      goalForeR = -0.14;
+      goalArmL = -0.32;
+      goalForeL = -0.58;
     } else if (isSpeaking || recapPose === "defend") {
-      goalArmR = -0.58 + Math.sin(t * 8.5 + seed) * 0.28;
-      goalArmL = -0.58 + Math.cos(t * 7.8 + seed) * 0.28;
-    } else if (slotKey === "wolf" && (phase === "night_wolf" || hasWinner)) {
+      goalArmR = -0.64 + Math.sin(t * 8.5 + seed) * 0.26;
+      goalArmL = -0.64 + Math.cos(t * 7.8 + seed) * 0.26;
+      goalForeR = -0.78 + Math.cos(t * 8.5 + seed) * 0.2;
+      goalForeL = -0.78 + Math.sin(t * 7.8 + seed) * 0.2;
+    } else if ((slotKey === "wolf" || slotKey === "wolf_alt") && (phase === "night_wolf" || hasWinner)) {
       goalArmR = -0.68 + Math.sin(t * 3.8 + seed) * 0.12;
       goalArmL = -0.68 + Math.cos(t * 3.8 + seed) * 0.12;
+      goalForeR = -0.76;
+      goalForeL = -0.76;
+    } else if (visibleCostumeRole === "guard" && phase === "night_guard") {
+      goalArmL = -1.08 + Math.sin(t * 3.2 + seed) * 0.08;
+      goalForeL = -1.05;
+    } else if (visibleCostumeRole === "seer" && phase === "night_seer") {
+      goalArmL = -0.88;
+      goalArmR = -0.88;
+      goalForeL = -0.85;
+      goalForeR = -0.85;
     }
 
-    st.armRX = THREE.MathUtils.lerp(st.armRX, goalArmR, delta * 7);
-    st.armLX = THREE.MathUtils.lerp(st.armLX, goalArmL, delta * 7);
-    if (bones.rightArm && restQuats.rightArm) {
-      qTempX.setFromAxisAngle(axisX, st.armRX);
-      bones.rightArm.quaternion.copy(restQuats.rightArm).multiply(qTempX);
-    }
-    if (bones.leftArm && restQuats.leftArm) {
-      qTempX.setFromAxisAngle(axisX, st.armLX);
-      bones.leftArm.quaternion.copy(restQuats.leftArm).multiply(qTempX);
+    st.armRX = THREE.MathUtils.lerp(st.armRX, goalArmR, damp);
+    st.armLX = THREE.MathUtils.lerp(st.armLX, goalArmL, damp);
+    st.armRZ = THREE.MathUtils.lerp(st.armRZ, goalSpreadR, damp);
+    st.armLZ = THREE.MathUtils.lerp(st.armLZ, goalSpreadL, damp);
+    st.foreArmRX = THREE.MathUtils.lerp(st.foreArmRX, goalForeR, damp);
+    st.foreArmLX = THREE.MathUtils.lerp(st.foreArmLX, goalForeL, damp);
+
+    if (rigInfo.hasRig) {
+      if (bones.rightArm && restQuats.rightArm) {
+        qTempZ.setFromAxisAngle(localAxes.rightArm?.z || WORLD_Z, adductRZ + st.armRZ);
+        qTempX.setFromAxisAngle(localAxes.rightArm?.x || WORLD_X, st.armRX);
+        bones.rightArm.quaternion.copy(restQuats.rightArm).multiply(qTempZ).multiply(qTempX);
+      }
+      if (bones.leftArm && restQuats.leftArm) {
+        qTempZ.setFromAxisAngle(localAxes.leftArm?.z || WORLD_Z, adductLZ + st.armLZ);
+        qTempX.setFromAxisAngle(localAxes.leftArm?.x || WORLD_X, st.armLX);
+        bones.leftArm.quaternion.copy(restQuats.leftArm).multiply(qTempZ).multiply(qTempX);
+      }
+      if (bones.rightForeArm && restQuats.rightForeArm) {
+        qTempX.setFromAxisAngle(localAxes.rightForeArm?.x || WORLD_X, st.foreArmRX);
+        bones.rightForeArm.quaternion.copy(restQuats.rightForeArm).multiply(qTempX);
+      }
+      if (bones.leftForeArm && restQuats.leftForeArm) {
+        qTempX.setFromAxisAngle(localAxes.leftForeArm?.x || WORLD_X, st.foreArmLX);
+        bones.leftForeArm.quaternion.copy(restQuats.leftForeArm).multiply(qTempX);
+      }
+
+      // 3B. Xương Hàm Nanh & Đuôi Riêng Cho Ma Sói (#07 & #07B)
+      const goalJaw =
+        choreo?.jawOpen ??
+        (isSpeaking ? Math.abs(Math.sin(t * 14)) * 0.24 : phase === "night_wolf" ? 0.14 : 0);
+      const goalTailP = choreo?.tailPitch ?? Math.sin(t * 1.9 + seed) * 0.08;
+      const goalTailY = choreo?.tailYaw ?? Math.sin(t * 2.5 + seed) * 0.16;
+
+      st.jawOpen = THREE.MathUtils.lerp(st.jawOpen, goalJaw, damp);
+      st.tailPitch = THREE.MathUtils.lerp(st.tailPitch, goalTailP, damp);
+      st.tailYaw = THREE.MathUtils.lerp(st.tailYaw, goalTailY, damp);
+
+      if (bones.jaw && restQuats.jaw) {
+        qTempX.setFromAxisAngle(localAxes.jaw?.x || WORLD_X, st.jawOpen);
+        bones.jaw.quaternion.copy(restQuats.jaw).multiply(qTempX);
+      }
+      if (bones.tail && restQuats.tail) {
+        qTempY.setFromAxisAngle(localAxes.tail?.y || WORLD_Y, st.tailYaw);
+        qTempX.setFromAxisAngle(localAxes.tail?.x || WORLD_X, st.tailPitch);
+        bones.tail.quaternion.copy(restQuats.tail).multiply(qTempY).multiply(qTempX);
+      }
     }
 
-    // Nhấp nhô nhẹ khi hò reo hoặc thở trên ghế
+    // 4. Hiệu ứng phát sáng cơ thể theo nhịp Climax (Sói đỏ, Bảo Vệ lam, Cứng Cỏi cam, Chán Đời tím)
+    if (emissiveMats.length > 0) {
+      const hex = choreo?.bodyEmissiveHex || (recapPose === "hitRecoil" || isWolfVictim ? "#ef4444" : null);
+      const intensity = choreo?.bodyEmissiveHex
+        ? choreo.bodyEmissiveIntensity || 0
+        : recapPose === "hitRecoil"
+          ? 0.55
+          : isWolfVictim
+            ? 0.38
+            : 0;
+      if (hex && intensity > 0.01) {
+        tempColor.set(hex);
+        for (let i = 0; i < emissiveMats.length; i++) {
+          emissiveMats[i].emissive.copy(tempColor);
+          emissiveMats[i].emissiveIntensity = intensity;
+        }
+      } else {
+        for (let i = 0; i < emissiveMats.length; i++) {
+          emissiveMats[i].emissiveIntensity = 0;
+        }
+      }
+    }
+
+    // 5. Cao độ gốc & Đồng bộ Đạo Cụ Bám Theo Xương Bàn Tay Thật (`LeftHand` / `RightHand`)
     if (wrapperRef.current) {
-      const bounceY =
-        recapPose === "cheer"
-          ? Math.abs(Math.sin(t * 5.2 + seed)) * 0.05
-          : Math.sin(breath) * 0.006;
-      const hitFlash = recapPose === "hitRecoil" || isWolfVictim;
-      wrapperRef.current.position.y =
-        (rigInfo.hasRig ? SEAT_TOP_Y - templateEntry.standingHeight * 0.46 + (slotMeta.seatHipOffsetY || 0.04) : SEAT_TOP_Y) +
-        bounceY;
-      wrapperRef.current.position.z =
-        (slotMeta.seatForwardOffsetZ || 0.05) + (recapPose === "castLunge" ? 0.12 : hitFlash ? -0.05 : 0);
+      if (rigInfo.hasRig) {
+        const upLegH = templateEntry.upLegHeightMeters || templateEntry.standingHeight * 0.455;
+        const seatRestY = SEAT_TOP_Y - (upLegH - 0.055) + (slotMeta.seatHipOffsetY || 0.02);
+        const standRestY = 0;
+        const bounceY = choreo
+          ? 0
+          : recapPose === "cheer"
+            ? Math.abs(Math.sin(t * 5.2 + seed)) * 0.05
+            : Math.sin(breath) * 0.005;
+        const hitFlash = !choreo && (recapPose === "hitRecoil" || isWolfVictim);
+        wrapperRef.current.position.y = THREE.MathUtils.lerp(standRestY, seatRestY, st.sitFactor) + bounceY;
+        wrapperRef.current.position.z =
+          (slotMeta.seatForwardOffsetZ || 0.04) * st.sitFactor +
+          (!choreo && recapPose === "castLunge" ? 0.12 : hitFlash ? -0.05 : 0);
+        wrapperRef.current.rotation.set(0, 0, 0);
+
+        // Đồng bộ chính xác Ma Trận Xương Bàn Tay Thực Tế (0 cấp phát bộ nhớ)
+        wrapperRef.current.updateMatrixWorld(true);
+        clonedRoot.updateMatrixWorld(true);
+        invWrapperMat.copy(wrapperRef.current.matrixWorld).invert();
+
+        const leftBone = bones.leftHand || bones.leftForeArm;
+        const rightBone = bones.rightHand || bones.rightForeArm;
+
+        if (leftHandSocketRef.current) {
+          leftHandSocketRef.current.visible = !choreo?.hideLeftHandProp;
+          if (leftBone) {
+            tempBoneMat.multiplyMatrices(invWrapperMat, leftBone.matrixWorld);
+            tempBoneMat.decompose(tempPosL, tempQuat, tempScale);
+            leftHandSocketRef.current.position.copy(tempPosL);
+            leftHandSocketRef.current.quaternion.copy(tempQuat);
+          }
+        }
+
+        if (rightHandSocketRef.current) {
+          rightHandSocketRef.current.visible = !choreo?.hideRightHandProp;
+          if (rightBone) {
+            tempBoneMat.multiplyMatrices(invWrapperMat, rightBone.matrixWorld);
+            tempBoneMat.decompose(tempPosR, tempQuat, tempScale);
+            rightHandSocketRef.current.position.copy(tempPosR);
+            rightHandSocketRef.current.quaternion.copy(tempQuat);
+          }
+        }
+
+        if (centerOrbSocketRef.current && leftBone && rightBone) {
+          tempBoneMat.multiplyMatrices(invWrapperMat, leftBone.matrixWorld);
+          tempBoneMat.decompose(tempPosL, tempQuat, tempScale);
+          tempBoneMat.multiplyMatrices(invWrapperMat, rightBone.matrixWorld);
+          tempBoneMat.decompose(tempPosR, tempQuat, tempScale);
+          centerOrbSocketRef.current.position
+            .addVectors(tempPosL, tempPosR)
+            .multiplyScalar(0.5);
+          centerOrbSocketRef.current.position.y += 0.1 + Math.sin(t * 2.8 + seed) * 0.025;
+          centerOrbSocketRef.current.position.z += 0.12;
+          centerOrbSocketRef.current.rotation.y = t * 1.4;
+        }
+      } else {
+        // Fallback cho Smart Mesh Tĩnh nếu có file chưa rig
+        const isWalkingStride =
+          Boolean(choreo) &&
+          st.sitFactor < 0.3 &&
+          Math.abs(choreo?.leftThighAddX || 0) > 0.06 &&
+          (choreo?.localY || 0) < 0.08;
+        const strideBobY = isWalkingStride ? Math.abs(Math.sin(t * 9.5 + seed)) * 0.042 : 0;
+        const idleBreathY = choreo
+          ? strideBobY
+          : recapPose === "cheer"
+            ? Math.abs(Math.sin(t * 5.4 + seed)) * 0.055
+            : Math.max(0, Math.sin(breath)) * 0.01;
+        const hitFlash = !choreo && (recapPose === "hitRecoil" || isWolfVictim);
+        const baseStandZ = (slotMeta.staticStandZ ?? 0.12) * st.sitFactor;
+
+        wrapperRef.current.position.y = idleBreathY;
+        wrapperRef.current.position.z =
+          baseStandZ + (!choreo && recapPose === "castLunge" ? 0.14 : hitFlash ? -0.07 : 0);
+
+        const goalPitchX = choreo
+          ? THREE.MathUtils.clamp(st.spineX * 0.45, -0.34, 0.42)
+          : isSleeping
+            ? 0.075
+            : THREE.MathUtils.clamp(st.spineX * 0.42, -0.22, 0.24);
+        const goalYawY = THREE.MathUtils.clamp(
+          st.spineY * 0.62 + st.headY * (choreo ? 0.28 : 0.44),
+          -0.52,
+          0.52
+        );
+        const goalRollZ = isWalkingStride
+          ? Math.sin(t * 9.5 + seed) * 0.032
+          : isSpeaking
+            ? Math.sin(t * 6.4 + seed) * 0.026
+            : Math.sin(breath * 0.5) * 0.01;
+
+        st.bodyPitchX = THREE.MathUtils.lerp(st.bodyPitchX, goalPitchX, damp);
+        st.bodyYawY = THREE.MathUtils.lerp(st.bodyYawY, goalYawY, damp);
+        st.bodyRollZ = THREE.MathUtils.lerp(st.bodyRollZ, goalRollZ, damp);
+        wrapperRef.current.rotation.set(st.bodyPitchX, st.bodyYawY, st.bodyRollZ);
+
+        if (leftHandSocketRef.current) {
+          leftHandSocketRef.current.rotation.x = st.armLX * 0.65;
+          leftHandSocketRef.current.rotation.z = st.armLZ * 0.5;
+        }
+        if (rightHandSocketRef.current) {
+          rightHandSocketRef.current.rotation.x = st.armRX * 0.72;
+          rightHandSocketRef.current.rotation.z = st.armRZ * 0.5;
+        }
+      }
     }
   });
 
-  if (!clonedBundle || !templateEntry) return null;
+  if (!clonedBundle || !templateEntry || effectiveIsDead) return null;
 
-  const { normScale, minY, centerX, centerZ, standingHeight } = templateEntry;
-  const baseSeatY = clonedBundle.rigInfo.hasRig
-    ? SEAT_TOP_Y - standingHeight * 0.46 + (slotMeta.seatHipOffsetY || 0.04)
-    : SEAT_TOP_Y;
+  const { normScale, minY, centerX, centerZ, standingHeight, upLegHeightMeters } = templateEntry;
+  const hasRig = clonedBundle.rigInfo.hasRig;
+  const upLegH = upLegHeightMeters || standingHeight * 0.455;
+  const baseSeatY = hasRig
+    ? SEAT_TOP_Y - (upLegH - 0.055) + (slotMeta.seatHipOffsetY || 0.02)
+    : 0;
+  const basePosZ = hasRig
+    ? slotMeta.seatForwardOffsetZ || 0.04
+    : slotMeta.staticStandZ ?? 0.12;
+  const shoulderY = hasRig ? standingHeight * 0.42 : standingHeight * 0.68;
+
+  const showGuardShield = visibleCostumeRole === "guard";
+  const showWitchFlasks = visibleCostumeRole === "witch";
+  const showSeerOrb = visibleCostumeRole === "seer";
 
   return (
-    <group ref={wrapperRef} position={[0, baseSeatY, slotMeta.seatForwardOffsetZ || 0.05]}>
+    <group ref={wrapperRef} position={[0, baseSeatY, basePosZ]}>
       <primitive
         object={clonedBundle.clonedRoot}
         scale={[normScale, normScale, normScale]}
         position={[-centerX * normScale, -minY * normScale, -centerZ * normScale]}
       />
+
+      {/* KHE BÀN TAY TRÁI THẬT: Khiên Bảo Vệ #17 (`guard`) hoặc Bình Tiên Dược Xanh (`witch`) */}
+      {(showGuardShield || showWitchFlasks) && (
+        <group ref={leftHandSocketRef} position={[0.26, shoulderY, 0.1]}>
+          <RoleHandSocket3D
+            roleKey={visibleCostumeRole}
+            side="left"
+            boneAttached={hasRig}
+          />
+        </group>
+      )}
+
+      {/* KHE BÀN TAY PHẢI THẬT: Đuốc Phán Quyết hoặc Bình Độc Tím (`witch` — tự ẩn khi ném rời tay!) */}
+      {(showTrialTorchSocket || showWitchFlasks) && (
+        <group ref={rightHandSocketRef} position={[-0.28, shoulderY, 0.08]}>
+          <RoleHandSocket3D
+            roleKey={visibleCostumeRole}
+            side="right"
+            showTrialTorch={showTrialTorchSocket}
+            boneAttached={hasRig}
+          />
+        </group>
+      )}
+
+      {/* KHE QUẢ CẦU PHA LÊ GIỮA HAI BÀN TAY TIÊN TRI (`seer`) */}
+      {showSeerOrb && (
+        <group ref={centerOrbSocketRef} position={[0, shoulderY, 0.26]}>
+          <RoleHandSocket3D roleKey="seer" side="center" boneAttached={hasRig} />
+        </group>
+      )}
     </group>
   );
 }

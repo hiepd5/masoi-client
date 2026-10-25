@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import {
   ASSET_SYNC_VERSION,
   PRELOAD_TIERS,
@@ -16,6 +17,7 @@ function getSharedGltfLoader() {
     const draco = new DRACOLoader();
     draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
     loader.setDRACOLoader(draco);
+    loader.setMeshoptDecoder(MeshoptDecoder);
     sharedGltfLoader = loader;
   }
   return sharedGltfLoader;
@@ -160,15 +162,20 @@ function analyzeChairGeometry(root, rawBox, rawSize, rawCenter, manifest) {
   };
 }
 
-async function probeAndParseProp(propKey, reloadToken = 0) {
+export async function probeAndParseProp(propKey, reloadToken = 0) {
   const manifest = PROP_MANIFEST[propKey];
   if (!manifest) return { status: "fallback", scene: null, bounds: null };
 
-  // Trên Web Production: Bỏ hoàn toàn bước chặn RTT props_sync_state.json để dùng thẳng CDN Cache 1 năm (immutable)!
-  const shouldCheckDevSync = Boolean(import.meta.env?.DEV || reloadToken > 0);
+  // Trên Web Production: Bỏ bước chặn RTT cho 12 prop cốt lõi đã sẵn sàng; riêng 6 Living Hero Props tùy chọn thì kiểm tra syncState để đạt 0 lỗi 404 khi chưa thả file .GLB!
+  const shouldCheckDevSync = Boolean(import.meta.env?.DEV || reloadToken > 0 || manifest.optionalHeroProp);
   const syncState =
     shouldCheckDevSync && manifest.batch !== 3 ? await fetchPropsSyncState(reloadToken) : null;
   const syncItem = syncState?.items?.[propKey] || null;
+  if (manifest.optionalHeroProp && syncState && !syncItem) {
+    propStatusMap[propKey] = "fallback";
+    notifyStatusChange();
+    return { status: "fallback", scene: null, bounds: null };
+  }
   const mtimeTag = syncItem?.mtimeMs || manifest.mtimeMs || 0;
 
   const versionTag = shouldCheckDevSync
@@ -396,6 +403,26 @@ export function preloadVillagePropsInIdle({ includeOuterTiers = false } = {}) {
 
 const NOOP_RAYCAST = () => {};
 
+export function useLoadedPropEntry(propKey, reloadToken = 0) {
+  const [entry, setEntry] = useState({ status: "checking", scene: null, bounds: null });
+
+  useEffect(() => {
+    if (!propKey) {
+      setEntry({ status: "fallback", scene: null, bounds: null });
+      return undefined;
+    }
+    let alive = true;
+    probeAndParseProp(propKey, reloadToken).then((res) => {
+      if (alive) setEntry(res);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [propKey, reloadToken]);
+
+  return entry;
+}
+
 export default function SmartPropGLB({
   propKey,
   calib = null,
@@ -408,17 +435,7 @@ export default function SmartPropGLB({
   fallback = null,
 }) {
   const manifest = PROP_MANIFEST[propKey];
-  const [entry, setEntry] = useState({ status: "checking", scene: null, bounds: null });
-
-  useEffect(() => {
-    let alive = true;
-    probeAndParseProp(propKey, reloadToken).then((res) => {
-      if (alive) setEntry(res);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [propKey, reloadToken]);
+  const entry = useLoadedPropEntry(propKey, reloadToken);
 
   const clonedScene = useMemo(() => {
     if (entry.status !== "loaded" || !entry.scene) return null;

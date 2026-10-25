@@ -9,6 +9,7 @@ export const CINEMATIC_SHARED_UNIFORMS = {
   uWarmGlowIntensity: { value: 1.35 },
   uNightFactor: { value: 0.72 }, // 1.0 = Đêm Trăng Sâu, 0.55 = Chạng Vạng Sương Rừng Ban Ngày
   uFireWorldPos: { value: new THREE.Vector3(0, 0.48, 0) },
+  uPhaseAccentColor: { value: new THREE.Color("#fb923c") },
 };
 
 let cachedGlowSpriteTex = null;
@@ -308,11 +309,28 @@ export function enhancePropMaterialsForCinema(
     propKey === "landmark_belltower" ||
     shaderProfile === "warm_building";
   const isCampfire =
-    propKey === "prop_campfire" || shaderProfile === "campfire";
+    propKey === "prop_campfire" ||
+    propKey === "prop_cart_brazier" ||
+    shaderProfile === "campfire";
   const isCobblestonePlaza =
     propKey === "plaza_cobblestone" || shaderProfile === "cobble_plaza";
+  const isClothBanner =
+    propKey === "prop_village_banner" || shaderProfile === "cloth_banner";
+  const isCauldronBrew =
+    propKey === "prop_witch_cauldron" || shaderProfile === "cauldron_brew";
+  const isRunePulse =
+    propKey === "prop_rune_obelisk" || shaderProfile === "rune_pulse";
 
-  if (!isTree && !isLantern && !isWarmBuilding && !isCampfire && !isCobblestonePlaza) {
+  if (
+    !isTree &&
+    !isLantern &&
+    !isWarmBuilding &&
+    !isCampfire &&
+    !isCobblestonePlaza &&
+    !isClothBanner &&
+    !isCauldronBrew &&
+    !isRunePulse
+  ) {
     return;
   }
 
@@ -363,9 +381,11 @@ export function enhancePropMaterialsForCinema(
             ? 0.24
             : isDeadTree
               ? 0.12
-              : isLantern
-                ? 0.022
-                : 0.0,
+              : isClothBanner
+                ? 0.14
+                : isLantern
+                  ? 0.022
+                  : 0.0,
         },
         uFlutterAmp: {
           value: isPineTree
@@ -374,11 +394,14 @@ export function enhancePropMaterialsForCinema(
               : 0.048
             : isDeadTree
               ? 0.016
-              : 0.0,
+              : isClothBanner
+                ? 0.055
+                : 0.0,
         },
       };
 
-      mat.customProgramCacheKey = () => `masoi_cinema_v2_${propKey}_${isExplicitLeafMesh ? 1 : 0}`;
+      mat.customProgramCacheKey = () =>
+        `masoi_cinema_v3_${propKey}_${shaderProfile || "auto"}_${isExplicitLeafMesh ? 1 : 0}`;
 
       mat.onBeforeCompile = (shader) => {
         // Nối trực tiếp vào biến toàn cục (1 lần update mỗi frame cho cả ngôi làng!)
@@ -387,6 +410,7 @@ export function enhancePropMaterialsForCinema(
         shader.uniforms.uWarmGlowIntensity = CINEMATIC_SHARED_UNIFORMS.uWarmGlowIntensity;
         shader.uniforms.uNightFactor = CINEMATIC_SHARED_UNIFORMS.uNightFactor;
         shader.uniforms.uFireWorldPos = CINEMATIC_SHARED_UNIFORMS.uFireWorldPos;
+        shader.uniforms.uPhaseAccentColor = CINEMATIC_SHARED_UNIFORMS.uPhaseAccentColor;
 
         shader.uniforms.uMeshToRoot = localUniforms.uMeshToRoot;
         shader.uniforms.uRootMinY = localUniforms.uRootMinY;
@@ -429,8 +453,15 @@ export function enhancePropMaterialsForCinema(
           vCinemaNormH = cinemaH;
           vCinemaRadial = cinemaRad;
 
-          // Pha lệch tự nhiên giữa từng gốc cây theo tọa độ thế giới
-          vec3 instanceOriginW = modelMatrix[3].xyz;
+          // Hỗ trợ song song cả Mesh đơn lẻ (D5 Architect Mode) lẫn THREE.InstancedMesh (< 40 Draw Calls)
+          #ifdef USE_INSTANCING
+            mat4 cinemaWorldMat = modelMatrix * instanceMatrix;
+          #else
+            mat4 cinemaWorldMat = modelMatrix;
+          #endif
+
+          // Pha lệch tự nhiên giữa từng gốc cây/cột cờ theo tọa độ thế giới
+          vec3 instanceOriginW = cinemaWorldMat[3].xyz;
           float treePhase = instanceOriginW.x * 0.33 + instanceOriginW.z * 0.27;
 
           if (uSwayAmp > 0.0001) {
@@ -446,38 +477,50 @@ export function enhancePropMaterialsForCinema(
                   cos(wTime * 0.84) * uSwayAmp * 0.7 * lanternFactor
                 ) * uWindStrength;
                 `
-                : /* glsl */ `
-                // Cây Rừng 2 Chiều (Chiều cao Y × Bán kính tán XZ):
-                // 1) Gốc & thân dưới (cinemaH < 0.18) khóa cứng 100% vào mặt đất (không trượt gốc, không dẻo cao su!)
-                float trunkBend = pow(max(0.0, cinemaH - 0.08) / 0.92, 2.15);
+                : isClothBanner
+                  ? /* glsl */ `
+                  // Cờ Hiệu Làng Bắc Âu: Cột gỗ chân đế & xà ngang đỉnh giữ cứng, phần dải vải (0.16..0.88) lượn sóng gió 2 chiều
+                  float clothMask = smoothstep(0.14, 0.34, cinemaH) * (1.0 - smoothstep(0.84, 0.96, cinemaH));
+                  float clothWave = sin(uTime * 3.8 + treePhase * 2.1 - cinemaH * 5.6 + cinemaRootPos.x * 4.2);
+                  float clothRip = cos(uTime * 6.4 + treePhase * 1.5 - cinemaH * 9.0);
+                  vec3 worldWind = vec3(
+                    (clothWave * 0.86 + clothRip * 0.24) * uSwayAmp * clothMask,
+                    clothRip * uFlutterAmp * 0.25 * clothMask,
+                    (clothWave * 0.50 - clothRip * 0.22) * uSwayAmp * clothMask
+                  ) * uWindStrength;
+                  `
+                  : /* glsl */ `
+                  // Cây Rừng 2 Chiều (Chiều cao Y × Bán kính tán XZ):
+                  // 1) Gốc & thân dưới (cinemaH < 0.18) khóa cứng 100% vào mặt đất (không trượt gốc, không dẻo cao su!)
+                  float trunkBend = pow(max(0.0, cinemaH - 0.08) / 0.92, 2.15);
 
-                // Sóng gió rừng chính lướt qua toàn cảnh theo hướng gió Bắc Âu (0.86, 0.50)
-                float gustTime = uTime * 1.18 - (instanceOriginW.x * 0.14 + instanceOriginW.z * 0.09);
-                float primaryWave = sin(gustTime + treePhase) * 0.68 + sin(gustTime * 2.13 + treePhase * 1.7) * 0.32;
-                float crossWave = cos(gustTime * 0.89 + treePhase * 2.3) * 0.36;
+                  // Sóng gió rừng chính lướt qua toàn cảnh theo hướng gió Bắc Âu (0.86, 0.50)
+                  float gustTime = uTime * 1.18 - (instanceOriginW.x * 0.14 + instanceOriginW.z * 0.09);
+                  float primaryWave = sin(gustTime + treePhase) * 0.68 + sin(gustTime * 2.13 + treePhase * 1.7) * 0.32;
+                  float crossWave = cos(gustTime * 0.89 + treePhase * 2.3) * 0.36;
 
-                vec3 worldWind = vec3(
-                  (primaryWave * 0.86 - crossWave * 0.50) * uSwayAmp * trunkBend,
-                  -abs(primaryWave) * uSwayAmp * 0.09 * trunkBend,
-                  (primaryWave * 0.50 + crossWave * 0.86) * uSwayAmp * trunkBend
-                );
+                  vec3 worldWind = vec3(
+                    (primaryWave * 0.86 - crossWave * 0.50) * uSwayAmp * trunkBend,
+                    -abs(primaryWave) * uSwayAmp * 0.09 * trunkBend,
+                    (primaryWave * 0.50 + crossWave * 0.86) * uSwayAmp * trunkBend
+                  );
 
-                // 2) Sóng gợn đầu mút tán thông (Branch-Tip Ripple): Chỉ tác động phần rìa tán xa trục thân (cinemaRad > 0.28)
-                float branchTipMask = smoothstep(0.24, 0.88, cinemaRad) * smoothstep(0.16, 0.55, cinemaH);
-                float flutter1 = sin(uTime * 2.95 + treePhase * 3.1 + cinemaRootPos.x * 3.4 + cinemaRootPos.y * 2.6);
-                float flutter2 = cos(uTime * 2.45 + treePhase * 2.4 + cinemaRootPos.z * 3.4 - cinemaRootPos.y * 2.1);
+                  // 2) Sóng gợn đầu mút tán thông (Branch-Tip Ripple): Chỉ tác động phần rìa tán xa trục thân (cinemaRad > 0.28)
+                  float branchTipMask = smoothstep(0.24, 0.88, cinemaRad) * smoothstep(0.16, 0.55, cinemaH);
+                  float flutter1 = sin(uTime * 2.95 + treePhase * 3.1 + cinemaRootPos.x * 3.4 + cinemaRootPos.y * 2.6);
+                  float flutter2 = cos(uTime * 2.45 + treePhase * 2.4 + cinemaRootPos.z * 3.4 - cinemaRootPos.y * 2.1);
 
-                worldWind.x += flutter1 * uFlutterAmp * branchTipMask;
-                worldWind.y += (flutter1 * flutter2) * uFlutterAmp * 0.45 * branchTipMask;
-                worldWind.z += flutter2 * uFlutterAmp * branchTipMask;
-                worldWind *= uWindStrength;
-                `
+                  worldWind.x += flutter1 * uFlutterAmp * branchTipMask;
+                  worldWind.y += (flutter1 * flutter2) * uFlutterAmp * 0.45 * branchTipMask;
+                  worldWind.z += flutter2 * uFlutterAmp * branchTipMask;
+                  worldWind *= uWindStrength;
+                  `
             }
 
             // Đổi vector gió từ Mét Thế Giới (World Space) về Không Gian Cục Bộ (Local Space) chính xác cho mọi góc xoay & tỷ lệ Scale!
-            vec3 mCol0 = modelMatrix[0].xyz;
-            vec3 mCol1 = modelMatrix[1].xyz;
-            vec3 mCol2 = modelMatrix[2].xyz;
+            vec3 mCol0 = cinemaWorldMat[0].xyz;
+            vec3 mCol1 = cinemaWorldMat[1].xyz;
+            vec3 mCol2 = cinemaWorldMat[2].xyz;
             transformed += vec3(
               dot(mCol0, worldWind) / max(1e-5, dot(mCol0, mCol0)),
               dot(mCol1, worldWind) / max(1e-5, dot(mCol1, mCol1)),
@@ -485,9 +528,9 @@ export function enhancePropMaterialsForCinema(
             );
           }
 
-          vec4 cinemaWp = modelMatrix * vec4(transformed, 1.0);
+          vec4 cinemaWp = cinemaWorldMat * vec4(transformed, 1.0);
           vCinemaWorldPos = cinemaWp.xyz;
-          vCinemaWorldNormal = normalize(mat3(modelMatrix) * objectNormal + vec3(0.0, 1e-5, 0.0));
+          vCinemaWorldNormal = normalize(mat3(cinemaWorldMat) * objectNormal + vec3(0.0, 1e-5, 0.0));
           `
         );
 
@@ -500,6 +543,7 @@ export function enhancePropMaterialsForCinema(
           uniform float uWarmGlowIntensity;
           uniform float uNightFactor;
           uniform vec3 uFireWorldPos;
+          uniform vec3 uPhaseAccentColor;
 
           varying vec3 vCinemaWorldPos;
           varying vec3 vCinemaWorldNormal;
@@ -574,12 +618,48 @@ export function enhancePropMaterialsForCinema(
                     totalEmissiveRadiance += vec3(1.0, 0.66, 0.22) * lanternHeadMask * glassWarmMask * 3.8 * uWarmGlowIntensity * candleFlicker;
                     `
                     : /* glsl */ `
-                    // Khe than hồng rực đỏ nằm giữa lòng bếp đá cổ ngữ
+                    // Khe than hồng rực đỏ nằm giữa lòng bếp đá cổ ngữ + Mạch Rune rìa đá đổi sắc theo Pha Đêm
                     float innerPitMask = 1.0 - smoothstep(0.42, 0.78, vCinemaRadial);
                     float emberMask = smoothstep(0.48, 0.76, warmChroma) * smoothstep(0.03, 0.14, bc.r);
                     float coalPulse = 0.84 + 0.16 * sin(uTime * 6.5 + vCinemaWorldPos.x * 8.0);
                     totalEmissiveRadiance += vec3(1.0, 0.30, 0.04) * innerPitMask * emberMask * 3.4 * coalPulse * uWarmGlowIntensity;
+
+                    float outerStoneMask = smoothstep(0.54, 0.82, vCinemaRadial) * (1.0 - smoothstep(0.12, 0.62, vCinemaNormH));
+                    float runeWave = 0.55 + 0.45 * sin(uTime * 2.9 + atan(vCinemaWorldPos.z - uFireWorldPos.z, vCinemaWorldPos.x - uFireWorldPos.x) * 4.0);
+                    float runeCarveMask = smoothstep(0.08, 0.34, bc.b + bc.g * 0.5) * (1.0 - smoothstep(0.52, 0.85, maxC));
+                    totalEmissiveRadiance += uPhaseAccentColor * outerStoneMask * runeCarveMask * runeWave * 0.85 * uNightFactor;
                     `
+              }
+            }
+            `
+          );
+        }
+
+        if (isCauldronBrew || isRunePulse) {
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <emissivemap_fragment>",
+            /* glsl */ `
+            #include <emissivemap_fragment>
+            {
+              vec3 bc = diffuseColor.rgb;
+              ${
+                isCauldronBrew
+                  ? /* glsl */ `
+                  // Nước thuốc giả kim sôi xoáy trên miệng vạc gang (0.60..0.88 chiều cao)
+                  float brewHeightMask = smoothstep(0.58, 0.76, vCinemaNormH) * (1.0 - smoothstep(0.90, 0.99, vCinemaNormH));
+                  float brewInnerMask = 1.0 - smoothstep(0.46, 0.82, vCinemaRadial);
+                  float greenPurpleMask = smoothstep(0.06, 0.24, max(bc.g, bc.b));
+                  float swirl = 0.5 + 0.5 * sin(uTime * 3.4 + vCinemaWorldPos.x * 9.0 + cos(uTime * 2.6 + vCinemaWorldPos.z * 9.0));
+                  vec3 brewCol = mix(vec3(0.06, 0.82, 0.52), vec3(0.68, 0.28, 0.96), swirl);
+                  totalEmissiveRadiance += brewCol * brewHeightMask * brewInnerMask * greenPurpleMask * 2.6;
+                  `
+                  : /* glsl */ `
+                  // Trụ đá Obelisk cổ ngữ thở nhịp ánh sáng theo Pha của ván chơi
+                  float runeBandMask = smoothstep(0.14, 0.28, vCinemaNormH) * (1.0 - smoothstep(0.88, 0.98, vCinemaNormH));
+                  float cyanMask = smoothstep(0.08, 0.28, max(bc.b, bc.g) - bc.r * 0.45);
+                  float pulse = 0.55 + 0.45 * sin(uTime * 2.6 - vCinemaNormH * 6.2);
+                  totalEmissiveRadiance += uPhaseAccentColor * runeBandMask * max(0.18, cyanMask) * pulse * (0.65 + 0.85 * uNightFactor);
+                  `
               }
             }
             `
