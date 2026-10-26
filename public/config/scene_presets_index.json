@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "defaultPresetId": "nordic_village_v3",
-  "updatedAtIso": "2026-10-25T16:39:53.034Z",
+  "updatedAtIso": "2026-10-26T13:51:47.712Z",
   "presets": [
     {
       "id": "nordic_village_v3",
@@ -19,9 +19,9 @@
       "description": "Bối cảnh tùy chọn dàn dựng bằng D5 Studio & Kho Concept Tripo",
       "url": "/config/presets/preset_dau_truong_da_co_tuy_chinh.json",
       "builtIn": false,
-      "nodeCount": 5,
+      "nodeCount": 22,
       "moodHint": "auto",
-      "updatedAtIso": "2026-10-25T05:26:56.321Z"
+      "updatedAtIso": "2026-10-26T13:51:47.712Z"
     }
   ]
 }

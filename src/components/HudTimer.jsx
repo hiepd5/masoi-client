@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 
 // Thời lượng chuẩn từng phase (khớp 1:1 với server/gameEngine.js & gameController.js)
 const PHASE_DURATIONS_SEC = {
+  night_cupid: 20,
   night_guard: 20,
   night_wolf: 30,
   night_witch: 25,
   night_seer: 20,
+  hunter_revenge: 15,
   day_reveal: 5,
   day_discuss: 180,
   day_nominate: 30,

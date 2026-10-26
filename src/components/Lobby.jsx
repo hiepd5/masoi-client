@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { saveSession } from "../hooks/useSocket.js";
+import "./Lobby.css";
 
 const RANDOM_NAMES = [
   "Rồng Lửa", "Bóng Đêm", "Sói Xám", "Ánh Sao", "Hổ Phách",
@@ -7,29 +8,49 @@ const RANDOM_NAMES = [
 ];
 
 const DICEBEAR_SEEDS = [
-  'wolf','fox','bear','dragon','witch','guard','seer','farmer',
-  'ninja','ghost','knight','wizard','hunter','monk','sage',
-  'rogue','bard','paladin','ranger','druid'
+  "wolf", "fox", "bear", "dragon", "witch", "guard", "seer", "farmer",
+  "ninja", "ghost", "knight", "wizard", "hunter", "monk", "sage",
+  "rogue", "bard", "paladin", "ranger", "druid",
 ];
 
 const CUSTOM_AVATARS = Array.from({ length: 10 }, (_, i) =>
-  `/avatars/custom/avatar_${String(i + 1).padStart(2, '0')}.png`
+  `/avatars/custom/avatar_${String(i + 1).padStart(2, "0")}.png`
 );
 
 const ROLE_RULES = [
-  { emoji: '🐺', name: 'Sói',      desc: 'Mỗi đêm bí mật chọn 1 nạn nhân. Ban ngày che giấu danh tính!' },
-  { emoji: '🛡️', name: 'Bảo Vệ', desc: 'Mỗi đêm bảo vệ 1 người khỏi Sói. Không trùng 2 đêm liên tiếp.' },
-  { emoji: '🔮', name: 'Tiên Tri',desc: 'Mỗi đêm soi 1 người: 🔴 Sói, 🔵 Người tốt.' },
-  { emoji: '🧪', name: 'Phù Thủy',desc: 'Có 1 bình cứu + 1 bình độc. Dùng đúng thời điểm!' },
-  { emoji: '💀', name: 'Chán Đời',desc: 'Thắng nếu bị làng treo cổ! Hãy làm mọi người nghi ngờ bạn.' },
-  { emoji: '👨‍🌾', name: 'Nông Dân',desc: 'Quan sát, suy luận, thuyết phục làng treo đúng Sói.' },
+  { emoji: "🐺", name: "Sói", desc: "Mỗi đêm bí mật chọn 1 nạn nhân. Ban ngày che giấu danh tính!" },
+  { emoji: "🩸", name: "Sói Đầu Đàn", desc: "1 lần mỗi ván có thể bật Huyết Nguyệt biến nạn nhân bị cắn thành Sói thay vì chết." },
+  { emoji: "🛡️", name: "Bảo Vệ", desc: "Mỗi đêm gác 1 người khỏi nanh vuốt Sói (không trùng 2 đêm liên tiếp)." },
+  { emoji: "🔮", name: "Tiên Tri", desc: "Mỗi đêm soi 1 người: 🔴 Phe Sói, 🔵 Người tốt." },
+  { emoji: "🧪", name: "Phù Thủy", desc: "Sở hữu 1 bình Cứu + 1 bình Độc trong cả ván đấu." },
+  { emoji: "🏹", name: "Thợ Săn", desc: "Khi ngã xuống (trừ khi trúng độc Phù Thủy), có 15s bắn 1 viên đạn bạc kéo theo 1 người!" },
+  { emoji: "💘", name: "Thần Tình Yêu", desc: "Đêm đầu kết duyên 2 Tình Nhân sinh tử. Nếu khác phe và sống sót 2 người cuối sẽ thắng riêng!" },
+  { emoji: "👑", name: "Trưởng Làng", desc: "Ban ngày có thể giơ Quyền Trượng lộ diện — từ đó lá phiếu Đề cử & Treo cổ được tính x2!" },
+  { emoji: "💪", name: "Người Cứng Cỏi", desc: "Nếu bị Sói cắn sẽ gắng gượng sống thêm trọn 1 ngày trước khi gục." },
+  { emoji: "🌑", name: "Kẻ Bị Nguyền", desc: "Ban đầu là Dân, nhưng nếu bị Sói cắn trong đêm sẽ hóa thành Sói." },
+  { emoji: "💀", name: "Chán Đời", desc: "Phe Độc Lập — thắng ngay lập tức nếu lừa được cả làng treo cổ mình!" },
+  { emoji: "👨‍🌾", name: "Nông Dân", desc: "Quan sát, suy luận và bỏ phiếu chuẩn xác để thanh trừng bầy Sói." },
 ];
 
 const RULES_TABS = [
-  { id: 'roles',   label: '🎭 Các Vai' },
-  { id: 'flow',    label: '🔄 Luật Chơi' },
-  { id: 'tips',    label: '💡 Mẹo' },
+  { id: "roles", label: "🎭 12 Vai Trò" },
+  { id: "flow", label: "🔄 Luật Chơi" },
+  { id: "tips", label: "💡 Mẹo" },
 ];
+
+const PHASE_SHORT_LABELS = {
+  night_cupid: "🌙 Đêm • Ghép đôi",
+  night_guard: "🌙 Đêm • Bảo Vệ",
+  night_wolf: "🌙 Đêm • Sói săn",
+  night_witch: "🌙 Đêm • Phù Thủy",
+  night_seer: "🌙 Đêm • Tiên Tri",
+  hunter_revenge: "🏹 Đạn Bạc Cuối",
+  day_reveal: "🌅 Bình minh",
+  day_discuss: "☀️ Thảo luận",
+  day_nominate: "🗳️ Đề cử",
+  day_defense: "⚖️ Biện hộ",
+  day_final_vote: "🪢 Pháp trường",
+};
 
 function suggestName() {
   return RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
@@ -41,22 +62,37 @@ export default function Lobby({
   onOpenArchitectStudio = null,
   onOpenChoreoStudio = null,
 }) {
-  const [name, setName] = useState(() => sessionStorage.getItem('ws_name') || '');
-  const [roomCode, setRoomCode] = useState('');
-  const [error, setError] = useState('');
+  const [name, setName] = useState(() => sessionStorage.getItem("ws_name") || "");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Thiết lập Tạo Phòng Mới
+  const [roomTitle, setRoomTitle] = useState("");
+  const [accessMode, setAccessMode] = useState("public"); // 'public' | 'password' | 'hidden'
+  const [createPassword, setCreatePassword] = useState("");
+
+  // Vào phòng bằng Mã 5 ký tự (kèm mật khẩu nếu phòng khóa)
+  const [roomCode, setRoomCode] = useState("");
+  const [codePassword, setCodePassword] = useState("");
+  const [needCodePassword, setNeedCodePassword] = useState(false);
+
+  // Danh sách phòng trực tiếp trên trang chủ
+  const [roomsList, setRoomsList] = useState([]);
+  const [roomFilter, setRoomFilter] = useState("all"); // 'all' | 'lobby' | 'playing'
+  const [unlockingRoomCode, setUnlockingRoomCode] = useState(null);
+  const [unlockRoomPwd, setUnlockRoomPwd] = useState("");
+
   // Avatar
-  const [avatarTab, setAvatarTab] = useState('custom');
+  const [avatarTab, setAvatarTab] = useState("custom");
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState(
-    () => sessionStorage.getItem('ws_avatar_url') || CUSTOM_AVATARS[0]
+    () => sessionStorage.getItem("ws_avatar_url") || CUSTOM_AVATARS[0]
   );
 
   // Rules modal
   const [showRules, setShowRules] = useState(false);
-  const [rulesTab, setRulesTab] = useState('roles');
+  const [rulesTab, setRulesTab] = useState("roles");
 
-  // Nạp ngầm trước Đợt 1 (Ghế, Bếp lửa, Sân đá, Đài treo cổ) trong lúc người chơi gõ tên để vào phòng 3D mượt tức thì!
+  // Nạp ngầm trước Đợt 1 (Ghế, Bếp lửa, Sân đá, Đài treo cổ) để vào phòng 3D mượt tức thì
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const idle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
@@ -69,50 +105,153 @@ export default function Lobby({
     return () => window.clearTimeout(timer);
   }, []);
 
-  function persistName(n) {
-    sessionStorage.setItem('ws_name', n);
-  }
+  // Lắng nghe danh sách phòng trực tiếp từ máy chủ
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
 
-  function persistAvatar(url) {
-    sessionStorage.setItem('ws_avatar_url', url);
-    setSelectedAvatarUrl(url);
-  }
+    const handleRoomsUpdate = (list) => {
+      if (Array.isArray(list)) setRoomsList(list);
+    };
 
-  function handleCreateRoom() {
-    setError('');
-    const finalName = name.trim() || suggestName();
-    setLoading(true);
-    persistName(finalName);
-    socketRef.current.emit('room:create', {}, (res) => {
-      setLoading(false);
-      if (!res.ok) { setError(res.error || 'Không thể tạo phòng.'); return; }
-      socketRef.current.emit('room:rename', { newName: finalName, avatarUrl: selectedAvatarUrl }, () => {
-        if (res.playerId) {
-          sessionStorage.setItem('ws_playerId', res.playerId);
-          saveSession(res.roomCode, res.sessionToken || '', res.playerId, finalName);
-        }
-        onJoined(res.roomCode);
-      });
+    socket.on("lobby:roomsUpdate", handleRoomsUpdate);
+    socket.emit("lobby:getRooms", {}, (res) => {
+      if (res?.ok && Array.isArray(res.rooms)) {
+        setRoomsList(res.rooms);
+      }
+    });
+
+    return () => {
+      socket.off("lobby:roomsUpdate", handleRoomsUpdate);
+    };
+  }, [socketRef]);
+
+  function refreshRoomsManual() {
+    socketRef.current?.emit("lobby:getRooms", {}, (res) => {
+      if (res?.ok && Array.isArray(res.rooms)) {
+        setRoomsList(res.rooms);
+      }
     });
   }
 
-  function handleJoinRoom() {
-    setError('');
-    if (!roomCode.trim()) { setError('Vui lòng nhập mã phòng.'); return; }
+  function persistName(n) {
+    sessionStorage.setItem("ws_name", n);
+  }
+
+  function persistAvatar(url) {
+    sessionStorage.setItem("ws_avatar_url", url);
+    setSelectedAvatarUrl(url);
+  }
+
+  function finalizeJoinSuccess(res, finalName) {
+    if (res.playerId) {
+      sessionStorage.setItem("ws_playerId", res.playerId);
+      saveSession(res.roomCode, res.sessionToken || "", res.playerId, finalName);
+    }
+    onJoined(res.roomCode);
+  }
+
+  function handleCreateRoom({ soloQuickStart = false } = {}) {
+    setError("");
     const finalName = name.trim() || suggestName();
+
+    let effectiveMode = accessMode;
+    let effectivePwd = createPassword.trim();
+    if (!soloQuickStart && effectiveMode === "password" && !effectivePwd) {
+      setError("Vui lòng nhập mật khẩu cho phòng khóa (hoặc chọn Công khai / Phòng ẩn)!");
+      return;
+    }
+    if (soloQuickStart && effectiveMode === "password" && !effectivePwd) {
+      // Nếu bấm Chơi Nhanh 1 Mình mà chưa điền mật khẩu -> mặc định mở phòng bình thường để 1-Click chạy ngay
+      effectiveMode = "public";
+    }
+
     setLoading(true);
     persistName(finalName);
     socketRef.current.emit(
-      'room:join',
-      { roomCode: roomCode.trim().toUpperCase(), name: finalName, avatarUrl: selectedAvatarUrl },
+      "room:create",
+      {
+        name: finalName,
+        avatarUrl: selectedAvatarUrl,
+        roomTitle: roomTitle.trim(),
+        accessMode: effectiveMode,
+        password: effectivePwd,
+        soloQuickStart,
+      },
       (res) => {
         setLoading(false);
-        if (!res.ok) { setError(res.error || 'Không thể vào phòng.'); return; }
-        if (res.playerId) {
-          sessionStorage.setItem('ws_playerId', res.playerId);
-          saveSession(res.roomCode, res.sessionToken || '', res.playerId, finalName);
+        if (!res?.ok) {
+          setError(res?.error || "Không thể tạo phòng.");
+          return;
         }
-        onJoined(res.roomCode);
+        finalizeJoinSuccess(res, finalName);
+      }
+    );
+  }
+
+  function handleJoinByCode(e) {
+    e?.preventDefault();
+    setError("");
+    const cleanCode = roomCode.trim().toUpperCase();
+    if (!cleanCode) {
+      setError("Vui lòng nhập mã phòng 5 ký tự.");
+      return;
+    }
+    const finalName = name.trim() || suggestName();
+    setLoading(true);
+    persistName(finalName);
+
+    socketRef.current.emit(
+      "room:join",
+      {
+        roomCode: cleanCode,
+        name: finalName,
+        avatarUrl: selectedAvatarUrl,
+        password: codePassword.trim(),
+      },
+      (res) => {
+        setLoading(false);
+        if (!res?.ok) {
+          if (res?.requirePassword) {
+            setNeedCodePassword(true);
+          }
+          setError(res?.error || "Không thể vào phòng.");
+          return;
+        }
+        finalizeJoinSuccess(res, finalName);
+      }
+    );
+  }
+
+  function handleJoinPublicCard(roomItem, providedPassword = "") {
+    setError("");
+    if (roomItem.hasPassword && !providedPassword.trim()) {
+      setUnlockingRoomCode(roomItem.code);
+      setUnlockRoomPwd("");
+      return;
+    }
+    const finalName = name.trim() || suggestName();
+    setLoading(true);
+    persistName(finalName);
+
+    socketRef.current.emit(
+      "room:join",
+      {
+        roomCode: roomItem.code,
+        name: finalName,
+        avatarUrl: selectedAvatarUrl,
+        password: providedPassword.trim(),
+      },
+      (res) => {
+        setLoading(false);
+        if (!res?.ok) {
+          if (res?.requirePassword) {
+            setUnlockingRoomCode(roomItem.code);
+          }
+          setError(res?.error || "Không thể vào phòng.");
+          return;
+        }
+        finalizeJoinSuccess(res, finalName);
       }
     );
   }
@@ -120,33 +259,50 @@ export default function Lobby({
   const dicebearUrl = (seed) =>
     `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
 
+  const waitingCount = roomsList.filter((r) => r.phase === "lobby").length;
+  const playingCount = roomsList.filter((r) => r.phase !== "lobby").length;
+  const filteredRooms = roomsList.filter((r) => {
+    if (roomFilter === "lobby") return r.phase === "lobby";
+    if (roomFilter === "playing") return r.phase !== "lobby";
+    return true;
+  });
+
+  const accessHintText =
+    accessMode === "password"
+      ? "🔐 Phòng vẫn hiện trên danh sách trang chủ nhưng khách phải nhập đúng mật khẩu mới vào được."
+      : accessMode === "hidden"
+        ? "🕵️ Phòng ẩn hoàn toàn khỏi danh sách chung — chỉ ai nhận Mã phòng 5 ký tự từ bạn mới vào được!"
+        : "🌍 Phòng hiển thị công khai ở cột bên phải để mọi người có thể bấm vào giao lưu & test cùng.";
+
   return (
     <>
       {/* Rules Modal */}
       {showRules && (
         <div className="rules-modal-overlay" onClick={() => setShowRules(false)}>
-          <div className="rules-modal" onClick={e => e.stopPropagation()}>
+          <div className="rules-modal" onClick={(e) => e.stopPropagation()}>
             <div className="rules-modal-header">
-              <h2>📖 Luật Chơi Ma Sói</h2>
-              <button className="rules-close" onClick={() => setShowRules(false)}>✕</button>
+              <h2>📖 Luật Chơi Ma Sói V3.4</h2>
+              <button className="rules-close" onClick={() => setShowRules(false)}>
+                ✕
+              </button>
             </div>
 
-            {/* Tab bar */}
             <div className="rules-tab-bar">
-              {RULES_TABS.map(t => (
+              {RULES_TABS.map((t) => (
                 <button
                   key={t.id}
-                  className={`rules-tab-btn ${rulesTab === t.id ? 'active' : ''}`}
+                  className={`rules-tab-btn ${rulesTab === t.id ? "active" : ""}`}
                   onClick={() => setRulesTab(t.id)}
-                >{t.label}</button>
+                >
+                  {t.label}
+                </button>
               ))}
             </div>
 
             <div className="rules-body">
-              {/* Roles tab */}
-              {rulesTab === 'roles' && (
+              {rulesTab === "roles" && (
                 <div className="rules-roles-list">
-                  {ROLE_RULES.map(r => (
+                  {ROLE_RULES.map((r) => (
                     <div key={r.name} className="rules-role-row">
                       <span className="rules-role-emoji">{r.emoji}</span>
                       <div>
@@ -158,56 +314,53 @@ export default function Lobby({
                 </div>
               )}
 
-              {/* Flow tab */}
-              {rulesTab === 'flow' && (
+              {rulesTab === "flow" && (
                 <div className="rules-flow">
+                  <div className="flow-step">
+                    <span className="flow-icon">🤖</span>
+                    <div>
+                      <div className="flow-title">Chơi 1 Mình Hoặc Cùng Bạn Bè</div>
+                      <div className="flow-desc">
+                        Không cần chờ đủ 6 người! Bạn có thể bấm <strong>Chơi Nhanh 1 Mình</strong> hoặc tạo phòng bất kỳ rồi hệ thống tự động lấp đầy ghế còn thiếu bằng AI Bot thông minh.
+                      </div>
+                    </div>
+                  </div>
                   <div className="flow-step">
                     <span className="flow-icon">🌙</span>
                     <div>
-                      <div className="flow-title">Đêm</div>
-                      <div className="flow-desc">Các vai đặc biệt hành động bí mật theo lượt: Bảo Vệ → Sói → Phù Thủy → Tiên Tri.</div>
+                      <div className="flow-title">Đêm Bí Mật</div>
+                      <div className="flow-desc">
+                        Thần Tình Yêu (Đêm 1) → Bảo Vệ → Sói / Sói Đầu Đàn → Phù Thủy → Tiên Tri.
+                      </div>
                     </div>
                   </div>
                   <div className="flow-step">
                     <span className="flow-icon">☀️</span>
                     <div>
-                      <div className="flow-title">Bình Minh</div>
-                      <div className="flow-desc">Công bố ai chết đêm qua (nếu có). Người chết lật thẻ bài lộ vai trò.</div>
-                    </div>
-                  </div>
-                  <div className="flow-step">
-                    <span className="flow-icon">💬</span>
-                    <div>
-                      <div className="flow-title">Thảo Luận</div>
-                      <div className="flow-desc">Mọi người nói chuyện, nghi ngờ ai, chia sẻ thông tin (3 phút).</div>
+                      <div className="flow-title">Bình Minh & Thảo Luận</div>
+                      <div className="flow-desc">
+                        Công bố sự kiện đêm qua, Thợ Săn (nếu hy sinh) có 15s bắn trả thù, Trưởng Làng có thể giơ Quyền Trượng x2 phiếu.
+                      </div>
                     </div>
                   </div>
                   <div className="flow-step">
                     <span className="flow-icon">🗳️</span>
                     <div>
-                      <div className="flow-title">Đề Cử & Vote</div>
-                      <div className="flow-desc">Đề cử người nghi là Sói. Ai đủ phiếu sẽ lên ghế nóng biện hộ. Sau đó cả làng vote Treo Cổ hay Tha.</div>
-                    </div>
-                  </div>
-                  <div className="flow-step">
-                    <span className="flow-icon">🏆</span>
-                    <div>
-                      <div className="flow-title">Điều Kiện Thắng</div>
-                      <div className="flow-desc">🐺 Sói thắng khi số Sói ≥ Dân còn sống. 👥 Dân thắng khi treo hết Sói. 💀 Chán Đời thắng riêng nếu bị làng treo cổ.</div>
+                      <div className="flow-title">Đề Cử & Pháp Trường</div>
+                      <div className="flow-desc">
+                        Chỉ tay đề cử nghi phạm lên ghế nóng biện hộ, sau đó cả làng quyết định Treo Cổ hay Tha.
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Tips tab */}
-              {rulesTab === 'tips' && (
+              {rulesTab === "tips" && (
                 <div className="rules-tips">
-                  <div className="tip-item">💡 Sói thường bảo vệ đồng đội bằng cách đổ lỗi cho người khác.</div>
-                  <div className="tip-item">💡 Tiên Tri không nên khai danh tính quá sớm — Sói sẽ nhắm vào ngay.</div>
-                  <div className="tip-item">💡 Phù Thủy không cần cứu ngay đêm đầu — hãy dành bình cứu cho thời điểm quyết định.</div>
-                  <div className="tip-item">💡 Chú ý ai vote tha cho ai — Sói thường tha đồng đội.</div>
-                  <div className="tip-item">💡 Bảo Vệ nên bảo vệ Tiên Tri ở những đêm đầu nếu nghi ngờ ai là Tiên Tri.</div>
-                  <div className="tip-item">💡 Người nói nhiều mà thiếu lý lẽ thường đáng nghi nhất!</div>
+                  <div className="tip-item">💡 Muốn test nhanh vai mới (Thợ Săn, Thần Tình Yêu, Sói Đầu Đàn...)? Bấm <strong>⚡ Chơi Nhanh 1 Mình</strong> rồi chọn vai ngay trong sảnh!</div>
+                  <div className="tip-item">💡 Muốn lập bàn riêng cho nhóm bạn? Chọn <strong>🔐 Đặt Mật Khẩu</strong> hoặc <strong>🕵️ Phòng Ẩn (Cần Mã)</strong> rồi gửi mã 5 ký tự.</div>
+                  <div className="tip-item">💡 Khi chơi với AI Bot, bấm <strong>⏩ Bỏ qua thảo luận</strong> là toàn bộ AI Bot sẽ tự đồng thuận chuyển ngay sang vòng Vote!</div>
+                  <div className="tip-item">💡 Cuối trận nhớ bấm xem <strong>Băng Ghi Hình Sự Thật 3D</strong> để thưởng thức toàn bộ mưu kế đêm qua!</div>
                 </div>
               )}
             </div>
@@ -219,185 +372,407 @@ export default function Lobby({
         </div>
       )}
 
-      {/* Main Lobby Card */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-          <h1 style={{ margin: 0 }}>🐺 Ma Sói Online</h1>
-          <button
-            onClick={() => setShowRules(true)}
-            style={{
-              background: 'rgba(99,102,241,0.2)',
-              border: '1px solid rgba(99,102,241,0.5)',
-              color: '#a5b4fc',
-              borderRadius: 8,
-              padding: '6px 12px',
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              width: 'auto',
-              margin: 0,
-            }}
-          >
-            📖 Luật Chơi
-          </button>
-        </div>
-        <p className="subtitle">Chơi cùng bạn bè từ xa</p>
+      {/* ==================== TRANG CHỦ 2 CỘT: HỒ SƠ & TẠO PHÒNG | MÃ PHÒNG & DANH SÁCH TRỰC TIẾP ==================== */}
+      <div className="home-hub-shell">
+        <header className="home-hub-topbar">
+          <div className="home-brand-group">
+            <div>
+              <h1 className="home-brand-title">🐺 Ma Sói Online 3D</h1>
+              <div className="home-brand-sub">Suy luận • Ẩn vai • Chơi 1 mình với AI Bot hoặc lập phòng cùng bạn bè</div>
+            </div>
+            <span className="home-live-pill">
+              🟢 {waitingCount} phòng chờ • 🔥 {playingCount} đang đấu
+            </span>
+          </div>
 
-        {/* Cụm Nút Dev Mở Trực Tiếp Studio Hoạt Cảnh 9 Vai & Studio Cảnh Quan D5 (Chỉ hiện ở Dev/Localhost — Ẩn 100% trên Production) */}
-        {onOpenChoreoStudio && (
-          <button
-            type="button"
-            onClick={onOpenChoreoStudio}
-            style={{
-              width: '100%',
-              margin: '0 0 9px 0',
-              padding: '10px 14px',
-              borderRadius: 11,
-              fontSize: 13.5,
-              fontWeight: 800,
-              background: 'linear-gradient(135deg, #9333ea, #4f46e5)',
-              color: '#ffffff',
-              border: '1.5px solid #d8b4fe',
-              boxShadow: '0 4px 16px rgba(147, 51, 234, 0.45)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-            }}
-            title="Diễn thử 1-Click đủ 9 Nhân Vật (Sói lao vồ Bezier, Bảo Vệ chắn khiên, Pháp trường...) trước khi xây model trên Tripo AI"
-          >
-            🎬 Mở Studio Hoạt Cảnh 9 Vai (Test Trước Khi Xây Model)
-          </button>
-        )}
-
-        {onOpenArchitectStudio && (
-          <button
-            type="button"
-            onClick={onOpenArchitectStudio}
-            style={{
-              width: '100%',
-              margin: '0 0 14px 0',
-              padding: '10px 14px',
-              borderRadius: 11,
-              fontSize: 13.5,
-              fontWeight: 800,
-              background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-              color: '#0f172a',
-              border: '1.5px solid #fde047',
-              boxShadow: '0 4px 16px rgba(245, 158, 11, 0.45)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 8,
-            }}
-            title="Mở ngay không gian Làng 3D độc lập để sắp xếp 12 Model Tripo Pro bằng Gizmo 3 mũi tên kiểu D5 Render (không cần tạo phòng)"
-          >
-            🏗️ Mở Studio Cảnh Quan D5 (12/12 Model 3D)
-          </button>
-        )}
-
-        <label>Tên của bạn</label>
-        <input
-          type="text"
-          value={name}
-          maxLength={20}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nhập tên bạn muốn hiển thị..."
-          autoFocus
-        />
-
-        {/* Avatar Picker — 2 tab */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-            {[{ id: 'custom', label: '🎨 Ảnh thật' }, { id: 'dice', label: '🤖 Nhân vật' }].map(tab => (
+          <div className="home-topbar-actions">
+            {onOpenChoreoStudio && (
               <button
-                key={tab.id}
-                onClick={() => setAvatarTab(tab.id)}
-                style={{
-                  flex: 1,
-                  padding: '6px 4px',
-                  borderRadius: 8,
-                  border: `1.5px solid ${avatarTab === tab.id ? '#f59e0b' : 'rgba(255,255,255,0.15)'}`,
-                  background: avatarTab === tab.id ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
-                  color: avatarTab === tab.id ? '#fde68a' : 'rgba(255,255,255,0.6)',
-                  cursor: 'pointer',
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >{tab.label}</button>
-            ))}
+                type="button"
+                className="btn-home-top studio-choreo"
+                onClick={onOpenChoreoStudio}
+                title="Diễn thử hoạt cảnh 9 vai trên sân khấu 3D"
+              >
+                🎬 Studio Hoạt Cảnh
+              </button>
+            )}
+            {onOpenArchitectStudio && (
+              <button
+                type="button"
+                className="btn-home-top studio-d5"
+                onClick={onOpenArchitectStudio}
+                title="Mở Studio Cảnh Quan D5 sắp xếp 12 Model 3D"
+              >
+                🏗️ Studio D5
+              </button>
+            )}
+            <button type="button" className="btn-home-top" onClick={() => setShowRules(true)}>
+              📖 Luật Chơi
+            </button>
           </div>
+        </header>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
-            gap: 8,
-            maxHeight: 200,
-            overflowY: 'auto',
-            padding: 4,
-          }}>
-            {avatarTab === 'custom'
-              ? CUSTOM_AVATARS.map(url => (
-                  <img
-                    key={url}
-                    src={url}
-                    alt="avatar"
-                    onClick={() => persistAvatar(url)}
-                    onError={e => { e.target.style.display = 'none'; }}
+        {error && <div className="error" style={{ marginBottom: 0 }}>⚠️ {error}</div>}
+
+        <div className="home-hub-grid">
+          {/* ==================== CỘT TRÁI: HỒ SƠ + CHƠI NHANH 1 MÌNH + SETUP PHÒNG ==================== */}
+          <section className="home-panel-card">
+            <div>
+              <div className="home-section-label">
+                <span>👤 Hồ Sơ Của Bạn</span>
+              </div>
+              <input
+                className="home-name-input"
+                type="text"
+                value={name}
+                maxLength={20}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Nhập tên hiển thị (để trống tự đặt tên ngầu)..."
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <div className="home-avatar-tabs">
+                {[
+                  { id: "custom", label: "🎨 Ảnh thật" },
+                  { id: "dice", label: "🤖 Nhân vật" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`home-avatar-tab ${avatarTab === tab.id ? "active" : ""}`}
+                    onClick={() => setAvatarTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="home-avatar-grid">
+                {avatarTab === "custom"
+                  ? CUSTOM_AVATARS.map((url) => (
+                      <img
+                        key={url}
+                        src={url}
+                        alt="avatar"
+                        className={`home-avatar-item ${selectedAvatarUrl === url ? "selected" : ""}`}
+                        onClick={() => persistAvatar(url)}
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    ))
+                  : DICEBEAR_SEEDS.map((seed) => {
+                      const url = dicebearUrl(seed);
+                      return (
+                        <img
+                          key={seed}
+                          src={url}
+                          alt={seed}
+                          className={`home-avatar-item ${selectedAvatarUrl === url ? "selected" : ""}`}
+                          onClick={() => persistAvatar(url)}
+                        />
+                      );
+                    })}
+              </div>
+            </div>
+
+            {/* HỘP 1-CLICK CHƠI NHANH 1 MÌNH KHÔNG CẦN ĐỦ 6 NGƯỜI */}
+            <div className="solo-hero-box">
+              <button
+                type="button"
+                className="btn-solo-quickstart"
+                disabled={loading}
+                onClick={() => handleCreateRoom({ soloQuickStart: true })}
+              >
+                ⚡ Chơi Nhanh 1 Mình (8 Ghế V3.3 + AI Bot)
+              </button>
+              <p className="solo-hero-desc">
+                🎯 Vào thẳng sảnh 3D với 7 AI Bot dựng sẵn (Thợ Săn, Tình Yêu, Sói Đầu Đàn, Trưởng Làng) — chọn vai muốn test rồi bấm chạy ngay không cần chờ 6 người!
+              </p>
+            </div>
+
+            {/* HỘP TẠO PHÒNG TÙY CHỈNH: CÔNG KHAI / MẬT KHẨU / PHÒNG ẨN CẦN MÃ */}
+            <div className="create-setup-box">
+              <div className="home-section-label" style={{ marginBottom: 0 }}>
+                <span>🛠️ Tạo Phòng Mới & Bảo Mật</span>
+              </div>
+
+              <input
+                type="text"
+                value={roomTitle}
+                maxLength={36}
+                onChange={(e) => setRoomTitle(e.target.value)}
+                placeholder="Tên bàn (tùy chọn — VD: Hội Sói Đêm Khuya)"
+              />
+
+              <div className="access-mode-pills">
+                <button
+                  type="button"
+                  className={`access-pill-btn mode-public ${accessMode === "public" ? "active" : ""}`}
+                  onClick={() => setAccessMode("public")}
+                >
+                  🌍 Công khai
+                </button>
+                <button
+                  type="button"
+                  className={`access-pill-btn mode-password ${accessMode === "password" ? "active" : ""}`}
+                  onClick={() => setAccessMode("password")}
+                >
+                  🔐 Mật khẩu
+                </button>
+                <button
+                  type="button"
+                  className={`access-pill-btn mode-hidden ${accessMode === "hidden" ? "active" : ""}`}
+                  onClick={() => setAccessMode("hidden")}
+                >
+                  🕵️ Phòng ẩn
+                </button>
+              </div>
+
+              {accessMode === "password" && (
+                <input
+                  type="password"
+                  value={createPassword}
+                  maxLength={32}
+                  onChange={(e) => setCreatePassword(e.target.value)}
+                  placeholder="🔐 Đặt mật khẩu cho phòng..."
+                />
+              )}
+
+              <div className="access-mode-hint">{accessHintText}</div>
+
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ marginBottom: 0 }}
+                disabled={loading}
+                onClick={() => handleCreateRoom({ soloQuickStart: false })}
+              >
+                ➕ Tạo Phòng Mới ({accessMode === "password" ? "Có Mật Khẩu" : accessMode === "hidden" ? "Phòng Ẩn Cần Mã" : "Công Khai"})
+              </button>
+            </div>
+          </section>
+
+          {/* ==================== CỘT PHẢI: NHẬP MÃ PHÒNG RIÊNG + DANH SÁCH PHÒNG ĐANG CHỜ / ĐANG CHƠI ==================== */}
+          <section className="home-panel-card">
+            <form className="join-code-strip" onSubmit={handleJoinByCode}>
+              <div className="home-section-label" style={{ marginBottom: 0 }}>
+                <span>🔑 Có Mã Phòng Riêng / Phòng Ẩn?</span>
+                {!needCodePassword && (
+                  <button
+                    type="button"
+                    onClick={() => setNeedCodePassword(true)}
                     style={{
-                      width: '100%', aspectRatio: '1', borderRadius: 12, cursor: 'pointer', objectFit: 'cover',
-                      border: selectedAvatarUrl === url ? '2.5px solid #f59e0b' : '2px solid rgba(255,255,255,0.1)',
-                      background: 'rgba(255,255,255,0.08)',
-                      boxShadow: selectedAvatarUrl === url ? '0 0 14px rgba(245,158,11,0.6)' : 'none',
-                      transform: selectedAvatarUrl === url ? 'scale(1.1)' : 'scale(1)',
-                      transition: 'all 0.15s',
+                      width: "auto",
+                      margin: 0,
+                      padding: "2px 8px",
+                      fontSize: "0.7rem",
+                      background: "transparent",
+                      color: "#a5b4fc",
+                      border: "1px solid rgba(165,180,252,0.35)",
+                      borderRadius: 6,
+                      cursor: "pointer",
                     }}
+                  >
+                    + Kèm mật khẩu
+                  </button>
+                )}
+              </div>
+
+              <div className="join-code-row">
+                <input
+                  className="join-code-input"
+                  value={roomCode}
+                  maxLength={5}
+                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  placeholder="NHẬP MÃ 5 KÝ TỰ (VD: A3F9K)"
+                />
+                <button type="submit" className="btn-join-by-code" disabled={loading}>
+                  Vào bằng Mã ➤
+                </button>
+              </div>
+
+              {needCodePassword && (
+                <div className="join-code-pwd-row">
+                  <input
+                    type="password"
+                    value={codePassword}
+                    maxLength={32}
+                    onChange={(e) => setCodePassword(e.target.value)}
+                    placeholder="🔐 Nhập mật khẩu của phòng này..."
                   />
-                ))
-              : DICEBEAR_SEEDS.map(seed => {
-                  const url = dicebearUrl(seed);
+                </div>
+              )}
+            </form>
+
+            {/* DANH SÁCH PHÒNG TRỰC TIẾP */}
+            <div className="browser-header-row">
+              <h2 className="browser-title">📡 Sảnh Phòng Trực Tiếp ({roomsList.length})</h2>
+              <div className="browser-filter-tabs">
+                <button
+                  type="button"
+                  className={`browser-filter-btn ${roomFilter === "all" ? "active" : ""}`}
+                  onClick={() => setRoomFilter("all")}
+                >
+                  Tất cả ({roomsList.length})
+                </button>
+                <button
+                  type="button"
+                  className={`browser-filter-btn ${roomFilter === "lobby" ? "active" : ""}`}
+                  onClick={() => setRoomFilter("lobby")}
+                >
+                  🟢 Đang chờ ({waitingCount})
+                </button>
+                <button
+                  type="button"
+                  className={`browser-filter-btn ${roomFilter === "playing" ? "active" : ""}`}
+                  onClick={() => setRoomFilter("playing")}
+                >
+                  🔥 Đang chơi ({playingCount})
+                </button>
+                <button
+                  type="button"
+                  className="browser-filter-btn"
+                  onClick={refreshRoomsManual}
+                  title="Làm mới danh sách phòng"
+                >
+                  🔄
+                </button>
+              </div>
+            </div>
+
+            {filteredRooms.length === 0 ? (
+              <div className="rooms-empty-box">
+                <div style={{ fontSize: "2rem" }}>🌕</div>
+                <div>
+                  {roomsList.length === 0
+                    ? "Hiện chưa có bàn công khai nào đang mở trên sảnh."
+                    : "Không có phòng nào khớp bộ lọc này."}
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#cbd5e1" }}>
+                  Bạn có thể bấm <strong>⚡ Chơi Nhanh 1 Mình</strong> để vào test ngay cùng 7 AI Bot mà không cần đợi ai!
+                </div>
+              </div>
+            ) : (
+              <div className="rooms-browser-list">
+                {filteredRooms.map((r) => {
+                  const isLobby = r.phase === "lobby";
+                  const isUnlocking = unlockingRoomCode === r.code;
+                  const phaseBadgeText = isLobby
+                    ? "🟢 Đang chờ"
+                    : r.phase === "ended"
+                      ? "🏁 Đang tổng kết"
+                      : `🔥 Đang chơi • Ngày ${r.dayNumber || 1}`;
+
                   return (
-                    <img
-                      key={seed}
-                      src={url}
-                      alt={seed}
-                      onClick={() => persistAvatar(url)}
-                      style={{
-                        width: '100%', aspectRatio: '1', borderRadius: 12, cursor: 'pointer',
-                        border: selectedAvatarUrl === url ? '2.5px solid #f59e0b' : '2px solid rgba(255,255,255,0.1)',
-                        background: 'rgba(255,255,255,0.08)',
-                        boxShadow: selectedAvatarUrl === url ? '0 0 14px rgba(245,158,11,0.6)' : 'none',
-                        transform: selectedAvatarUrl === url ? 'scale(1.1)' : 'scale(1)',
-                        transition: 'all 0.15s',
-                      }}
-                    />
+                    <div
+                      key={r.code}
+                      className={`room-browser-card ${isLobby ? "is-lobby" : "is-playing"}`}
+                    >
+                      <div className="room-card-main">
+                        <div className="room-card-left">
+                          {r.hostAvatar ? (
+                            <img className="room-host-avatar" src={r.hostAvatar} alt={r.hostName} />
+                          ) : (
+                            <div
+                              className="room-host-avatar"
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "1.3rem",
+                              }}
+                            >
+                              🐺
+                            </div>
+                          )}
+
+                          <div className="room-card-info">
+                            <div className="room-card-title-row">
+                              <span className="room-card-title">{r.roomTitle}</span>
+                              <span className={`room-tag ${isLobby ? "status-lobby" : "status-playing"}`}>
+                                {phaseBadgeText}
+                              </span>
+                              <span className={`room-tag ${r.hasPassword ? "lock-pwd" : "lock-open"}`}>
+                                {r.hasPassword ? "🔐 Mật khẩu" : "🌍 Mở"}
+                              </span>
+                              {r.hasExpandedRoles && (
+                                <span className="room-tag v33-badge">✨ V3.3</span>
+                              )}
+                            </div>
+
+                            <div className="room-card-meta">
+                              <span>👑 {r.hostName}</span>
+                              <span>
+                                👤 {r.humanCount} người
+                                {r.botCount > 0 ? ` + 🤖 ${r.botCount} Bot` : ""} / {r.maxSeats} ghế
+                              </span>
+                              {!isLobby && r.phase === "playing" && (
+                                <span style={{ color: "#fde68a", fontWeight: 700 }}>
+                                  {PHASE_SHORT_LABELS[r.nightDayPhase] || "Đang đấu"} • 💚 {r.aliveCount}/{r.totalPlayers} sống
+                                </span>
+                              )}
+                              {!r.hasPassword && <span className="room-card-code">#{r.code}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {isLobby ? (
+                          <button
+                            type="button"
+                            className={`btn-room-join ${r.hasPassword ? "locked" : ""}`}
+                            disabled={loading}
+                            onClick={() => handleJoinPublicCard(r)}
+                          >
+                            {r.hasPassword ? "🔐 Nhập mật khẩu" : "Vào Phòng ➤"}
+                          </button>
+                        ) : (
+                          <button type="button" className="btn-room-join" disabled>
+                            ⏳ Đang chơi (Chờ hết ván)
+                          </button>
+                        )}
+                      </div>
+
+                      {isLobby && isUnlocking && (
+                        <form
+                          className="room-inline-pwd-form"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleJoinPublicCard(r, unlockRoomPwd);
+                          }}
+                        >
+                          <input
+                            type="password"
+                            value={unlockRoomPwd}
+                            maxLength={32}
+                            onChange={(e) => setUnlockRoomPwd(e.target.value)}
+                            placeholder={`🔐 Nhập mật khẩu vào "${r.roomTitle}"...`}
+                            autoFocus
+                          />
+                          <button type="submit" className="btn-inline-pwd-submit" disabled={loading}>
+                            Mở khóa & Vào ➤
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-inline-pwd-cancel"
+                            onClick={() => {
+                              setUnlockingRoomCode(null);
+                              setUnlockRoomPwd("");
+                            }}
+                          >
+                            Đóng
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   );
-                })
-            }
-          </div>
+                })}
+              </div>
+            )}
+          </section>
         </div>
-
-        {error && <div className="error">{error}</div>}
-
-        <button className="btn-primary" onClick={handleCreateRoom} disabled={loading}>
-          Tạo phòng mới
-        </button>
-
-        <div className="divider">— hoặc —</div>
-
-        <label>Mã phòng</label>
-        <input
-          value={roomCode}
-          maxLength={5}
-          onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-          placeholder="VD: A3F9K"
-        />
-        <button className="btn-secondary" onClick={handleJoinRoom} disabled={loading}>
-          Vào phòng
-        </button>
       </div>
     </>
   );

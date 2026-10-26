@@ -131,6 +131,13 @@ export default function WerewolfScene3D({
   finalVotes = {},
   defendantId = null,
   wolfTeammates = [],
+  alphaWolfId = null,
+  mayorRevealedId = null,
+  myLoverPartnerId = null,
+  hunterPendingId = null,
+  cupidSelectedIds = [],
+  lobbyTargetSeatCount = 0,
+  onLobbyKickPlayer = null,
   speakingIds = [],
   reactions = [],
   recapStageState = null,
@@ -153,7 +160,19 @@ export default function WerewolfScene3D({
     setAdaptiveDpr((prev) => (Math.abs(prev - nextVal) < 0.06 ? prev : nextVal));
   }, []);
 
-  const [cameraMode, setCameraMode] = useState("shoulder"); // 'shoulder' | 'overview'
+  const [cameraMode, setCameraMode] = useState(() => (phase === "lobby" ? "overview" : "shoulder")); // 'shoulder' | 'overview'
+  const prevScenePhaseRef = useRef(phase);
+  useEffect(() => {
+    if (prevScenePhaseRef.current === phase) return;
+    const wasLobby = prevScenePhaseRef.current === "lobby";
+    prevScenePhaseRef.current = phase;
+    if (phase === "lobby") {
+      setCameraMode("overview");
+    } else if (wasLobby) {
+      // Vừa bấm BẮT ĐẦU VÁN ĐẤU -> tự lướt Camera từ Toàn Cảnh Sảnh xuống sau vai ghế của người chơi!
+      setCameraMode("shoulder");
+    }
+  }, [phase]);
   const [resetCounter, setResetCounter] = useState(0);
   const [showMeasureGrid, setShowMeasureGrid] = useState(false);
   const [showPropTuner, setShowPropTuner] = useState(false);
@@ -164,9 +183,10 @@ export default function WerewolfScene3D({
   const [propStatuses, setPropStatuses] = useState({});
   const [propDiagnostics, setPropDiagnostics] = useState({});
 
-  // ================== TRẠNG THÁI STUDIO DIỄN THỬ HOẠT CẢNH 9 VAI (PRE-VIS RIG STUDIO) ==================
+  // ================== TRẠNG THÁI STUDIO DIỄN THỬ HOẠT CẢNH 9+6 VAI (PRE-VIS RIG STUDIO) ==================
   const [choreoStudioOpen, setChoreoStudioOpen] = useState(() => Boolean(standaloneChoreo && isDevSetup));
-  const [choreoScenarioId, setChoreoScenarioId] = useState("wolf_solo_pounce");
+  const [choreoScenarioId, setChoreoScenarioId] = useState("hunter_silver_revenge");
+  const [choreoMoodOverride, setChoreoMoodOverride] = useState("auto"); // 'auto' | 'night' | 'dawn' | 'day' | 'dusk_trial'
   const [choreoIsPlaying, setChoreoIsPlaying] = useState(true);
   const [choreoLoop, setChoreoLoop] = useState(true);
   const [choreoSpeed, setChoreoSpeed] = useState(1);
@@ -789,8 +809,26 @@ export default function WerewolfScene3D({
     setPropCalib({});
   };
 
-  // ================== VÒNG GHẾ NGƯỜI CHƠI (BẤT KHẢ XÂM PHẠM TRONG LÚC EDIT) ==================
+  // ================== VÒNG GHẾ NGƯỜI CHƠI (HỖ TRỢ SẢNH CHỜ GHẾ TRỐNG + VÁN THẬT + STUDIO) ==================
   const effectivePlayers = useMemo(() => {
+    if (phase === "lobby" && !choreoStudioOpen && !architectMode) {
+      const actual = Array.isArray(players) ? players : [];
+      const ringTotal = Math.min(18, Math.max(lobbyTargetSeatCount || 6, actual.length, 6));
+      return Array.from({ length: ringTotal }, (_, idx) => {
+        const p = actual[idx];
+        if (p) {
+          return { ...p, seatIndex: idx, alive: true };
+        }
+        return {
+          id: `lobby-empty-${idx + 1}`,
+          name: `Ghế #${idx + 1}`,
+          seatIndex: idx,
+          alive: true,
+          ready: false,
+          isEmptyLobbySeat: true,
+        };
+      });
+    }
     if (players && players.length > 0) return players;
     const count = studioSeatCount || 8;
     return Array.from({ length: count }, (_, idx) => ({
@@ -801,7 +839,7 @@ export default function WerewolfScene3D({
       ready: true,
       avatar: `/avatars/custom/avatar_${String((idx % 10) + 1).padStart(2, "0")}.png`,
     }));
-  }, [players, studioSeatCount]);
+  }, [phase, choreoStudioOpen, architectMode, players, lobbyTargetSeatCount, studioSeatCount]);
 
   const orderedPlayers = useMemo(() => {
     return [...effectivePlayers].sort((a, b) => (a.seatIndex ?? 0) - (b.seatIndex ?? 0));
@@ -892,6 +930,7 @@ export default function WerewolfScene3D({
             sourceId: built.sourceId,
             coActorIds: built.coActorIds,
             targetId: built.targetId,
+            secondaryTargetId: built.secondaryTargetId || null,
             votesDetail: built.votesDetail || {},
             isHanged: Boolean(built.isHanged),
             isWolfResult: true,
@@ -902,7 +941,7 @@ export default function WerewolfScene3D({
       mood: activeChoreoScenario.mood || "night",
       inGameCloakPreview: Boolean(activeChoreoScenario.inGameCloakPreview),
       wolfIds: Object.entries(built.roles || {})
-        .filter(([, r]) => r === "wolf")
+        .filter(([, r]) => r === "wolf" || r === "alpha_wolf")
         .map(([pid]) => pid),
       actorStates,
       actorChoreoMap: built.choreo || null,
@@ -941,13 +980,15 @@ export default function WerewolfScene3D({
       [liveMicroChoreo.actorId]: {
         actionType: liveMicroChoreo.actionType,
         targetId: liveMicroChoreo.targetId || null,
+        secondaryTargetId: liveMicroChoreo.secondaryTargetId || null,
         slotIndex: 0,
         totalSlots: 1,
       },
     };
     if (
       (liveMicroChoreo.actionType === "wolf_pounce" ||
-        liveMicroChoreo.actionType === "witch_poison_throw") &&
+        liveMicroChoreo.actionType === "witch_poison_throw" ||
+        liveMicroChoreo.actionType === "hunter_last_shot") &&
       liveMicroChoreo.targetId &&
       liveMicroChoreo.targetId !== liveMicroChoreo.actorId
     ) {
@@ -979,13 +1020,21 @@ export default function WerewolfScene3D({
       if (studioMood === "night") return { isNight: true, phase: "night_wolf", hasWinner: false };
     }
     if (studioSimStage) {
-      if (studioSimStage.inGameCloakPreview) {
-        return { isNight: true, phase: "night_wolf", hasWinner: false };
+      const targetMood =
+        choreoMoodOverride && choreoMoodOverride !== "auto"
+          ? choreoMoodOverride
+          : studioSimStage.mood || "night";
+      const winnerReveal = !studioSimStage.inGameCloakPreview;
+      if (targetMood === "day") {
+        return { isNight: false, phase: "day_discuss", hasWinner: winnerReveal };
       }
-      if (studioSimStage.mood === "dusk_trial") {
-        return { isNight: false, phase: "day_final_vote", hasWinner: true };
+      if (targetMood === "dawn") {
+        return { isNight: false, phase: "day_reveal", hasWinner: winnerReveal };
       }
-      return { isNight: true, phase: "night_wolf", hasWinner: true };
+      if (targetMood === "dusk_trial") {
+        return { isNight: false, phase: "day_final_vote", hasWinner: winnerReveal };
+      }
+      return { isNight: true, phase: "night_wolf", hasWinner: winnerReveal };
     }
     if (!architectMode && hasWinner && recapStageState?.mood) {
       if (recapStageState.mood === "night") {
@@ -1003,7 +1052,7 @@ export default function WerewolfScene3D({
       phase: phase || "day_discuss",
       hasWinner: Boolean(hasWinner),
     };
-  }, [architectMode, studioMood, studioSimStage, hasWinner, recapStageState?.mood, isNight, phase]);
+  }, [architectMode, studioMood, studioSimStage, hasWinner, recapStageState?.mood, isNight, phase, choreoMoodOverride]);
 
   const seatMap = useMemo(() => {
     const map = {};
@@ -1758,7 +1807,7 @@ export default function WerewolfScene3D({
             !hasWinner &&
             !studioSimStage &&
             phase === "night_wolf" &&
-            ((isMe && effectiveMyRole === "wolf") || isWolfTeammate)
+            ((isMe && (effectiveMyRole === "wolf" || effectiveMyRole === "alpha_wolf")) || isWolfTeammate)
               ? wolfPicksVisible?.[p.id]?.targetId || null
               : null;
 
@@ -1784,6 +1833,13 @@ export default function WerewolfScene3D({
               isDefendant={p.id === defendantId}
               isWolfVictim={isWolfVictim}
               isWolfTeammate={isWolfTeammate}
+              alphaWolfId={alphaWolfId}
+              isMayorRevealed={Boolean(mayorRevealedId && mayorRevealedId === p.id)}
+              isMyLoverPartner={Boolean(myLoverPartnerId && myLoverPartnerId === p.id)}
+              isCupidSelected={Array.isArray(cupidSelectedIds) && cupidSelectedIds.includes(p.id)}
+              isHunterPending={Boolean(hunterPendingId && hunterPendingId === p.id)}
+              canLobbyKick={Boolean(phase === "lobby" && me?.isHost && !isMe && !p.isEmptyLobbySeat)}
+              onLobbyKick={onLobbyKickPlayer}
               wolfPicksOnThis={wolfPicksOnThis}
               seerResult={seerRes}
               nominationVoters={voters}
@@ -1839,6 +1895,8 @@ export default function WerewolfScene3D({
             }}
             cameraPreset={choreoCameraPreset}
             onChangeCameraPreset={setChoreoCameraPreset}
+            moodOverride={choreoMoodOverride}
+            onChangeMoodOverride={setChoreoMoodOverride}
             showDebugArcs={choreoShowArcs}
             onToggleDebugArcs={() => setChoreoShowArcs((v) => !v)}
             showRigGuide={choreoShowRigGuide}

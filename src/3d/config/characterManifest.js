@@ -116,6 +116,81 @@ export const CHARACTER_SLOTS = {
     staticStandZ: 0.12,
     tintableCloak: false,
   },
+  // ================== 6 CỔNG MỞ RỘNG V3.3 (#19 -> #24 — HOT-PLUG READY) ==================
+  hunter: {
+    key: "hunter",
+    portNumber: 19,
+    fileName: "char_hunter.glb",
+    label: "Thợ Săn Bạc Bắc Âu (#19)",
+    standingHeight: 1.86,
+    seatHipOffsetY: 0.045,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.13,
+    tintableCloak: false,
+    proxySlot: "tough_guy",
+  },
+  cupid: {
+    key: "cupid",
+    portNumber: 20,
+    fileName: "char_cupid.glb",
+    label: "Thần Tình Yêu Bắc Âu (#20)",
+    standingHeight: 1.76,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    proxySlot: "seer",
+  },
+  alpha_wolf: {
+    key: "alpha_wolf",
+    portNumber: 21,
+    fileName: "char_alpha_wolf.glb",
+    label: "Sói Đầu Đàn Huyết Nguyệt (#21)",
+    standingHeight: 2.18,
+    seatHipOffsetY: 0.055,
+    seatForwardOffsetZ: 0.065,
+    staticStandZ: 0.15,
+    tintableCloak: false,
+    proxySlot: "wolf_alt",
+  },
+  mayor: {
+    key: "mayor",
+    portNumber: 22,
+    fileName: "char_mayor.glb",
+    label: "Trưởng Làng Quyền Trượng (#22)",
+    standingHeight: 1.84,
+    seatHipOffsetY: 0.045,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.13,
+    tintableCloak: false,
+    proxySlot: "guard",
+  },
+  villager_female: {
+    key: "villager_female",
+    portNumber: 23,
+    fileName: "char_villager_female.glb",
+    label: "Thôn Nữ Khăn Choàng (#23)",
+    standingHeight: 1.72,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: true,
+    tintStrength: 0.22,
+    proxySlot: "villager_cloak",
+  },
+  villager_elder: {
+    key: "villager_elder",
+    portNumber: 24,
+    fileName: "char_villager_elder.glb",
+    label: "Bô Lão Thông Thái (#24)",
+    standingHeight: 1.74,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: true,
+    tintStrength: 0.22,
+    proxySlot: "villager_true",
+  },
 };
 
 let availableCharacterModels = {};
@@ -193,13 +268,31 @@ export async function ensureCharacterManifestLoaded({ force = false } = {}) {
   }
 }
 
+export function isNativeCharacterSlotAvailable(slotKey) {
+  if (!slotKey) return false;
+  return Boolean(availableCharacterModels[slotKey]);
+}
+
 export function getCharacterGlbUrl(slotKey) {
   if (!slotKey) return null;
   if (get3DModelRenderMode() === "procedural_classic") return null;
+  if (availableCharacterModels[slotKey]) {
+    return withAssetVersion(availableCharacterModels[slotKey]);
+  }
   if (slotKey === "wolf_alt") {
     return withAssetVersion(availableCharacterModels.wolf_alt || availableCharacterModels.wolf || null);
   }
-  return withAssetVersion(availableCharacterModels[slotKey] || null);
+  // Cổng Ma-nơ-canh Khung Xương Thật Tạm Thời (Rigged Proxy Port):
+  // Mượn tạm khung xương 18–20 bone có sẵn khi chưa thả file char_<key>.glb mới vào kho;
+  // tự ngắt Proxy ngay giây phút phát hiện file .GLB gốc!
+  const proxyKey = CHARACTER_SLOTS[slotKey]?.proxySlot;
+  if (proxyKey) {
+    if (proxyKey === "wolf_alt") {
+      return withAssetVersion(availableCharacterModels.wolf_alt || availableCharacterModels.wolf || null);
+    }
+    return withAssetVersion(availableCharacterModels[proxyKey] || null);
+  }
+  return null;
 }
 
 export function getAvailableCharacterKeys() {
@@ -213,10 +306,10 @@ export function subscribeCharacterManifest(fn) {
 
 /**
  * Quyết định khe Nhân Vật 3D nào được hiển thị trên ghế:
- * - Trong ván đấu (`!hasWinner`): Mặc định là `villager_cloak` ẩn danh tuyệt đối (Zero-Leak 100%).
- *   Riêng bản thân hoặc đồng bọn Sói ban đêm được thấy đúng tạo hình vai.
- * - Với Ma Sói (`wolf`): Tự động xen kẽ `wolf` (#07) & `wolf_alt` (#07B) theo `seatIndex % 2` (hoặc khi Kẻ Bị Nguyền hóa Sói) để bầy Sói đa dạng tạo hình!
- * - Khi chiếu băng Replay cuối ván (`hasWinner === true`): Mở khóa toàn bộ 8+1 Nhân Vật Thật!
+ * - Trong ván đấu (`!hasWinner`): Mặc định xoay vòng 3 tạo hình Dân Làng Ẩn Danh (`seatIndex % 3`) khi đã cắm file `.GLB`,
+ *   nếu chưa có file `.GLB` mới thì dùng `villager_cloak` ẩn danh tuyệt đối (Zero-Leak 100%).
+ * - Với Ma Sói (`wolf`): Tự động xen kẽ `wolf` (#07) & `wolf_alt` (#07B) theo `seatIndex % 2`.
+ * - Khi chiếu băng Replay cuối ván (`hasWinner === true`) hoặc Studio Hoạt Cảnh: Mở khóa toàn bộ các Vai Thật & Cổng V3.3!
  */
 export function resolveActiveCharacterSlot({
   hasWinner,
@@ -224,11 +317,25 @@ export function resolveActiveCharacterSlot({
   seatIndex = 0,
   preferAltWolf = false,
 }) {
+  const safeSeatMod3 = Math.abs(Number(seatIndex) || 0) % 3;
   if (!visibleCostumeRole) {
+    if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) {
+      return "villager_female";
+    }
+    if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) {
+      return "villager_elder";
+    }
     return "villager_cloak";
   }
   if (visibleCostumeRole === "villager") {
-    return hasWinner ? "villager_true" : "villager_cloak";
+    if (!hasWinner) {
+      if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) return "villager_female";
+      if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) return "villager_elder";
+      return "villager_cloak";
+    }
+    if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) return "villager_female";
+    if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) return "villager_elder";
+    return "villager_true";
   }
   if (visibleCostumeRole === "wolf") {
     const useAlt = Boolean(preferAltWolf || Math.abs(Number(seatIndex) || 0) % 2 === 1);

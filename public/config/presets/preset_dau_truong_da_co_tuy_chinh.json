@@ -4,10 +4,10 @@
   "name": "🏟️ Đấu Trường Đá Cổ (Tùy chỉnh)",
   "description": "Bối cảnh tùy chọn dàn dựng bằng D5 Studio & Kho Concept Tripo",
   "moodHint": "auto",
-  "updatedAtMs": 1792906016321,
-  "updatedAtIso": "2026-10-25T05:26:56.321Z",
+  "updatedAtMs": 1793022707712,
+  "updatedAtIso": "2026-10-26T13:51:47.712Z",
   "note": "Bối cảnh không gian 3D Làng Ma Sói dàn dựng bằng D5 Architect Studio (Không tác động ghế người chơi)",
-  "totalNodes": 5,
+  "totalNodes": 22,
   "nodes": [
     {
       "id": "plaza-main",
@@ -85,18 +85,393 @@
       "deletable": true
     },
     {
-      "id": "concept_medieval_stone_wall-dwkxg",
+      "id": "concept_medieval_stone_wall-b26uc",
       "type": "concept_medieval_stone_wall",
       "label": "Medieval Stone Wall #1",
       "category": "architecture",
       "position": [
-        1.776,
+        -6.935,
         0,
-        -7.577
+        -3.845
       ],
       "rotation": [
         0,
-        -0.165,
+        1.081,
+        0
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b2tfw",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #2",
+      "category": "architecture",
+      "position": [
+        -2.958,
+        0,
+        -7.102
+      ],
+      "rotation": [
+        0.007,
+        0.231,
+        -0.032
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b2xav",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #3",
+      "category": "architecture",
+      "position": [
+        2.404,
+        0,
+        -7.077
+      ],
+      "rotation": [
+        0,
+        -0.208,
+        0
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b3dl8",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #4",
+      "category": "architecture",
+      "position": [
+        6.679,
+        0,
+        -4.058
+      ],
+      "rotation": [
+        0,
+        -1.036,
+        0
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b3hdk",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #5",
+      "category": "architecture",
+      "position": [
+        7.536,
+        0,
+        1.062
+      ],
+      "rotation": [
+        -3.142,
+        -1.362,
+        -3.142
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b3oys",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #6",
+      "category": "architecture",
+      "position": [
+        8.391,
+        0,
+        5.856
+      ],
+      "rotation": [
+        0.001,
+        -0.925,
+        0
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b48fv",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #7",
+      "category": "architecture",
+      "position": [
+        -0.808,
+        0,
+        7.944
+      ],
+      "rotation": [
+        3.141,
+        -0.003,
+        3.141
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b4d9o",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #8",
+      "category": "architecture",
+      "position": [
+        -5.594,
+        0,
+        5.877
+      ],
+      "rotation": [
+        3.141,
+        0.73,
+        -3.141
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_4k_round_stone_mosaic-b5dj0",
+      "type": "concept_4k_round_stone_mosaic",
+      "label": "4k Round Stone Mosaic #2",
+      "category": "architecture",
+      "position": [
+        0,
+        -2.715,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ],
+      "scale": [
+        0.6,
+        0.6,
+        0.6
+      ],
+      "seed": 2.34,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "landmark_belltower-b6can",
+      "type": "landmark_belltower",
+      "label": "Tháp Chuông #1",
+      "category": "architecture",
+      "position": [
+        6.409,
+        0,
+        7.32
+      ],
+      "rotation": [
+        -3.141,
+        0.942,
+        3.141
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b77hg",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #9",
+      "category": "architecture",
+      "position": [
+        3.686,
+        0,
+        9.735
+      ],
+      "rotation": [
+        0.001,
+        -0.925,
+        0
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b79py",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #10",
+      "category": "architecture",
+      "position": [
+        7.438,
+        0,
+        10.121
+      ],
+      "rotation": [
+        0.001,
+        0.727,
+        -0.001
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "concept_medieval_stone_wall-b9dcz",
+      "type": "concept_medieval_stone_wall",
+      "label": "Medieval Stone Wall #11",
+      "category": "architecture",
+      "position": [
+        -8.209,
+        0,
+        1.409
+      ],
+      "rotation": [
+        3.141,
+        1.468,
+        3.141
+      ],
+      "scale": [
+        1.198,
+        1.364,
+        1.198
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "prop_village_banner-bbg1j",
+      "type": "prop_village_banner",
+      "label": "Cờ Hiệu Làng #1",
+      "category": "props",
+      "position": [
+        1.732,
+        0,
+        6.645
+      ],
+      "rotation": [
+        -3.142,
+        -0.435,
+        -3.142
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "prop_village_banner-bbwvk",
+      "type": "prop_village_banner",
+      "label": "Cờ Hiệu Làng #2",
+      "category": "props",
+      "position": [
+        6.283,
+        0,
+        3.221
+      ],
+      "rotation": [
+        -3.142,
+        -0.435,
+        -3.142
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_dead_gnarled-bceqp",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô Ma Mị #1",
+      "category": "forest",
+      "position": [
+        11.725,
+        0,
+        1.429
+      ],
+      "rotation": [
+        0,
+        1.376,
         0
       ],
       "scale": [
@@ -110,19 +485,69 @@
       "deletable": true
     },
     {
-      "id": "house_cottage_a-dxdck",
-      "type": "house_cottage_a",
-      "label": "Nhà Gỗ Đá A #1",
-      "category": "architecture",
+      "id": "tree_dead_gnarled-bcofi",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô Ma Mị #2",
+      "category": "forest",
       "position": [
-        2.433,
+        5.048,
         0,
-        7.111
+        -9.949
       ],
       "rotation": [
         -3.142,
-        1.199,
+        0.652,
         -3.142
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_dead_gnarled-bcuib",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô Ma Mị #3",
+      "category": "forest",
+      "position": [
+        -8.682,
+        0,
+        -8.277
+      ],
+      "rotation": [
+        3.141,
+        -0.979,
+        3.14
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "seed": 1.17,
+      "allowCenterZone": false,
+      "lockClick": false,
+      "deletable": true
+    },
+    {
+      "id": "tree_dead_gnarled-bcxxa",
+      "type": "tree_dead_gnarled",
+      "label": "Cây Khô Ma Mị #4",
+      "category": "forest",
+      "position": [
+        -6.552,
+        0,
+        9.348
+      ],
+      "rotation": [
+        0,
+        -0.668,
+        -0.001
       ],
       "scale": [
         1,

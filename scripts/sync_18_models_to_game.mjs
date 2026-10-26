@@ -130,6 +130,61 @@ const SLOT_SYNC_RULES = [
     expectedHeight: 1.75,
     maxTex: 1024,
   },
+  // === 6 CỔNG NHÂN VẬT MỚI V3.3 (#19 -> #24 — HOT-PLUG READY) ===
+  {
+    id: "hunter",
+    srcFile: "char_hunter.glb",
+    altFiles: ["char_hunter_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_hunter.glb", manifestKey: "hunter" }],
+    expectedHeight: 1.86,
+    maxTex: 1024,
+  },
+  {
+    id: "cupid",
+    srcFile: "char_cupid.glb",
+    altFiles: ["char_cupid_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_cupid.glb", manifestKey: "cupid" }],
+    expectedHeight: 1.76,
+    maxTex: 1024,
+  },
+  {
+    id: "alpha_wolf",
+    srcFile: "char_alpha_wolf.glb",
+    altFiles: ["char_alpha_wolf_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_alpha_wolf.glb", manifestKey: "alpha_wolf" }],
+    expectedHeight: 2.18,
+    maxTex: 1024,
+  },
+  {
+    id: "mayor",
+    srcFile: "char_mayor.glb",
+    altFiles: ["char_mayor_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_mayor.glb", manifestKey: "mayor" }],
+    expectedHeight: 1.84,
+    maxTex: 1024,
+  },
+  {
+    id: "villager_female",
+    srcFile: "char_villager_female.glb",
+    altFiles: ["char_villager_female_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_villager_female.glb", manifestKey: "villager_female" }],
+    expectedHeight: 1.72,
+    maxTex: 1024,
+  },
+  {
+    id: "villager_elder",
+    srcFile: "char_villager_elder.glb",
+    altFiles: ["char_villager_elder_noel.glb"],
+    category: "character",
+    targets: [{ dir: CHARS_OUT_DIR, fileName: "char_villager_elder.glb", manifestKey: "villager_elder" }],
+    expectedHeight: 1.74,
+    maxTex: 1024,
+  },
 
   // === NHÓM B: ĐẠO CỤ VAI TRÒ / KHE CẦM TAY ===
   {
@@ -161,6 +216,40 @@ const SLOT_SYNC_RULES = [
       { dir: HAND_PROPS_OUT_DIR, fileName: "prop_hand_witch_poison.glb", manifestKey: "witch_poison" },
     ],
     expectedHeight: 0.65,
+    maxTex: 768,
+  },
+  // === 3 CỔNG VŨ KHÍ CẦM TAY MỚI V3.3 (#25 -> #27 — HOT-PLUG READY) ===
+  {
+    id: "prop_hunter_crossbow",
+    srcFile: "prop_hunter_crossbow.glb",
+    altFiles: ["prop_hunter_crossbow_noel.glb", "prop_hand_hunter_crossbow.glb"],
+    category: "hand_prop",
+    targets: [
+      { dir: HAND_PROPS_OUT_DIR, fileName: "prop_hand_hunter_crossbow.glb", manifestKey: "hunter_crossbow" },
+    ],
+    expectedHeight: 0.44,
+    maxTex: 768,
+  },
+  {
+    id: "prop_cupid_bow",
+    srcFile: "prop_cupid_bow.glb",
+    altFiles: ["prop_cupid_bow_noel.glb", "prop_hand_cupid_bow.glb"],
+    category: "hand_prop",
+    targets: [
+      { dir: HAND_PROPS_OUT_DIR, fileName: "prop_hand_cupid_bow.glb", manifestKey: "cupid_bow" },
+    ],
+    expectedHeight: 0.56,
+    maxTex: 768,
+  },
+  {
+    id: "prop_mayor_scepter",
+    srcFile: "prop_mayor_scepter.glb",
+    altFiles: ["prop_mayor_scepter_noel.glb", "prop_hand_mayor_scepter.glb"],
+    category: "hand_prop",
+    targets: [
+      { dir: HAND_PROPS_OUT_DIR, fileName: "prop_hand_mayor_scepter.glb", manifestKey: "mayor_scepter" },
+    ],
+    expectedHeight: 0.62,
     maxTex: 768,
   },
 
@@ -374,11 +463,13 @@ const reportItems = [];
 const missingSlots = [];
 
 for (const rule of SLOT_SYNC_RULES) {
-  const srcPath = path.join(READY_DIR, rule.srcFile);
-  if (!fs.existsSync(srcPath)) {
+  const candidateNames = [rule.srcFile, ...(rule.altFiles || [])];
+  const matchedFile = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
+  if (!matchedFile) {
     missingSlots.push(rule.id);
     continue;
   }
+  const srcPath = path.join(READY_DIR, matchedFile);
 
   const inBytes = fs.statSync(srcPath).size;
   const doc = await io.read(srcPath);

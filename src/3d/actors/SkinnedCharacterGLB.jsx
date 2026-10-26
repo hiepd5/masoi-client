@@ -9,10 +9,11 @@ import {
   CHARACTER_SLOTS,
   ensureCharacterManifestLoaded,
   getCharacterGlbUrl,
+  isNativeCharacterSlotAvailable,
   subscribeCharacterManifest,
 } from "../config/characterManifest.js";
 import { SEAT_TOP_Y } from "../utils/seatLayout.js";
-import { RoleHandSocket3D } from "./RoleSocketAttachment3D.jsx";
+import { RoleHandSocket3D, RoleHeadSocket3D } from "./RoleSocketAttachment3D.jsx";
 
 let sharedCharLoader = null;
 function getCharacterGltfLoader() {
@@ -28,6 +29,10 @@ function getCharacterGltfLoader() {
 }
 
 const characterAssetCache = new Map();
+
+export function clearCharacterAssetCache() {
+  characterAssetCache.clear();
+}
 
 // Bộ từ điển 20 xương chuẩn hóa tương thích Kép: Auto-Rig Nội Bộ / Tripo Studio Auto-Rig / Mixamo / Blender Rigify
 const BONE_PATTERNS = {
@@ -186,8 +191,9 @@ export function useOptionalCharacterGlb(slotKey) {
       setTemplateEntry(null);
       return undefined;
     }
-    if (characterAssetCache.has(glbUrl)) {
-      setTemplateEntry(characterAssetCache.get(glbUrl));
+    const cacheKey = `${slotKey}::${glbUrl}`;
+    if (characterAssetCache.has(cacheKey)) {
+      setTemplateEntry(characterAssetCache.get(cacheKey));
       return undefined;
     }
 
@@ -234,7 +240,7 @@ export function useOptionalCharacterGlb(slotKey) {
           standingHeight: targetStandH,
           upLegHeightMeters,
         };
-        characterAssetCache.set(glbUrl, entry);
+        characterAssetCache.set(cacheKey, entry);
         setTemplateEntry(entry);
       },
       undefined,
@@ -277,10 +283,12 @@ export default function SkinnedCharacterGLB({
   seed = 0,
 }) {
   const slotMeta = CHARACTER_SLOTS[slotKey] || CHARACTER_SLOTS.villager_cloak;
+  const isUsingProxyBody = Boolean(slotMeta.proxySlot && !isNativeCharacterSlotAvailable(slotKey));
   const wrapperRef = useRef(null);
   const leftHandSocketRef = useRef(null);
   const rightHandSocketRef = useRef(null);
   const centerOrbSocketRef = useRef(null);
+  const headSocketRef = useRef(null);
 
   const clonedBundle = useMemo(() => {
     if (!templateEntry?.scene || effectiveIsDead) return null;
@@ -570,7 +578,10 @@ export default function SkinnedCharacterGLB({
       goalArmL = -0.64 + Math.cos(t * 7.8 + seed) * 0.26;
       goalForeR = -0.78 + Math.cos(t * 8.5 + seed) * 0.2;
       goalForeL = -0.78 + Math.sin(t * 7.8 + seed) * 0.2;
-    } else if ((slotKey === "wolf" || slotKey === "wolf_alt") && (phase === "night_wolf" || hasWinner)) {
+    } else if (
+      (slotKey === "wolf" || slotKey === "wolf_alt" || slotKey === "alpha_wolf") &&
+      (phase === "night_wolf" || hasWinner)
+    ) {
       goalArmR = -0.68 + Math.sin(t * 3.8 + seed) * 0.12;
       goalArmL = -0.68 + Math.cos(t * 3.8 + seed) * 0.12;
       goalForeR = -0.76;
@@ -583,6 +594,15 @@ export default function SkinnedCharacterGLB({
       goalArmR = -0.88;
       goalForeL = -0.85;
       goalForeR = -0.85;
+    } else if (visibleCostumeRole === "hunter") {
+      goalArmR = -0.72;
+      goalForeR = -0.62;
+    } else if (visibleCostumeRole === "cupid") {
+      goalArmL = -0.75;
+      goalForeL = -0.58;
+    } else if (visibleCostumeRole === "mayor") {
+      goalArmR = -0.78;
+      goalForeR = -0.52;
     }
 
     st.armRX = THREE.MathUtils.lerp(st.armRX, goalArmR, damp);
@@ -715,6 +735,14 @@ export default function SkinnedCharacterGLB({
           centerOrbSocketRef.current.position.z += 0.12;
           centerOrbSocketRef.current.rotation.y = t * 1.4;
         }
+
+        const headBone = bones.head || bones.neck;
+        if (headSocketRef.current && headBone) {
+          tempBoneMat.multiplyMatrices(invWrapperMat, headBone.matrixWorld);
+          tempBoneMat.decompose(tempPosL, tempQuat, tempScale);
+          headSocketRef.current.position.copy(tempPosL);
+          headSocketRef.current.quaternion.copy(tempQuat);
+        }
       } else {
         // Fallback cho Smart Mesh Tĩnh nếu có file chưa rig
         const isWalkingStride =
@@ -784,6 +812,10 @@ export default function SkinnedCharacterGLB({
   const showGuardShield = visibleCostumeRole === "guard";
   const showWitchFlasks = visibleCostumeRole === "witch";
   const showSeerOrb = visibleCostumeRole === "seer";
+  const showCupidBow = visibleCostumeRole === "cupid";
+  const showHunterCrossbow = visibleCostumeRole === "hunter";
+  const showMayorScepter = visibleCostumeRole === "mayor";
+  const proxyHeadRoleKey = isUsingProxyBody ? visibleCostumeRole || slotKey : null;
 
   return (
     <group ref={wrapperRef} position={[0, baseSeatY, basePosZ]}>
@@ -793,8 +825,17 @@ export default function SkinnedCharacterGLB({
         position={[-centerX * normScale, -minY * normScale, -centerZ * normScale]}
       />
 
-      {/* KHE BÀN TAY TRÁI THẬT: Khiên Bảo Vệ #17 (`guard`) hoặc Bình Tiên Dược Xanh (`witch`) */}
-      {(showGuardShield || showWitchFlasks) && (
+      {/* KHE ĐẦU THÔNG MINH (CHỈ BẬT KHI DÙNG PROXY MA-NƠ-CANH — TỰ ẨN 100% NGAY KHI LẮP .GLB THẬT!) */}
+      {proxyHeadRoleKey && (
+        <group ref={headSocketRef} position={[0, standingHeight * 0.72, 0.02]}>
+          <group position={[0, -0.1, 0]}>
+            <RoleHeadSocket3D roleKey={proxyHeadRoleKey} />
+          </group>
+        </group>
+      )}
+
+      {/* KHE BÀN TAY TRÁI THẬT: Khiên Bảo Vệ #17 (`guard`), Bình Tiên Dược (`witch`), Cung Pha Lê #26 (`cupid`) */}
+      {(showGuardShield || showWitchFlasks || showCupidBow) && (
         <group ref={leftHandSocketRef} position={[0.26, shoulderY, 0.1]}>
           <RoleHandSocket3D
             roleKey={visibleCostumeRole}
@@ -804,8 +845,8 @@ export default function SkinnedCharacterGLB({
         </group>
       )}
 
-      {/* KHE BÀN TAY PHẢI THẬT: Đuốc Phán Quyết hoặc Bình Độc Tím (`witch` — tự ẩn khi ném rời tay!) */}
-      {(showTrialTorchSocket || showWitchFlasks) && (
+      {/* KHE BÀN TAY PHẢI THẬT: Đuốc, Bình Độc (`witch`), Nỏ Bạc #25 (`hunter`), Quyền Trượng #27 (`mayor`) */}
+      {(showTrialTorchSocket || showWitchFlasks || showHunterCrossbow || showMayorScepter) && (
         <group ref={rightHandSocketRef} position={[-0.28, shoulderY, 0.08]}>
           <RoleHandSocket3D
             roleKey={visibleCostumeRole}

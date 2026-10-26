@@ -45,6 +45,10 @@ const HAND_PROP_TARGET_SIZES = {
   seer_orb: 0.2,
   trial_torch: 0.48,
   tanner_noose: 0.28,
+  // === 3 CỔNG VŨ KHÍ CẦM TAY MỚI V3.3 (#25 -> #27 — HOT-PLUG READY) ===
+  hunter_crossbow: 0.44,
+  cupid_bow: 0.56,
+  mayor_scepter: 0.62,
 };
 
 let availableHandGlbs = {};
@@ -61,8 +65,20 @@ function notifyHandGlbListeners() {
   });
 }
 
-function ensureHandPropManifestLoaded() {
-  if (handManifestPromise) return handManifestPromise;
+export function getAvailableHandPropKeys() {
+  return Object.keys(availableHandGlbs);
+}
+
+export function subscribeHandPropManifest(fn) {
+  handGlbListeners.add(fn);
+  return () => handGlbListeners.delete(fn);
+}
+
+export function ensureHandPropManifestLoaded({ force = false } = {}) {
+  if (handManifestPromise && !force) return handManifestPromise;
+  if (force) {
+    loadedHandPropSceneCache.clear();
+  }
   const parseDoc = async (res) => {
     if (!res?.ok) return null;
     const ctype = (res.headers.get("content-type") || "").toLowerCase();
@@ -72,10 +88,18 @@ function ensureHandPropManifestLoaded() {
 
   const manifestUrl = `/models/hand_props/hand_props_manifest.json?v=${ASSET_SYNC_VERSION}`;
   const fetchTask = import.meta.env?.DEV
-    ? fetch(`http://${window.location.hostname || "localhost"}:3001/api/hand-prop-models`)
+    ? fetch(`http://${window.location.hostname || "localhost"}:3001/api/hand-prop-models`, {
+        cache: "no-store",
+      })
         .then(parseDoc)
         .catch(() => null)
-        .then((doc) => doc || fetch(manifestUrl).then(parseDoc).catch(() => null))
+        .then(
+          (doc) =>
+            doc ||
+            fetch(manifestUrl, { cache: "no-store" })
+              .then(parseDoc)
+              .catch(() => null)
+        )
     : fetch(manifestUrl).then(parseDoc).catch(() => null);
 
   handManifestPromise = fetchTask.then((doc) => {
@@ -218,12 +242,56 @@ function getSharedSculptGeometries() {
   ]);
   const wandGeo = new THREE.TubeGeometry(wandCurve, 16, 0.013, 8, false);
 
+  // 6. Cánh Nỏ Bạc Thợ Săn uốn cong thép rèn (#25 Proxy Sculpt — 0% khối hộp!)
+  const crossbowLimbCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.17, 0.0, -0.05),
+    new THREE.Vector3(-0.09, 0.0, 0.015),
+    new THREE.Vector3(0.0, 0.0, 0.03),
+    new THREE.Vector3(0.09, 0.0, 0.015),
+    new THREE.Vector3(0.17, 0.0, -0.05),
+  ]);
+  const crossbowProdGeo = new THREE.TubeGeometry(crossbowLimbCurve, 20, 0.012, 8, false);
+
+  // 7. Thân Cung Pha Lê Tơ Hồng Cupid uốn lượn cánh thiên nga (#26 Proxy Sculpt)
+  const cupidBowCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, -0.24, -0.045),
+    new THREE.Vector3(0.0, -0.14, 0.055),
+    new THREE.Vector3(0.0, 0.0, 0.085),
+    new THREE.Vector3(0.0, 0.14, 0.055),
+    new THREE.Vector3(0.0, 0.24, -0.045),
+  ]);
+  const cupidBowGeo = new THREE.TubeGeometry(cupidBowCurve, 24, 0.013, 10, false);
+
+  // 8. Sừng Thép Huyết Nguyệt cho Vương Miện Sói Đầu Đàn (#21 Proxy Sculpt)
+  const alphaAntlerCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, 0.0, 0.0),
+    new THREE.Vector3(0.035, 0.075, -0.01),
+    new THREE.Vector3(0.072, 0.155, -0.025),
+    new THREE.Vector3(0.045, 0.23, -0.01),
+  ]);
+  const alphaAntlerGeo = new THREE.TubeGeometry(alphaAntlerCurve, 16, 0.015, 8, false);
+
+  // 9. Thân Quyền Trượng Hoàng Kim Trưởng Làng tiện tròn (#27 Proxy Sculpt)
+  const scepterPts = [
+    new THREE.Vector2(0.008, 0.0),
+    new THREE.Vector2(0.016, 0.04),
+    new THREE.Vector2(0.013, 0.22),
+    new THREE.Vector2(0.018, 0.38),
+    new THREE.Vector2(0.028, 0.44),
+    new THREE.Vector2(0.012, 0.46),
+  ];
+  const scepterShaftGeo = new THREE.LatheGeometry(scepterPts, 18);
+
   sharedSculptGeos = {
     witchHatGeo,
     strawHatGeo,
     flaskGeo,
     curvedHornGeo,
     wandGeo,
+    crossbowProdGeo,
+    cupidBowGeo,
+    alphaAntlerGeo,
+    scepterShaftGeo,
   };
   return sharedSculptGeos;
 }
@@ -551,6 +619,148 @@ export function RoleHeadSocket3D({ roleKey, isGhost = false, opacity = 1 }) {
         </group>
       );
 
+    case "hunter":
+      return (
+        <group position={[0, 0.195, 0]} rotation={[-0.06, 0, 0]}>
+          {/* Mũ Da Ba Góc Thợ Săn Bạc Bắc Âu + Lông chim xanh ngọc + Huy hiệu mũi tên bạc */}
+          <mesh scale={[1.08, 0.42, 1.18]}>
+            <cylinderGeometry args={[0.11, 0.22, 0.12, 3]} />
+            <meshStandardMaterial
+              color={isGhost ? "#38bdf8" : "#1f2922"}
+              roughness={0.78}
+              transparent={isGhost}
+              opacity={opacity}
+            />
+          </mesh>
+          <mesh position={[0, 0.045, 0]}>
+            <sphereGeometry args={[0.112, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.58]} />
+            <meshStandardMaterial color="#143326" roughness={0.82} />
+          </mesh>
+          <mesh position={[0.105, 0.085, -0.035]} rotation={[-0.45, 0, -0.35]} scale={[0.35, 1.25, 0.65]}>
+            <coneGeometry args={[0.034, 0.16, 10]} />
+            <meshStandardMaterial color="#10b981" emissive="#059669" emissiveIntensity={0.45} roughness={0.5} />
+          </mesh>
+          <mesh position={[0, 0.028, 0.155]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.02, 0.045, 8]} />
+            <meshStandardMaterial color="#e2e8f0" metalness={0.92} roughness={0.18} />
+          </mesh>
+        </group>
+      );
+
+    case "cupid":
+      return (
+        <group position={[0, 0.225, 0]}>
+          {/* Vòng Nguyệt Quế Vàng Hồng Lơ Lửng + Tinh Thể Trái Tim Pha Lê */}
+          <mesh rotation={[Math.PI / 2 - 0.18, 0, 0]}>
+            <torusGeometry args={[0.135, 0.012, 10, 28]} />
+            <meshStandardMaterial
+              color="#fbcfe8"
+              emissive="#ec4899"
+              emissiveIntensity={0.95}
+              metalness={0.85}
+              roughness={0.18}
+            />
+          </mesh>
+          <mesh position={[0, 0.035, 0.128]} scale={[1.1, 1.1, 0.6]}>
+            <octahedronGeometry args={[0.028, 0]} />
+            <meshStandardMaterial color="#f9a8d4" emissive="#ec4899" emissiveIntensity={1.6} roughness={0.1} />
+          </mesh>
+          {!isGhost && (
+            <sprite position={[0, 0.035, 0.135]} scale={[0.24, 0.24, 1]}>
+              <spriteMaterial
+                map={glowTex}
+                color="#f472b6"
+                transparent
+                opacity={0.78}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
+          )}
+        </group>
+      );
+
+    case "alpha_wolf":
+      return (
+        <group position={[0, 0.21, 0]}>
+          {/* Vương Miện Thép Đen Sừng Huyết Nguyệt Của Sói Đầu Đàn (#21) */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.138, 0.018, 10, 24]} />
+            <meshStandardMaterial color="#18181b" metalness={0.88} roughness={0.32} />
+          </mesh>
+          <mesh geometry={geos.alphaAntlerGeo} position={[0.068, 0.01, -0.01]} rotation={[0, 0, -0.18]}>
+            <meshStandardMaterial color="#27272a" emissive="#991b1b" emissiveIntensity={0.55} metalness={0.75} roughness={0.35} />
+          </mesh>
+          <mesh
+            geometry={geos.alphaAntlerGeo}
+            position={[-0.068, 0.01, -0.01]}
+            scale={[-1, 1, 1]}
+            rotation={[0, 0, 0.18]}
+          >
+            <meshStandardMaterial color="#27272a" emissive="#991b1b" emissiveIntensity={0.55} metalness={0.75} roughness={0.35} />
+          </mesh>
+          <mesh position={[0, 0.038, 0.145]} scale={[0.8, 1.3, 0.6]}>
+            <octahedronGeometry args={[0.028, 0]} />
+            <meshStandardMaterial color="#fca5a5" emissive="#dc2626" emissiveIntensity={1.85} roughness={0.12} />
+          </mesh>
+        </group>
+      );
+
+    case "mayor":
+      return (
+        <group position={[0, 0.19, 0]}>
+          {/* Mũ Lông Gấu Đai Vàng Chạm Nổi Bậc Trưởng Làng (#22) */}
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.134, 0.028, 12, 26]} />
+            <meshStandardMaterial color="#3f271d" roughness={0.92} />
+          </mesh>
+          <mesh position={[0, 0.042, 0]}>
+            <sphereGeometry args={[0.122, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56]} />
+            <meshStandardMaterial color="#7f1d1d" roughness={0.75} />
+          </mesh>
+          <mesh position={[0, 0.022, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.142, 0.01, 8, 26]} />
+            <meshStandardMaterial color="#fbbf24" metalness={0.92} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.032, 0.148]}>
+            <sphereGeometry args={[0.024, 14, 14]} />
+            <meshStandardMaterial color="#fef08a" emissive="#f59e0b" emissiveIntensity={1.2} metalness={0.85} roughness={0.18} />
+          </mesh>
+        </group>
+      );
+
+    case "villager_female":
+      return (
+        <group position={[0, 0.165, 0]}>
+          {/* Khăn Choàng Len Đỏ Mận Bắc Âu + 2 Bím Tóc Tết Thôn Nữ (#23) */}
+          <mesh position={[0, 0.02, -0.012]} scale={[1.06, 1.08, 1.12]}>
+            <sphereGeometry args={[0.136, 20, 16, 0, Math.PI * 2, 0, Math.PI * 0.65]} />
+            <meshStandardMaterial color="#881337" roughness={0.88} side={THREE.DoubleSide} />
+          </mesh>
+          {[-0.11, 0.11].map((bx, bi) => (
+            <mesh key={bi} position={[bx, -0.085, 0.035]} rotation={[0.18, 0, bi === 0 ? 0.15 : -0.15]}>
+              <capsuleGeometry args={[0.022, 0.11, 8, 12]} />
+              <meshStandardMaterial color="#92400e" roughness={0.85} />
+            </mesh>
+          ))}
+        </group>
+      );
+
+    case "villager_elder":
+      return (
+        <group position={[0, 0.165, 0]}>
+          {/* Mũ Dạ Xám & Chòm Râu Bạc Tết Đai Đồng Của Bô Lão (#24) */}
+          <mesh position={[0, 0.038, 0]}>
+            <sphereGeometry args={[0.132, 20, 14, 0, Math.PI * 2, 0, Math.PI * 0.56]} />
+            <meshStandardMaterial color="#475569" roughness={0.9} />
+          </mesh>
+          <mesh position={[0, -0.115, 0.11]} rotation={[0.25, 0, 0]}>
+            <coneGeometry args={[0.058, 0.15, 12]} />
+            <meshStandardMaterial color="#e2e8f0" roughness={0.86} />
+          </mesh>
+        </group>
+      );
+
     default:
       return null;
   }
@@ -796,6 +1006,16 @@ export function RoleHandSocket3D({
   const seerOrbGlb = useOptionalHandPropGlb(
     roleKey === "seer" && side === "center" && !isGhost ? "seer_orb" : null
   );
+  // === 3 CỔNG VŨ KHÍ CẦM TAY MỚI V3.3 (#25 -> #27) ===
+  const hunterCrossbowGlb = useOptionalHandPropGlb(
+    roleKey === "hunter" && side === "right" && !isGhost ? "hunter_crossbow" : null
+  );
+  const cupidBowGlb = useOptionalHandPropGlb(
+    roleKey === "cupid" && side === "left" && !isGhost ? "cupid_bow" : null
+  );
+  const mayorScepterGlb = useOptionalHandPropGlb(
+    roleKey === "mayor" && side === "right" && !isGhost ? "mayor_scepter" : null
+  );
 
   // ĐUỐC PHÁN QUYẾT SẮT RÈN (Ưu tiên prop_hand_trial_torch.glb khi người chơi giơ đuốc bỏ phiếu Treo Cổ)
   if (showTrialTorch && side === "right" && !isGhost) {
@@ -876,7 +1096,7 @@ export function RoleHandSocket3D({
     );
   }
 
-  if (roleKey === "wolf" && !boneAttached) {
+  if ((roleKey === "wolf" || roleKey === "alpha_wolf") && !boneAttached) {
     return (
       <group position={[0, -0.38, 0.03]}>
         {[-0.024, 0, 0.024].map((cx, ci) => (
@@ -1015,6 +1235,132 @@ export function RoleHandSocket3D({
             depthWrite={false}
           />
         </sprite>
+      </group>
+    );
+  }
+
+  // THỢ SĂN (#25): Nỏ Bạc Hạng Nặng gắn Tay Phải (Ưu tiên prop_hand_hunter_crossbow.glb, fallback Điêu Khắc 3D)
+  if (roleKey === "hunter" && side === "right" && !isGhost) {
+    const pos = boneAttached ? [-0.02, -0.02, 0.08] : [0, -0.36, 0.09];
+    const rot = boneAttached ? [0.18, 0, 0] : [1.1, 0, 0];
+    return (
+      <group position={pos} rotation={rot}>
+        {hunterCrossbowGlb ? (
+          <primitive object={hunterCrossbowGlb} />
+        ) : (
+          <group>
+            {/* Báng gỗ sồi đen thon dài dọc trục bắn +Z */}
+            <mesh position={[0, 0, 0.11]} rotation={[Math.PI / 2, 0, 0]}>
+              <capsuleGeometry args={[0.02, 0.28, 8, 12]} />
+              <meshStandardMaterial color="#3b2314" roughness={0.82} />
+            </mesh>
+            {/* Cánh nỏ thép rèn uốn cong ngang đầu nỏ */}
+            <mesh geometry={geos.crossbowProdGeo} position={[0, 0.012, 0.22]}>
+              <meshStandardMaterial color="#cbd5e1" metalness={0.88} roughness={0.22} />
+            </mesh>
+            {/* Dây cung bạc & Mũi tên bạc phát sáng nạp sẵn trên rãnh */}
+            <mesh position={[0, 0.024, 0.15]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.005, 0.005, 0.26, 8]} />
+              <meshStandardMaterial color="#f8fafc" emissive="#e2e8f0" emissiveIntensity={1.25} metalness={0.92} roughness={0.15} />
+            </mesh>
+            <mesh position={[0, 0.024, 0.295]} rotation={[Math.PI / 2, 0, 0]}>
+              <coneGeometry args={[0.016, 0.055, 8]} />
+              <meshStandardMaterial color="#ffffff" emissive="#bae6fd" emissiveIntensity={1.65} metalness={0.95} roughness={0.12} />
+            </mesh>
+            <sprite position={[0, 0.024, 0.295]} scale={[0.22, 0.22, 1]}>
+              <spriteMaterial
+                map={glowTex}
+                color="#e0f2fe"
+                transparent
+                opacity={0.72}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
+          </group>
+        )}
+      </group>
+    );
+  }
+
+  // THẦN TÌNH YÊU CUPID (#26): Cung Pha Lê Vàng Hồng gắn Tay Trái (Ưu tiên prop_hand_cupid_bow.glb)
+  if (roleKey === "cupid" && side === "left" && !isGhost) {
+    const pos = boneAttached ? [0.03, 0.0, 0.06] : [0.04, -0.35, 0.08];
+    const rot = boneAttached ? [0.1, 0, 0] : [0.85, 0, 0];
+    return (
+      <group position={pos} rotation={rot}>
+        {cupidBowGlb ? (
+          <primitive object={cupidBowGlb} />
+        ) : (
+          <group>
+            <mesh geometry={geos.cupidBowGeo}>
+              <meshStandardMaterial
+                color="#fbcfe8"
+                emissive="#db2777"
+                emissiveIntensity={0.75}
+                metalness={0.86}
+                roughness={0.18}
+              />
+            </mesh>
+            {/* Dây tơ hồng phát sáng nối 2 đầu cánh cung */}
+            <mesh position={[0, 0, -0.042]}>
+              <cylinderGeometry args={[0.003, 0.003, 0.47, 6]} />
+              <meshBasicMaterial color="#fdf2f8" transparent opacity={0.9} />
+            </mesh>
+            {/* Viên pha lê hồng tâm báng cung */}
+            <mesh position={[0, 0, 0.088]}>
+              <octahedronGeometry args={[0.024, 0]} />
+              <meshStandardMaterial color="#f9a8d4" emissive="#ec4899" emissiveIntensity={1.8} roughness={0.1} />
+            </mesh>
+            <sprite position={[0, 0, 0.09]} scale={[0.26, 0.26, 1]}>
+              <spriteMaterial
+                map={glowTex}
+                color="#f472b6"
+                transparent
+                opacity={0.76}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
+          </group>
+        )}
+      </group>
+    );
+  }
+
+  // TRƯỞNG LÀNG (#27): Quyền Trượng Hoàng Kim Đại Bàng gắn Tay Phải (Ưu tiên prop_hand_mayor_scepter.glb)
+  if (roleKey === "mayor" && side === "right" && !isGhost) {
+    const pos = boneAttached ? [-0.02, -0.08, 0.04] : [0, -0.38, 0.06];
+    const rot = boneAttached ? [0.22, 0, 0] : [0.95, 0, 0];
+    return (
+      <group position={pos} rotation={rot}>
+        {mayorScepterGlb ? (
+          <primitive object={mayorScepterGlb} />
+        ) : (
+          <group>
+            <mesh geometry={geos.scepterShaftGeo} position={[0, -0.1, 0]}>
+              <meshStandardMaterial color="#92400e" metalness={0.55} roughness={0.38} />
+            </mesh>
+            <mesh position={[0, 0.34, 0]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.042, 0.009, 8, 22]} />
+              <meshStandardMaterial color="#fbbf24" metalness={0.94} roughness={0.16} />
+            </mesh>
+            <mesh position={[0, 0.365, 0]}>
+              <sphereGeometry args={[0.034, 18, 18]} />
+              <meshStandardMaterial color="#fef08a" emissive="#f59e0b" emissiveIntensity={1.55} metalness={0.82} roughness={0.14} />
+            </mesh>
+            <sprite position={[0, 0.365, 0]} scale={[0.3, 0.3, 1]}>
+              <spriteMaterial
+                map={glowTex}
+                color="#fbbf24"
+                transparent
+                opacity={0.8}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </sprite>
+          </group>
+        )}
       </group>
     );
   }

@@ -12,6 +12,30 @@ import {
   subscribe3DModelRenderMode,
   toggle3DModelRenderMode,
 } from "../config/seasonalEventRegistry.js";
+import {
+  ensureCharacterManifestLoaded,
+  isNativeCharacterSlotAvailable,
+  subscribeCharacterManifest,
+} from "../config/characterManifest.js";
+import { ensureRoleGlbManifestLoaded } from "../config/roleCostumeManifest.js";
+import {
+  ensureHandPropManifestLoaded,
+  getAvailableHandPropKeys,
+  subscribeHandPropManifest,
+} from "../actors/RoleSocketAttachment3D.jsx";
+import { clearCharacterAssetCache } from "../actors/SkinnedCharacterGLB.jsx";
+
+const V3_3_HOTPLUG_PORTS = [
+  { num: 19, key: "hunter", type: "char", label: "🏹 Hunter" },
+  { num: 20, key: "cupid", type: "char", label: "💘 Cupid" },
+  { num: 21, key: "alpha_wolf", type: "char", label: "🐺👑 Alpha" },
+  { num: 22, key: "mayor", type: "char", label: "👑 Mayor" },
+  { num: 23, key: "villager_female", type: "char", label: "🧣 Thôn Nữ" },
+  { num: 24, key: "villager_elder", type: "char", label: "🧙‍♂️ Bô Lão" },
+  { num: 25, key: "hunter_crossbow", type: "hand", label: "🏹 Nỏ #25" },
+  { num: 26, key: "cupid_bow", type: "hand", label: "💘 Cung #26" },
+  { num: 27, key: "mayor_scepter", type: "hand", label: "👑 Trượng #27" },
+];
 
 /**
  * Vẽ Đường Cong Quỹ Đạo Nhảy Bezier 3D + Vòng An Toàn Né Lửa Trại (R = 1.92m) + Điểm Đáp Đất
@@ -103,6 +127,8 @@ export function ChoreographyStudioHUD({
   onScrubProgress,
   cameraPreset,
   onChangeCameraPreset,
+  moodOverride = "auto",
+  onChangeMoodOverride,
   showDebugArcs,
   onToggleDebugArcs,
   showRigGuide,
@@ -114,10 +140,53 @@ export function ChoreographyStudioHUD({
     STUDIO_CHOREO_SCENARIOS.find((s) => s.id === activeScenarioId) || STUDIO_CHOREO_SCENARIOS[0];
   const rigGuide = TRIPO_ROLE_RIG_GUIDES[scenario.roleFocus] || TRIPO_ROLE_RIG_GUIDES.wolf;
   const [renderMode, setRenderMode] = useState(() => get3DModelRenderMode());
+  const [scenarioFilter, setScenarioFilter] = useState("v3_3"); // 'v3_3' | 'v3_2' | 'all'
+  const [showPortPanel, setShowPortPanel] = useState(true);
+  const [scanningPorts, setScanningPorts] = useState(false);
+  const [, setPortTick] = useState(0);
 
   useEffect(() => {
-    return subscribe3DModelRenderMode((m) => setRenderMode(m));
+    ensureCharacterManifestLoaded();
+    ensureHandPropManifestLoaded();
+    const unsubMode = subscribe3DModelRenderMode((m) => setRenderMode(m));
+    const unsubChar = subscribeCharacterManifest(() => setPortTick((n) => n + 1));
+    const unsubHand = subscribeHandPropManifest(() => setPortTick((n) => n + 1));
+    return () => {
+      unsubMode();
+      unsubChar();
+      unsubHand();
+    };
   }, []);
+
+  const filteredScenarios = useMemo(() => {
+    if (scenarioFilter === "v3_3") {
+      return STUDIO_CHOREO_SCENARIOS.filter((s) => s.tier === "v3_3");
+    }
+    if (scenarioFilter === "v3_2") {
+      return STUDIO_CHOREO_SCENARIOS.filter((s) => s.tier !== "v3_3");
+    }
+    return STUDIO_CHOREO_SCENARIOS;
+  }, [scenarioFilter]);
+
+  const handKeys = getAvailableHandPropKeys();
+  const readyNativePortCount = V3_3_HOTPLUG_PORTS.filter((p) =>
+    p.type === "char" ? isNativeCharacterSlotAvailable(p.key) : handKeys.includes(p.key)
+  ).length;
+
+  const handleHotScanPorts = async () => {
+    setScanningPorts(true);
+    try {
+      clearCharacterAssetCache();
+      await Promise.all([
+        ensureCharacterManifestLoaded({ force: true }),
+        ensureHandPropManifestLoaded({ force: true }),
+        ensureRoleGlbManifestLoaded(true),
+      ]);
+      setPortTick((n) => n + 1);
+    } finally {
+      setScanningPorts(false);
+    }
+  };
 
   return (
     <div
@@ -152,10 +221,10 @@ export function ChoreographyStudioHUD({
       >
         <div>
           <div style={{ fontWeight: 800, fontSize: "13px", color: "#f3e8ff" }}>
-            🎬 Studio Hoạt Cảnh 9 Nhân Vật (Tripo 3D Live)
+            🎬 Studio Hoạt Cảnh & Ánh Sáng (Bản Mở Rộng V3.3)
           </div>
           <div style={{ fontSize: "10.5px", color: "#94a3b8" }}>
-            Đã Rig <code>10/10 Nhân Vật (18–20 Xương)</code> + <code>6 Gói VFX Thực Chiến</code> · <code>WebP + Meshopt</code>
+            <code>17 Hoạt Cảnh</code> · <code>11 Gói VFX + Đèn Động</code> · <code>9 Cổng #19–#27 ({readyNativePortCount}/9 .GLB)</code>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
@@ -207,16 +276,157 @@ export function ChoreographyStudioHUD({
         </div>
       </div>
 
-      {/* Lưới chọn nhanh 11 Kịch bản của 9 Vai */}
+      {/* Thanh Tab Lọc Nhóm Kịch Bản + Nút Quét Nóng 9 Cổng Model (#19 -> #27) */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "4px",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "6px",
+        }}
+      >
+        <div style={{ display: "flex", gap: "4px" }}>
+          {[
+            { id: "v3_3", label: "✨ V3.3 Mới (6)" },
+            { id: "v3_2", label: "🔥 V3.2 Gốc (11)" },
+            { id: "all", label: "Tất Cả (17)" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setScenarioFilter(tab.id)}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "3px 8px",
+                borderRadius: "7px",
+                fontSize: "10.5px",
+                fontWeight: scenarioFilter === tab.id ? 800 : 600,
+                background:
+                  scenarioFilter === tab.id
+                    ? "rgba(236, 72, 153, 0.34)"
+                    : "rgba(30, 41, 59, 0.65)",
+                color: scenarioFilter === tab.id ? "#fbcfe8" : "#94a3b8",
+                border:
+                  scenarioFilter === tab.id
+                    ? "1px solid rgba(244, 114, 182, 0.65)"
+                    : "1px solid rgba(148, 163, 184, 0.2)",
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", gap: "4px" }}>
+          <button
+            type="button"
+            onClick={() => setShowPortPanel((v) => !v)}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "3px 7px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 700,
+              background: showPortPanel ? "rgba(16, 185, 129, 0.25)" : "rgba(30, 41, 59, 0.65)",
+              color: showPortPanel ? "#6ee7b7" : "#94a3b8",
+              border: "1px solid rgba(52, 211, 153, 0.35)",
+              cursor: "pointer",
+            }}
+            title="Xem trạng thái 9 Cổng lắp Model #19 -> #27"
+          >
+            🔌 Cổng #19–#27
+          </button>
+          <button
+            type="button"
+            onClick={handleHotScanPorts}
+            disabled={scanningPorts}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "3px 8px",
+              borderRadius: "7px",
+              fontSize: "10px",
+              fontWeight: 800,
+              background: "rgba(59, 130, 246, 0.3)",
+              color: "#bae6fd",
+              border: "1px solid rgba(56, 189, 248, 0.5)",
+              cursor: "pointer",
+            }}
+            title="Thả file .GLB mới vào thư mục models rồi bấm nút này để nhận nóng ngay không cần F5!"
+          >
+            {scanningPorts ? "⏳ Đang quét..." : "🔄 Quét Nóng .GLB"}
+          </button>
+        </div>
+      </div>
+
+      {/* Bảng Đèn Trạng Thái 9 Cổng Cắm Nóng (#19 -> #27) */}
+      {showPortPanel && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: "4px",
+            padding: "5px 6px",
+            marginBottom: "7px",
+            borderRadius: "9px",
+            background: "rgba(15, 23, 42, 0.78)",
+            border: "1px solid rgba(52, 211, 153, 0.25)",
+            fontSize: "9.8px",
+          }}
+        >
+          {V3_3_HOTPLUG_PORTS.map((port) => {
+            const isNative =
+              port.type === "char"
+                ? isNativeCharacterSlotAvailable(port.key)
+                : handKeys.includes(port.key);
+            return (
+              <div
+                key={port.num}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "2px 5px",
+                  borderRadius: "6px",
+                  background: isNative
+                    ? "rgba(16, 185, 129, 0.22)"
+                    : "rgba(245, 158, 11, 0.12)",
+                  color: isNative ? "#6ee7b7" : "#fde68a",
+                  border: isNative
+                    ? "1px solid rgba(52, 211, 153, 0.45)"
+                    : "1px solid rgba(251, 191, 36, 0.22)",
+                }}
+                title={
+                  isNative
+                    ? `Cổng #${port.num}: Đã lắp file .GLB thật!`
+                    : `Cổng #${port.num}: Đang chạy Ma-nơ-canh Xương + Đạo cụ điêu khắc (Chờ thả file .GLB)`
+                }
+              >
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  #{port.num} {port.label}
+                </span>
+                <b>{isNative ? "✅" : "🦴"}</b>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Lưới chọn nhanh Kịch bản */}
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: "5px",
-          marginBottom: "9px",
+          marginBottom: "8px",
         }}
       >
-        {STUDIO_CHOREO_SCENARIOS.map((sc) => {
+        {filteredScenarios.map((sc) => {
           const active = sc.id === scenario.id;
           return (
             <button
@@ -401,6 +611,54 @@ export function ChoreographyStudioHUD({
           </button>
         ))}
       </div>
+
+      {/* Thanh Chọn Nhanh 4 Buổi Ánh Sáng Bầu Trời (Kiểm Thử PBR & Hắt Sáng Sân Đá) */}
+      {onChangeMoodOverride && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "4px",
+            alignItems: "center",
+            marginBottom: "7px",
+          }}
+        >
+          <span style={{ fontSize: "10.2px", color: "#94a3b8", marginRight: "2px" }}>💡 Ánh sáng:</span>
+          {[
+            { id: "auto", label: "✨ Theo Cảnh" },
+            { id: "night", label: "🌙 Đêm" },
+            { id: "dawn", label: "🌅 Bình Minh" },
+            { id: "day", label: "☀️ Ngày" },
+            { id: "dusk_trial", label: "🌇 Hoàng Hôn" },
+          ].map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onChangeMoodOverride(m.id)}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "3px 7px",
+                borderRadius: "7px",
+                fontSize: "10px",
+                fontWeight: moodOverride === m.id ? 800 : 600,
+                background:
+                  moodOverride === m.id
+                    ? "rgba(251, 191, 36, 0.3)"
+                    : "rgba(30, 41, 59, 0.65)",
+                color: moodOverride === m.id ? "#fef08a" : "#cbd5e1",
+                border:
+                  moodOverride === m.id
+                    ? "1px solid rgba(251, 191, 36, 0.6)"
+                    : "1px solid rgba(255,255,255,0.14)",
+                cursor: "pointer",
+              }}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Cụm Đổi Góc Máy & Bật Đường Quỹ Đạo 3D */}
       <div

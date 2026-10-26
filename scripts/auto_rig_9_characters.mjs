@@ -112,6 +112,61 @@ const CHARACTER_RIG_PROFILES = [
     garmentSkirt: 0.24,
     backCapeShield: false,
   },
+  // === 6 CỔNG NHÂN VẬT MỚI V3.3 (#19 -> #24 — MỞ SẴN HOT-PLUG) ===
+  {
+    id: "hunter",
+    fileName: "char_hunter.glb",
+    altFiles: ["char_hunter_noel.glb"],
+    headCrownRatio: 0.89, // Chừa mũ da Ba Góc & lông chim xanh ngọc trên đỉnh đầu
+    isWolf: false,
+    garmentSkirt: 0.28,
+    backCapeShield: true,
+  },
+  {
+    id: "cupid",
+    fileName: "char_cupid.glb",
+    altFiles: ["char_cupid_noel.glb"],
+    headCrownRatio: 0.92,
+    isWolf: false,
+    garmentSkirt: 0.34,
+    backCapeShield: true, // Giữ cứng đôi cánh lông vũ sau lưng (-Z) gắn theo xương Chest!
+  },
+  {
+    id: "alpha_wolf",
+    fileName: "char_alpha_wolf.glb",
+    altFiles: ["char_alpha_wolf_noel.glb"],
+    headCrownRatio: 0.86, // Chừa Vương Miện Sừng Thép Huyết Nguyệt gắn liền đỉnh sọ
+    isWolf: true, // Có đủ 20 xương (Jaw hàm nanh + Tail đuôi sói vương)
+    garmentSkirt: 0.26,
+    backCapeShield: true,
+  },
+  {
+    id: "mayor",
+    fileName: "char_mayor.glb",
+    altFiles: ["char_mayor_noel.glb"],
+    headCrownRatio: 0.9, // Chừa Mũ Lông Gấu Đai Vàng của Trưởng Làng
+    isWolf: false,
+    garmentSkirt: 0.42,
+    backCapeShield: true,
+  },
+  {
+    id: "villager_female",
+    fileName: "char_villager_female.glb",
+    altFiles: ["char_villager_female_noel.glb"],
+    headCrownRatio: 0.94,
+    isWolf: false,
+    garmentSkirt: 0.44,
+    backCapeShield: true,
+  },
+  {
+    id: "villager_elder",
+    fileName: "char_villager_elder.glb",
+    altFiles: ["char_villager_elder_noel.glb"],
+    headCrownRatio: 0.93,
+    isWolf: false,
+    garmentSkirt: 0.38,
+    backCapeShield: true,
+  },
 ];
 
 function clamp(v, min, max) {
@@ -763,13 +818,15 @@ let riggedCount = 0;
 let nativeTripoPreserved = 0;
 
 for (const profile of CHARACTER_RIG_PROFILES) {
-  const readyPath = path.join(READY_DIR, profile.fileName);
-  if (!fs.existsSync(readyPath)) {
-    console.warn(`  [BO QUA] Chua co file ${profile.fileName}`);
+  const candidateNames = [profile.fileName, ...(profile.altFiles || [])];
+  const resolvedFileName = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
+  if (!resolvedFileName) {
+    console.warn(`  [CHO FILE] Chua co model o cong ${profile.fileName} (Bo qua an toan)`);
     continue;
   }
+  const readyPath = path.join(READY_DIR, resolvedFileName);
 
-  const backupPath = path.join(STATIC_BACKUP_DIR, profile.fileName);
+  const backupPath = path.join(STATIC_BACKUP_DIR, resolvedFileName);
   const currentDoc = await io.read(readyPath);
   const existingSkins = currentDoc.getRoot().listSkins();
 

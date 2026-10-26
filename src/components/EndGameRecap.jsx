@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS } from "../config/roles.config.js";
+import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, isWolfTeamRole } from "../config/roles.config.js";
 import {
   getCinemaAudioEngine,
   startCinemaStoryRecording,
@@ -24,6 +24,12 @@ const WINNER_CONFIG = {
     title: "Chán Đời Chiến Thắng!",
     subtitle: "Kẻ chán sống đã thực hiện được tâm nguyện trên giá treo cổ!",
     themeClass: "tanner",
+  },
+  lovers: {
+    emoji: "💘",
+    title: "Cặp Đôi Định Mệnh Chiến Thắng!",
+    subtitle: "Tình yêu vượt qua ranh giới Sói và Dân, nắm tay nhau sống sót đến cuối cùng!",
+    themeClass: "village",
   },
 };
 
@@ -107,7 +113,7 @@ function curateCinematicFrames(rawTimeline = []) {
   return cleaned;
 }
 
-function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap) {
+function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap, loversPublic = []) {
   const mvpAward = awards.find((a) => a.id === "mvp") || awards[0] || null;
   const mvpId = mvpAward?.playerId || players[0]?.id || null;
   const finalOverrides = {};
@@ -116,9 +122,10 @@ function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMa
     simAliveMap[p.id] = Boolean(p.alive);
     simRoleMap[p.id] = p.role || "villager";
     const won =
-      (winner === "wolf" && p.role === "wolf") ||
+      (winner === "wolf" && isWolfTeamRole(p.role)) ||
       (winner === "tanner" && p.role === "tanner") ||
-      (winner === "village" && p.role !== "wolf" && p.role !== "tanner");
+      (winner === "lovers" && (loversPublic.includes(p.id) || p.alive)) ||
+      (winner === "village" && !isWolfTeamRole(p.role) && p.role !== "tanner");
     if (won && p.alive) {
       finalOverrides[p.id] = { pose: "cheer" };
     }
@@ -169,7 +176,7 @@ function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMa
  * - CHỈ khi Đàn Sói đồng loạt cắn (`high_pack_hunt`) hoặc Cả Làng Vote / Xử Án (`high_tribunal`) mới kéo máy mở rộng lên cao!
  * - Mỗi cảnh tuân thủ Nhịp 3 Hồi chậm rãi (~5.2s – 6.6s): Lướt máy vào vai (0.95s) -> Ra đòn VFX -> Giữ nhịp lắng đọng hết câu kể MC!
  */
-function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = [], awards = [], winner = "village") {
+function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = [], awards = [], winner = "village", loversPublic = []) {
   const playerById = {};
   players.forEach((p) => {
     playerById[p.id] = p;
@@ -245,7 +252,12 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
       if (Array.isArray(frame.wolfIdsNow) && frame.wolfIdsNow.length > 0) {
         const wolfSet = new Set(frame.wolfIdsNow);
         players.forEach((p) => {
-          simRoleMap[p.id] = wolfSet.has(p.id) ? "wolf" : p.initialRole || p.role || "villager";
+          const baseRole = p.initialRole || p.role || "villager";
+          simRoleMap[p.id] = wolfSet.has(p.id)
+            ? baseRole === "alpha_wolf"
+              ? "alpha_wolf"
+              : "wolf"
+            : baseRole;
         });
       }
 
@@ -980,12 +992,258 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
           break;
         }
 
+        case "cupid_link": {
+          const partnerId = frame.coActorIds?.[0] || null;
+          const partnerName = partnerId ? playerById[partnerId]?.name || "Người thương" : "Người thương";
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "💘 BẮN TƠ HỒNG!",
+              badgeColor: "#ec4899",
+            };
+          }
+          if (frame.targetId) {
+            overrides[frame.targetId] = {
+              pose: "cheer",
+              badgeText: "💘 CẶP ĐÔI ĐỊNH MỆNH",
+              badgeColor: "#db2777",
+            };
+          }
+          if (partnerId) {
+            overrides[partnerId] = {
+              pose: "cheer",
+              badgeText: "💘 CẶP ĐÔI ĐỊNH MỆNH",
+              badgeColor: "#db2777",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 900,
+            tag: `🌙 ĐÊM ${dayNum} • THẦN TÌNH YÊU SE DUYÊN`,
+            title: `Thần Tình Yêu ${actorName} Kết Tơ Hồng Sinh Tử Cho ${targetName} & ${partnerName}`,
+            narration:
+              frame.caption ||
+              `Giữa Đêm ${dayNum}, mũi tên vàng của ${actorName} bay vút qua ánh lửa, gắn kết vận mệnh sinh tử của ${targetName} và ${partnerName}!`,
+            durationMs: 5600,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "cupid_link",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              secondaryTargetId: partnerId,
+            },
+            soundKey: "witch_save",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "alpha_convert": {
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "castLunge",
+              badgeText: "🩸 HUYẾT NGUYỆT ĐỒNG HÓA!",
+              badgeColor: "#be123c",
+            };
+          }
+          if (frame.targetId) {
+            simRoleMap[frame.targetId] = "wolf";
+            overrides[frame.targetId] = {
+              overrideRole: target?.initialRole || "villager",
+              pose: "cheer",
+              badgeText: "🩸➡️🐺 GIA NHẬP ĐÀN SÓI!",
+              badgeColor: "#dc2626",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "night",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 950,
+            tag: `🌙 ĐÊM ${dayNum} • HUYẾT NGUYỆT SÓI ĐẦU ĐÀN`,
+            title: `Sói Đầu Đàn ${actorName} Khắc Ấn Huyết Nguyệt Đồng Hóa ${targetName}!`,
+            narration:
+              frame.caption ||
+              `Thay vì kết liễu con mồi, Sói Đầu Đàn ${actorName} truyền dòng máu Huyết Nguyệt biến ${targetName} thành thành viên mới của bầy Sói!`,
+            durationMs: 6000,
+            mood: "night",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              shakeStrength: 0.78,
+              shakeDelayMs: 1200,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "alpha_convert",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "cursed_transform",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "lover_heartbreak": {
+          if (frame.targetId) {
+            simAliveMap[frame.targetId] = false;
+            overrides[frame.targetId] = {
+              simAlive: true,
+              pose: "hitRecoil",
+              badgeText: "💔 TƠ HỒNG ĐỨT ĐOẠN!",
+              badgeColor: "#ec4899",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "dawn",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 800,
+            tag: `💔 NGÀY ${dayNum} • BI KỊCH TÌNH NHÂN`,
+            title: `Tơ Hồng Đứt Đoạn — ${targetName} Quyên Sinh Theo Người Thương ${actorName}!`,
+            narration:
+              frame.caption ||
+              `Không thể chịu đựng nỗi đau mất đi người thương ${actorName}, ${targetName} quỳ sụp xuống và trút hơi thở cuối cùng theo lời thề sinh tử!`,
+            durationMs: 5700,
+            mood: "dawn",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.targetId,
+              shakeStrength: 0.55,
+              shakeDelayMs: 1100,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "lover_heartbreak",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "story",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "hunter_shot": {
+          const shotRoleLabel = ROLE_LABELS[frame.targetRole || simRoleMap[frame.targetId]] || "Người chơi";
+          if (frame.actorId) {
+            simAliveMap[frame.actorId] = false;
+            overrides[frame.actorId] = {
+              simAlive: true,
+              pose: "castLunge",
+              badgeText: "🏹 VIÊN ĐẠN BẠC CUỐI!",
+              badgeColor: "#e11d48",
+            };
+          }
+          if (frame.targetId) {
+            simAliveMap[frame.targetId] = false;
+            overrides[frame.targetId] = {
+              simAlive: true,
+              pose: "hitRecoil",
+              badgeText: "🩸 TRÚNG ĐẠN THỢ SĂN!",
+              badgeColor: "#dc2626",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "tribunal",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 900,
+            tag: `🏹 NGÀY ${dayNum} • ĐẠN BẠC TRẢ THÙ`,
+            title: `Thợ Săn ${actorName} Bóp Cò Gục Ngã ${targetName} (${shotRoleLabel})!`,
+            narration:
+              frame.caption ||
+              `Dồn chút sinh lực cuối cùng trước khi ngã xuống, Thợ Săn ${actorName} giương nỏ phóng viên đạn bạc xuyên thẳng qua ${targetName}!`,
+            durationMs: 5900,
+            mood: "dusk_trial",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_pov",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+              shakeStrength: 0.92,
+              shakeDelayMs: 1350,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "hunter_shot",
+              sourceId: frame.actorId,
+              targetId: frame.targetId,
+            },
+            soundKey: "wolf_attack",
+            lookAtSeatId: frame.targetId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
+        case "mayor_reveal": {
+          if (frame.actorId) {
+            overrides[frame.actorId] = {
+              pose: "cheer",
+              badgeText: "👑 QUYỀN TRƯỢNG X2!",
+              badgeColor: "#d97706",
+            };
+          }
+          beats.push({
+            id: `rf_${seqKey}`,
+            kind: "day",
+            day: dayNum,
+            elapsedMs: frame.elapsedMs,
+            act1SetupMs: 750,
+            tag: `👑 NGÀY ${dayNum} • TRƯỞNG LÀNG LỘ DIỆN`,
+            title: `${actorName} Công Bố Quyền Trượng Trưởng Làng — Nhân Đôi Lá Phiếu (x2)!`,
+            narration:
+              frame.caption ||
+              `Giữa vòng tròn căng thẳng, ${actorName} giơ cao Quyền Trượng Vàng khẳng định quyền uy Trưởng Làng — mọi lá phiếu từ nay mang sức nặng gấp đôi!`,
+            durationMs: 5400,
+            mood: "dawn",
+            cameraShot: {
+              shotKey: `shot_${seqKey}`,
+              shotType: "actor_portrait",
+              targetId: frame.actorId,
+              shakeStrength: 0.5,
+              shakeDelayMs: 1050,
+            },
+            vfxCue: {
+              cueId: `cue_${seqKey}`,
+              vfxType: "mayor_reveal",
+              sourceId: frame.actorId,
+              targetId: frame.actorId,
+            },
+            soundKey: "mvp_crown",
+            lookAtSeatId: frame.actorId,
+            actorStates: cloneActorSnapshot(overrides),
+          });
+          break;
+        }
+
         default:
           break;
       }
     });
 
-    beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap));
+    beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap, loversPublic));
     return beats;
   }
 
@@ -1300,7 +1558,7 @@ function buildTrueSpaceReplayBeats(replayTimeline = [], history = [], players = 
     }
   });
 
-  beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap));
+  beats.push(buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMap, simRoleMap, loversPublic));
   return beats;
 }
 
@@ -1322,7 +1580,7 @@ function deriveBeatActorChoreography(beat, players = []) {
         const st = states[p.id];
         const aliveNow = st && typeof st.simAlive === "boolean" ? st.simAlive : p.alive !== false;
         const roleNow = st?.overrideRole || p.role;
-        return aliveNow && roleNow === "wolf";
+        return aliveNow && isWolfTeamRole(roleNow);
       })
       .map((p) => p.id);
 
@@ -1451,6 +1709,79 @@ function deriveBeatActorChoreography(beat, players = []) {
       break;
     }
 
+    case "cupid_link": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "cupid_love_arrow",
+          targetId: cue.targetId,
+          secondaryTargetId: cue.secondaryTargetId || null,
+        };
+      }
+      impactFraction = 0.44;
+      baseChoreoMs = 4000;
+      break;
+    }
+
+    case "alpha_convert": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "alpha_blood_convert",
+          targetId: cue.targetId,
+        };
+      }
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "cursed_blood_metamorph",
+          targetId: cue.targetId,
+        };
+      }
+      impactFraction = 0.45;
+      baseChoreoMs = 4300;
+      break;
+    }
+
+    case "lover_heartbreak": {
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "lovers_heartbreak_cascade",
+          targetId: cue.sourceId || cue.targetId,
+        };
+      }
+      impactFraction = 0.38;
+      baseChoreoMs = 4100;
+      break;
+    }
+
+    case "hunter_shot": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "hunter_last_shot",
+          targetId: cue.targetId,
+        };
+      }
+      if (cue.targetId) {
+        map[cue.targetId] = {
+          actionType: "victim_hit_recoil",
+          targetId: cue.sourceId,
+        };
+      }
+      impactFraction = 0.46;
+      baseChoreoMs = 4100;
+      break;
+    }
+
+    case "mayor_reveal": {
+      if (cue.sourceId) {
+        map[cue.sourceId] = {
+          actionType: "mayor_decree_slam",
+          targetId: cue.sourceId,
+        };
+      }
+      impactFraction = 0.42;
+      baseChoreoMs = 3800;
+      break;
+    }
+
     case "day_point": {
       const votesSnap = cue.votesDetail || {};
       const voters = Object.entries(votesSnap).filter(([, tid]) => tid === cue.targetId);
@@ -1516,6 +1847,7 @@ export default function EndGameRecap({
   onTogglePostGameChat = null,
   players = [],
   winner = "village",
+  loversPublic = [],
 }) {
   const [beatIndex, setBeatIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -1547,8 +1879,8 @@ export default function EndGameRecap({
   const winConfig = WINNER_CONFIG[winner] || WINNER_CONFIG.village;
 
   const storyBeats = useMemo(
-    () => buildTrueSpaceReplayBeats(replayTimeline, history, players, awards, winner),
-    [replayTimeline, history, players, awards, winner]
+    () => buildTrueSpaceReplayBeats(replayTimeline, history, players, awards, winner, loversPublic),
+    [replayTimeline, history, players, awards, winner, loversPublic]
   );
 
   const safeBeatIdx = Math.min(beatIndex, Math.max(0, storyBeats.length - 1));
@@ -2156,8 +2488,9 @@ export default function EndGameRecap({
                     const isFlipped = Boolean(flippedMap[p.id]);
                     const roleKey = p.role || "villager";
                     const wasCursed = p.initialRole && p.initialRole !== roleKey;
+                    const isLoverCard = Array.isArray(loversPublic) && loversPublic.includes(p.id);
                     const team =
-                      roleKey === "wolf" ? "wolf" : roleKey === "tanner" ? "neutral" : "village";
+                      isWolfTeamRole(roleKey) ? "wolf" : roleKey === "tanner" ? "neutral" : "village";
 
                     return (
                       <div
@@ -2183,6 +2516,11 @@ export default function EndGameRecap({
                             {wasCursed && (
                               <span style={{ fontSize: "10px", color: "#c084fc", fontWeight: 700 }}>
                                 (Gốc: {ROLE_EMOJIS[p.initialRole]} {ROLE_LABELS[p.initialRole]})
+                              </span>
+                            )}
+                            {isLoverCard && (
+                              <span style={{ fontSize: "10px", color: "#f472b6", fontWeight: 700 }}>
+                                💘 Cặp Đôi Định Mệnh
                               </span>
                             )}
                             <span className="card-flip-player-name">{p.name}</span>

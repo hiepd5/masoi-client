@@ -9,7 +9,7 @@ import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
 import { HudGameClock, HudPhaseCountdown, HudPhaseProgressBar } from "./HudTimer.jsx";
 
-import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS } from '../config/roles.config.js';
+import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS, isWolfTeamRole } from '../config/roles.config.js';
 import VillageBackdrop from './VillageBackdrop.jsx';
 import Scene3DErrorBoundary from '../3d/components/Scene3DErrorBoundary.jsx';
 import { isDevArchitectAllowed } from '../3d/editor/defaultVillageLayout.js';
@@ -18,10 +18,12 @@ const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
 
 
 const PHASE_LABELS = {
+  night_cupid: '💘 Thần Tình Yêu Se Duyên',
   night_guard: '🌙 Bảo Vệ Thức Dậy',
   night_wolf: '🌙 Đêm Sói Săn Mồi',
   night_witch: '🌙 Phù Thủy Hành Động',
   night_seer: '🌙 Tiên Tri Nhìn Xa',
+  hunter_revenge: '🏹 Hơi Thở Cuối Của Thợ Săn',
   day_reveal: '☀️ Bình Minh',
   day_discuss: '☀️ Thảo Luận',
   day_nominate: '🗳️ Đề Cử',
@@ -32,11 +34,13 @@ const PHASE_LABELS = {
 
 // Banner ngữ cảnh — dẫn dắt người chơi biết phải làm gì
 const ACTION_BANNERS = {
+  night_cupid:     { icon:'💘', color:'#ec4899', text:'Đêm đầu tiên: Click chọn 2 người trên vòng ghế để kết duyên sinh tử!' },
   night_guard:     { icon:'🛡️', color:'#3b82f6', text:'Chọn 1 người để bảo vệ đêm nay. Không được chọn trùng đêm trước!' },
   night_wolf:      { icon:'🐺', color:'#ef4444', text:'Cùng bầy sói thống nhất chọn 1 con mồi. Click vào người đó!' },
   night_witch:     { icon:'🧪', color:'#8b5cf6', text:'Có người bị sói tấn công. Bạn có muốn cứu không? Hoặc dùng bình độc?' },
   night_witch_nd:  { icon:'🧪', color:'#8b5cf6', text:'Đêm nay sói không tấn công ai. Bạn có muốn dùng bình độc không?' },
   night_seer:      { icon:'🔮', color:'#6366f1', text:'Click vào 1 người để soi. Đỏ = Sói 🔴 — Xanh = Người tốt 🔵' },
+  hunter_revenge:  { icon:'🏹', color:'#e11d48', text:'Hơi thở cuối! Click vào 1 người còn sống để bắn viên đạn bạc trả thù!' },
   day_reveal:      { icon:'☀️', color:'#f59e0b', text:'Bình minh ló dạng. Xem có ai bị tấn công đêm qua không...' },
   day_discuss:     { icon:'💬', color:'#10b981', text:'Thảo luận để tìm Sói! Nêu nghi ngờ, chia sẻ thông tin.' },
   day_nominate:    { icon:'🗳️', color:'#f59e0b', text:'Click vào người bạn nghi là Sói để đề cử. Ai đủ phiếu sẽ lên ghế nóng!' },
@@ -46,13 +50,21 @@ const ACTION_BANNERS = {
 };
 
 
-export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, setMcVoiceEnabled }) {
+export default function PlayingView({
+  room,
+  socketRef,
+  mcLog,
+  mcVoiceEnabled,
+  setMcVoiceEnabled,
+  onLeave = null,
+}) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
   const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
   const me = room.players.find((p) => p.id === myPlayerId);
   
   const [selectedId, setSelectedId] = useState(null);
+  const [cupidTargets, setCupidTargets] = useState([]);
   const [wolfChatInput, setWolfChatInput] = useState("");
   const [villageChatInput, setVillageChatInput] = useState("");
   const [localBubbleChatLog, setLocalBubbleChatLog] = useState({});
@@ -68,7 +80,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
   // Kích hoạt hoạt cảnh ngắn 3D + VFX ngay trên màn hình người thực hiện (100% Zero-Leak — không phát sang máy người khác!)
   const triggerMyMicroChoreo = useCallback(
-    (actionType, targetId = null, durationMs = 2800) => {
+    (actionType, targetId = null, durationMs = 2800, secondaryTargetId = null) => {
       if (!me?.id || !actionType) return;
       if (microChoreoTimerRef.current) {
         clearTimeout(microChoreoTimerRef.current);
@@ -80,6 +92,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         actorId: me.id,
         actionType,
         targetId,
+        secondaryTargetId,
         startedAtPerfMs: nowPerf,
         durationMs,
       });
@@ -122,9 +135,11 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   const prevIsNightRef = useRef(null);
   const touchStartXRef = useRef(null);
 
-  // Tutorial 3 bước — hiện khi game bắt đầu
+  const isMyHunterRevenge = g.nightDayPhase === "hunter_revenge" && g.hunterPendingId === me?.id;
+
+  // Tutorial 3 bước — hiện khi game bắt đầu (kể cả khi mở màn bằng Đêm 1 của Cupid)
   useEffect(() => {
-    if (me?.role && g.dayNumber === 1 && g.nightDayPhase === 'night_guard') {
+    if (me?.role && g.dayNumber === 1 && (g.nightDayPhase === 'night_cupid' || g.nightDayPhase === 'night_guard')) {
       setTutorialStep(1);
       setTutorialSeconds(7);
     }
@@ -168,14 +183,14 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     }
   }, [g.seerLastResult?.targetId]);
 
-  // Dead overlay: hiện 1 lần khi người chơi vừa chết (chỉ khi ván chưa kết thúc!)
+  // Dead overlay: hiện 1 lần khi người chơi vừa chết (hoãn lại nếu là Thợ Săn đang gồng hơi thở cuối bắn trả thù!)
   useEffect(() => {
-    const isAliveNow = me?.alive !== false;
-    if (prevAliveRef.current === true && !isAliveNow && !g.winner) {
+    const isAliveOrHoldingBreath = me?.alive !== false || isMyHunterRevenge;
+    if (prevAliveRef.current === true && !isAliveOrHoldingBreath && !g.winner) {
       setShowDeadOverlay(true);
     }
-    prevAliveRef.current = isAliveNow ?? true;
-  }, [me?.alive, g.winner]);
+    prevAliveRef.current = isAliveOrHoldingBreath ?? true;
+  }, [me?.alive, isMyHunterRevenge, g.winner]);
 
   // Ngay khi Kết Game (g.winner): tự động dẹp sạch mọi popup che khuất để mở Rạp Chiếu Replay Không Gian Thật 100vw!
   useEffect(() => {
@@ -217,6 +232,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   useEffect(() => {
     setHasActed(false);
     setSelectedId(null);
+    setCupidTargets([]);
     setMySkipVote(false);
     setShowSeerPopover(false);
     setActionFeedback("");
@@ -228,11 +244,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   }, [g.nightDayPhase]);
 
   const isNight = g.nightDayPhase.startsWith("night_");
-  const isMyTurn = 
+  const isMyTurn =
+    (g.nightDayPhase === "night_cupid" && me?.role === "cupid") ||
     (g.nightDayPhase === "night_guard" && me?.role === "guard") ||
-    (g.nightDayPhase === "night_wolf" && me?.role === "wolf") ||
+    (g.nightDayPhase === "night_wolf" && isWolfTeamRole(me?.role)) ||
     (g.nightDayPhase === "night_witch" && me?.role === "witch") ||
-    (g.nightDayPhase === "night_seer" && me?.role === "seer");
+    (g.nightDayPhase === "night_seer" && me?.role === "seer") ||
+    isMyHunterRevenge;
 
   // Hiệu ứng chuyển ngày/đêm: mặt trăng đi xuống (đêm) / mặt trời đi lên (ngày)
   useEffect(() => {
@@ -351,6 +369,84 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     }, 2800);
   }
 
+  function handleSelectSeat(id) {
+    if (!id) {
+      setSelectedId(null);
+      return;
+    }
+    if (g.nightDayPhase === "night_cupid" && me?.role === "cupid" && me?.alive && !hasActed) {
+      const clickedPlayer = room.players.find((p) => p.id === id);
+      if (!clickedPlayer?.alive) return;
+      SFX.select();
+      setCupidTargets((prev) => {
+        if (prev.includes(id)) return prev.filter((x) => x !== id);
+        if (prev.length < 2) return [...prev, id];
+        return [prev[1], id];
+      });
+      return;
+    }
+    SFX.select();
+    setSelectedId(id);
+  }
+
+  function handleCupidConfirm() {
+    if (cupidTargets.length !== 2) return;
+    const [firstId, secondId] = cupidTargets;
+    SFX.vote();
+    socketRef.current.emit("action:cupidLink", { targetIds: [firstId, secondId] }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+        return;
+      }
+      triggerMyMicroChoreo("cupid_love_arrow", firstId, 3200, secondId);
+      setHasActed(true);
+    });
+  }
+
+  function handleAlphaToggle() {
+    const nextEnabled = !Boolean(g.alphaWolfInfo?.convertTonight);
+    SFX.select();
+    socketRef.current.emit("action:wolfAlphaToggle", { enabled: nextEnabled }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+        return;
+      }
+      if (res?.alphaConvertTonight) {
+        triggerMyMicroChoreo("alpha_blood_convert", selectedId || me?.id, 2600);
+        flashActionFeedback("🩸 Đã BẬT Huyết Nguyệt: Con mồi đêm nay sẽ hóa thành Sói!");
+      } else {
+        flashActionFeedback("🐺 Đã tắt Huyết Nguyệt — chuyển về cắn hạ sát bình thường.");
+      }
+    });
+  }
+
+  function handleMayorReveal() {
+    SFX.bell();
+    socketRef.current.emit("action:mayorReveal", {}, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+        return;
+      }
+      triggerMyMicroChoreo("mayor_decree_slam", me?.id, 2800);
+      flashActionFeedback("👑 Đã công bố Quyền Trượng Trưởng Làng — Mọi lá phiếu x2!");
+    });
+  }
+
+  function handleHunterShoot() {
+    if (!selectedId) return;
+    const targetNow = selectedId;
+    SFX.death();
+    socketRef.current.emit("action:hunterShoot", { targetId: targetNow }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+        return;
+      }
+      triggerMyMicroChoreo("hunter_last_shot", targetNow, 2800);
+      setHasActed(true);
+      setSelectedId(null);
+    });
+  }
+
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
     const targetNow = selectedId;
@@ -389,6 +485,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         setHasActed(true);
         setSelectedId(null);
       });
+    } else if (g.nightDayPhase === "hunter_revenge") {
+      handleHunterShoot();
     } else if (g.nightDayPhase === "day_nominate") {
       SFX.vote();
       socketRef.current.emit("action:nominationVote", { targetId: targetNow }, (res) => {
@@ -452,7 +550,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
   // --- Computed: Action Banner ---
   const getActionBanner = () => {
-    if (!me?.alive || g.winner) return null;
+    if ((!me?.alive && !isMyHunterRevenge) || g.winner) return null;
     const phase = g.nightDayPhase;
     if (isNight && !isMyTurn) return null; // đêm: chỉ hiện cho người đến lượt
     if (phase === 'night_witch') {
@@ -462,29 +560,55 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
   };
   const actionBanner = getActionBanner();
 
-  // --- Computed: live Sói/Dân count (Zero-Leak & không bị báo 0 cho Dân Làng) ---
+  // --- Computed: live Sói/Dân count (Zero-Leak & bao gồm cả Sói Đầu Đàn alpha_wolf) ---
   const alivePlayers = room.players.filter(p => p.alive);
-  const canSeeExactWolves = me?.role === 'wolf' || Boolean(g.winner);
+  const canSeeExactWolves = isWolfTeamRole(me?.role) || Boolean(g.winner);
+  const configuredWolfTotal = (g.roleCounts?.wolf || 0) + (g.roleCounts?.alpha_wolf || 0);
   const aliveWolfCount = canSeeExactWolves
-    ? alivePlayers.filter(p => (p.id === me?.id && me?.role === 'wolf') || g.wolfTeammates?.includes(p.id) || p.role === 'wolf').length
-    : Math.max(1, (g.roleCounts?.wolf || 1) - (g.deadWolfCount || 0));
-  const hasCursedMystery = !canSeeExactWolves && (g.roleCounts?.cursed || 0) > 0;
+    ? alivePlayers.filter(p => (p.id === me?.id && isWolfTeamRole(me?.role)) || g.wolfTeammates?.includes(p.id) || isWolfTeamRole(p.role)).length
+    : Math.max(1, (configuredWolfTotal || 1) - (g.deadWolfCount || 0));
+  const hasCursedMystery = !canSeeExactWolves && ((g.roleCounts?.cursed || 0) > 0 || (g.roleCounts?.alpha_wolf || 0) > 0);
   const aliveVillageCount = Math.max(0, alivePlayers.length - aliveWolfCount);
 
-  // --- Computed: final vote tally ---
-  const hangCount  = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='hang').length  : 0;
-  const spareCount = g.finalVotes ? Object.values(g.finalVotes).filter(v => v==='spare').length : 0;
+  const myLoverPartner = g.myLoverPartnerId
+    ? room.players.find((p) => p.id === g.myLoverPartnerId) || null
+    : null;
+  const revealedMayorPlayer = g.mayorRevealedId
+    ? room.players.find((p) => p.id === g.mayorRevealedId) || null
+    : null;
+  const fallenHunterPlayer = g.hunterPendingId
+    ? room.players.find((p) => p.id === g.hunterPendingId) || null
+    : null;
+
+  // --- Computed: final vote tally (có tính trọng số phiếu x2 của Trưởng Làng đã lộ diện) ---
+  const voteWeightOf = (voterId) => (g.mayorRevealedId && g.mayorRevealedId === voterId ? 2 : 1);
+  const hangCount = g.finalVotes
+    ? Object.entries(g.finalVotes).reduce((sum, [vid, v]) => sum + (v === 'hang' ? voteWeightOf(vid) : 0), 0)
+    : 0;
+  const spareCount = g.finalVotes
+    ? Object.entries(g.finalVotes).reduce((sum, [vid, v]) => sum + (v === 'spare' ? voteWeightOf(vid) : 0), 0)
+    : 0;
   const totalAlive = alivePlayers.length;
-  const hangNeeded = Math.floor(totalAlive / 2) + 1;
+  const totalVotePool = totalAlive + (revealedMayorPlayer?.alive ? 1 : 0);
+  const hangNeeded = Math.floor(totalVotePool / 2) + 1;
   const skipVoteCount = g.skipDiscussVotes ? Object.keys(g.skipDiscussVotes).length : 0;
 
   // --- Computed: Contextual Action cho cả nút nổi 3D [✓] lẫn Thanh Pill Kính Mờ sát đáy ---
   const selectedPlayer = room.players.find((p) => p.id === selectedId) || null;
   const selectedActionMeta = (() => {
-    if (!me?.alive || g.winner || !selectedPlayer || !selectedPlayer.alive) return null;
+    if ((!me?.alive && !isMyHunterRevenge) || g.winner || !selectedPlayer || !selectedPlayer.alive) return null;
     const phase = g.nightDayPhase;
     const clearFn = () => setSelectedId(null);
 
+    if (phase === "hunter_revenge" && isMyHunterRevenge && !hasActed) {
+      return {
+        canConfirm: true,
+        label: "🏹 Bắn Đạn Bạc",
+        accent: "#e11d48",
+        onConfirm: handleHunterShoot,
+        onClear: clearFn,
+      };
+    }
     if (phase === "night_guard" && isMyTurn && !hasActed) {
       return { canConfirm: true, label: "🛡️ Bảo vệ", accent: "#2563eb", onConfirm: handleAction, onClear: clearFn };
     }
@@ -493,7 +617,13 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       if (isFellowWolf) {
         return { canConfirm: false, invalidReason: "Không thể cắn đồng bọn Sói", onClear: clearFn };
       }
-      return { canConfirm: true, label: "🐺 Cắn", accent: "#dc2626", onConfirm: handleAction, onClear: clearFn };
+      return {
+        canConfirm: true,
+        label: g.alphaWolfInfo?.convertTonight ? "🩸 Đồng hóa" : "🐺 Cắn",
+        accent: g.alphaWolfInfo?.convertTonight ? "#be123c" : "#dc2626",
+        onConfirm: handleAction,
+        onClear: clearFn,
+      };
     }
     if (phase === "night_witch" && isMyTurn && !hasActed && !g.witchInfo?.usedPoison) {
       return {
@@ -525,6 +655,12 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     return null;
   })();
 
+  const canRevealMayorNow =
+    me?.role === "mayor" &&
+    me?.alive &&
+    !g.mayorRevealedId &&
+    ["day_reveal", "day_discuss", "day_nominate", "day_defense", "day_final_vote"].includes(g.nightDayPhase);
+
 
   if (g.winner && !g.history) {
     return <div className="playing-view-container"><div className="waiting-text">Đang tải dữ liệu tổng kết...</div></div>;
@@ -536,7 +672,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
     <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass} ${g.winner && viewMode === '3d' ? 'replay-cinema-active' : ''}`}>
       <AmbientSound
         isNight={isNight}
-        isTense={g.nightDayPhase === 'day_final_vote'}
+        isTense={g.nightDayPhase === 'day_final_vote' || g.nightDayPhase === 'hunter_revenge'}
         enabled={mcVoiceEnabled}
       />
       
@@ -550,6 +686,32 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           <span className="role-badge">
             {ROLE_EMOJIS[me?.role]} {me?.role ? ROLE_LABELS[me.role] : 'Chết'}
           </span>
+          {myLoverPartner && (
+            <span
+              className="role-badge"
+              title={`Bạn được kết duyên sinh tử với ${myLoverPartner.name}. Nếu 1 người chết, người kia sẽ chết theo!`}
+              style={{
+                background: 'rgba(236, 72, 153, 0.22)',
+                borderColor: 'rgba(244, 114, 182, 0.65)',
+                color: '#fbcfe8',
+              }}
+            >
+              💘 {myLoverPartner.name} {!myLoverPartner.alive ? '💀' : ''}
+            </span>
+          )}
+          {revealedMayorPlayer && (
+            <span
+              className="role-badge"
+              title={`Trưởng Làng ${revealedMayorPlayer.name} đã công bố Quyền Trượng (Lá phiếu x2)`}
+              style={{
+                background: 'rgba(245, 158, 11, 0.24)',
+                borderColor: 'rgba(253, 224, 71, 0.72)',
+                color: '#fef08a',
+              }}
+            >
+              👑 {revealedMayorPlayer.id === me?.id ? 'Phiếu x2' : `${revealedMayorPlayer.name} (x2)`}
+            </span>
+          )}
           <HudPhaseCountdown
             phaseEndsAt={g.phaseEndsAt}
             isNight={isNight}
@@ -604,7 +766,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           </button>
 
           {/* Live Sói/Dân counter */}
-          <div className="hud-score" title={hasCursedMystery ? 'Có vai Kẻ Bị Nguyền trong ván (số Sói có thể tăng nếu bị cắn)' : 'Số Sói vs Dân ước tính còn sống'}>
+          <div className="hud-score" title={hasCursedMystery ? 'Có vai Kẻ Bị Nguyền hoặc Sói Đầu Đàn trong ván (số Sói có thể tăng nếu đồng hóa)' : 'Số Sói vs Dân ước tính còn sống'}>
             <span className="hud-wolf">🐺 {aliveWolfCount}{hasCursedMystery ? '?' : ''}</span>
             <span className="hud-vs">vs</span>
             <span className="hud-village">👥 {aliveVillageCount}</span>
@@ -619,6 +781,34 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             </button>
           )}
           <FullscreenButton />
+          {onLeave && (
+            <button
+              type="button"
+              className="btn-mc-voice"
+              onClick={() => {
+                const realHumans = (room.players || []).filter((p) => !p.isBot).length;
+                if (!g.winner && me?.alive && realHumans > 1) {
+                  if (!window.confirm("Bạn muốn rời khỏi ván đấu đang diễn ra và về Sảnh chính?")) {
+                    return;
+                  }
+                }
+                onLeave();
+              }}
+              title="Rời phòng về Trang chủ danh sách phòng"
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "4px 10px",
+                fontWeight: 700,
+                fontSize: "0.78rem",
+                background: "rgba(239, 68, 68, 0.18)",
+                borderColor: "rgba(239, 68, 68, 0.45)",
+                color: "#fca5a5",
+              }}
+            >
+              🚪 Rời
+            </button>
+          )}
         </div>
       </div>
 
@@ -694,7 +884,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     isNight={isNight}
                     myRole={me?.role}
                     hasWinner={Boolean(g.winner)}
-                    onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
+                    onSelectPlayer={handleSelectSeat}
                     selectedPlayerId={selectedId}
                     selectedActionMeta={selectedActionMeta}
                     wolfVictimId={g.witchInfo?.victimId}
@@ -705,6 +895,11 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     finalVotes={g.finalVotes}
                     defendantId={(g.nightDayPhase === "day_defense" || g.nightDayPhase === "day_final_vote") ? g.hotSeatQueue?.[g.hotSeatIndex] : null}
                     wolfTeammates={g.wolfTeammates || []}
+                    alphaWolfId={g.alphaWolfInfo?.alphaWolfId || null}
+                    mayorRevealedId={g.mayorRevealedId || null}
+                    myLoverPartnerId={g.myLoverPartnerId || null}
+                    hunterPendingId={g.hunterPendingId || null}
+                    cupidSelectedIds={cupidTargets}
                     speakingIds={speakingIds}
                     reactions={reactions}
                     recapStageState={recapStageState}
@@ -726,7 +921,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                 me={me}
                 phase={g.nightDayPhase}
                 myRole={me?.role}
-                onSelectPlayer={(id) => { SFX.select(); setSelectedId(id); }}
+                onSelectPlayer={handleSelectSeat}
                 selectedPlayerId={selectedId}
                 wolfVictimId={g.witchInfo?.victimId}
                 nightDeaths={g.nightDeaths}
@@ -749,8 +944,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             <EmojiReactions socketRef={socketRef} myName={me?.name} />
           )}
 
-          {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Floating Glass Dock cho cả 3D & 2D) */}
-          {!g.winner && me?.alive && (
+          {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Floating Glass Dock cho cả 3D & 2D + Thợ Săn bắn trả thù) */}
+          {!g.winner && (me?.alive || isMyHunterRevenge) && (
             <div className="action-panel compact-floating-dock">
               {/* Popover Lịch sử Tiên Tri (chỉ mở khi bấm nút 🔮 Đã soi) */}
               {showSeerPopover && seerHistory.length > 0 && (
@@ -773,6 +968,40 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
               {actionFeedback ? (
                 <span className="dock-hint dock-feedback">{actionFeedback}</span>
+              ) : g.nightDayPhase === "hunter_revenge" ? (
+                /* ================= PHÁP TRƯỜNG / BÌNH MINH: THỢ SĂN BẮN ĐẠN BẠC CUỐI CÙNG ================= */
+                <div className="dock-row">
+                  {isMyHunterRevenge ? (
+                    hasActed ? (
+                      <span className="dock-hint dock-done">🏹 Đã bóp cò viên đạn bạc cuối cùng!</span>
+                    ) : selectedActionMeta?.canConfirm ? (
+                      <>
+                        <span className="dock-target-label">
+                          🎯 <strong>{selectedPlayer?.name}</strong>
+                        </span>
+                        <button
+                          type="button"
+                          className="dock-btn dock-btn-confirm"
+                          style={{ background: selectedActionMeta.accent }}
+                          onClick={selectedActionMeta.onConfirm}
+                        >
+                          ✓ {selectedActionMeta.label}
+                        </button>
+                        <button type="button" className="dock-icon-close" onClick={selectedActionMeta.onClear} title="Bỏ chọn">
+                          ✕
+                        </button>
+                      </>
+                    ) : (
+                      <span className="dock-hint" style={{ color: '#fda4af' }}>
+                        🏹 Hơi thở cuối! Click vào 1 người còn sống trên vòng ghế để bắn trả thù!
+                      </span>
+                    )
+                  ) : (
+                    <span className="dock-hint" style={{ color: '#fda4af' }}>
+                      🏹 Thợ Săn <strong>{fallenHunterPlayer?.name || ''}</strong> đang giương nỏ ngắm bắn viên đạn bạc cuối cùng...
+                    </span>
+                  )}
+                </div>
               ) : isNight ? (
                 /* ================= BAN ĐÊM ================= */
                 isMyTurn ? (
@@ -792,6 +1021,54 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                         >
                           🔮 Đã soi ({seerHistory.length})
                         </button>
+                      )}
+                    </div>
+                  ) : g.nightDayPhase === "night_cupid" ? (
+                    /* Đêm 1: Thần Tình Yêu chọn 2 người để kết duyên */
+                    <div className="dock-row">
+                      {cupidTargets.length === 0 ? (
+                        <span className="dock-hint">
+                          💘 Đêm đầu tiên: Click chọn <strong>2 người</strong> trên vòng ghế để ghép đôi sinh tử!
+                        </span>
+                      ) : (
+                        <>
+                          {cupidTargets.map((tid, idx) => {
+                            const tp = room.players.find((p) => p.id === tid);
+                            return (
+                              <span
+                                key={tid}
+                                className="dock-chip"
+                                style={{
+                                  background: 'rgba(236, 72, 153, 0.24)',
+                                  border: '1px solid rgba(244, 114, 182, 0.65)',
+                                  color: '#fbcfe8',
+                                }}
+                              >
+                                💘 #{idx + 1}: {tp?.name || tid}
+                              </span>
+                            );
+                          })}
+                          {cupidTargets.length === 2 ? (
+                            <button
+                              type="button"
+                              className="dock-btn dock-btn-confirm"
+                              style={{ background: 'linear-gradient(135deg, #ec4899, #db2777)' }}
+                              onClick={handleCupidConfirm}
+                            >
+                              💘 Kết Duyên Sinh Tử
+                            </button>
+                          ) : (
+                            <span className="dock-hint">Chọn thêm 1 người nữa...</span>
+                          )}
+                          <button
+                            type="button"
+                            className="dock-icon-close"
+                            onClick={() => setCupidTargets([])}
+                            title="Chọn lại"
+                          >
+                            ✕
+                          </button>
+                        </>
                       )}
                     </div>
                   ) : g.nightDayPhase === "night_witch" ? (
@@ -834,7 +1111,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                       </button>
                     </div>
                   ) : (
-                    /* Lượt Bảo Vệ / Sói / Tiên Tri */
+                    /* Lượt Bảo Vệ / Sói (+ Sói Đầu Đàn) / Tiên Tri */
                     <div className="dock-row">
                       {selectedActionMeta?.canConfirm ? (
                         <>
@@ -867,6 +1144,36 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                         <span className="dock-hint">
                           {actionBanner ? `${actionBanner.icon} ${actionBanner.text}` : "Chọn 1 người trên vòng ghế"}
                         </span>
+                      )}
+
+                      {g.nightDayPhase === "night_wolf" && me?.role === "alpha_wolf" && (
+                        g.alphaWolfInfo?.usedConvert ? (
+                          <span className="dock-chip chip-muted" title="Đã dùng quyền Huyết Nguyệt trong ván này">
+                            🩸 Hết Đồng Hóa
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="dock-btn"
+                            onClick={handleAlphaToggle}
+                            title="1 lần/ván: Biến con mồi bị bầy Sói cắn đêm nay thành Ma Sói thay vì giết chết"
+                            style={{
+                              background: g.alphaWolfInfo?.convertTonight
+                                ? 'linear-gradient(135deg, #e11d48, #9f1239)'
+                                : 'rgba(159, 18, 57, 0.25)',
+                              border: g.alphaWolfInfo?.convertTonight
+                                ? '1px solid #fda4af'
+                                : '1px solid rgba(244, 63, 94, 0.5)',
+                              color: '#ffe4e6',
+                              fontWeight: 800,
+                              boxShadow: g.alphaWolfInfo?.convertTonight
+                                ? '0 0 14px rgba(225, 29, 72, 0.55)'
+                                : 'none',
+                            }}
+                          >
+                            {g.alphaWolfInfo?.convertTonight ? '🩸 Huyết Nguyệt: BẬT' : '🩸 Đồng Hóa (1 lần)'}
+                          </button>
+                        )
                       )}
 
                       {me?.role === "seer" && seerHistory.length > 0 && (
@@ -989,6 +1296,24 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
                     </span>
                   )}
 
+                  {canRevealMayorNow && (
+                    <button
+                      type="button"
+                      className="dock-btn"
+                      onClick={handleMayorReveal}
+                      title="Lộ diện Trưởng Làng vĩnh viễn và nhân đôi (x2) sức nặng lá phiếu của bạn!"
+                      style={{
+                        background: 'linear-gradient(135deg, #f59e0b, #b45309)',
+                        border: '1px solid #fde047',
+                        color: '#fffbeb',
+                        fontWeight: 800,
+                        boxShadow: '0 2px 12px rgba(245, 158, 11, 0.45)',
+                      }}
+                    >
+                      👑 Công Bố Quyền Trượng (x2)
+                    </button>
+                  )}
+
                   {me?.role === "seer" && seerHistory.length > 0 && (
                     <button
                       type="button"
@@ -1010,7 +1335,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             <VoiceRoom 
               socketRef={socketRef} 
               isNight={isNight} 
-              myRole={me?.role} 
+              myRole={isWolfTeamRole(me?.role) ? "wolf" : me?.role} 
               isAlive={me?.alive}
               myId={me?.id}
               wolfTeammates={g.wolfTeammates || []} 
@@ -1036,9 +1361,12 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
 
                   {/* MC announcement */}
                   {msg.type === 'mc' && (
-                    <div className={`chat-mc-bubble ${msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') ? 'mc-death' : ''} ${msg.text?.includes('chiến thắng') ? 'mc-win' : ''}`}>
+                    <div className={`chat-mc-bubble ${msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') || msg.text?.includes('bắn gục') || msg.text?.includes('quyên sinh') ? 'mc-death' : ''} ${msg.text?.includes('chiến thắng') ? 'mc-win' : ''}`}>
                       <span className="chat-mc-icon">
-                        {msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') ? '💀' :
+                        {msg.text?.includes('bắn gục') ? '🏹' :
+                         msg.text?.includes('quyên sinh') ? '💔' :
+                         msg.text?.includes('Quyền Trượng') ? '👑' :
+                         msg.text?.includes('không qua khỏi') || msg.text?.includes('treo cổ') ? '💀' :
                          msg.text?.includes('chiến thắng') ? '🏆' :
                          msg.text?.includes('Sói') && msg.text?.includes('thức dậy') ? '🐺' :
                          msg.text?.includes('Tiên Tri') ? '🔮' :
@@ -1112,7 +1440,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
             
             {/* Chat inputs — sticky bottom */}
             <div className="chat-input-area">
-              {isNight && me?.role === "wolf" && (
+              {isNight && isWolfTeamRole(me?.role) && me?.alive && (
                 <form onSubmit={handleWolfChat} className="chat-input-form wolf-input">
                   <input 
                     className="chat-input"
@@ -1141,7 +1469,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
       </div>
 
 
-      {/* EndGame Replay Không Gian Thật 100vw: Phát lại băng ghi hình tương tác thật bằng 8 Nhân vật thật + Khung Ngắm Máy Quay */}
+      {/* EndGame Replay Không Gian Thật 100vw: Phát lại băng ghi hình tương tác thật bằng Nhân vật thật + Khung Ngắm Máy Quay */}
       {g.winner && g.history && (
         <EndGameRecap 
           history={g.history} 
@@ -1157,6 +1485,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
           onTogglePostGameChat={() => setShowPostGameChat((v) => !v)}
           players={room.players}
           winner={g.winner}
+          loversPublic={g.loversPublic || []}
         />
       )}
       
@@ -1177,7 +1506,7 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
               <div className="tutorial-step-content">
                 <div className="role-tutorial-emoji">{ROLE_EMOJIS[me.role] || '🎭'}</div>
                 <h2>Bạn là <span style={{ color: '#f59e0b' }}>{ROLE_LABELS[me.role]}</span></h2>
-                <p className="tutorial-team">Phe: {me.role === 'wolf' ? '🐺 Sói' : me.role === 'tanner' ? '💀 Trung Lập' : '👥 Dân Làng'}</p>
+                <p className="tutorial-team">Phe: {isWolfTeamRole(me.role) ? '🐺 Sói' : me.role === 'tanner' ? '💀 Trung Lập' : '👥 Dân Làng'}</p>
               </div>
             )}
 
@@ -1250,8 +1579,8 @@ export default function PlayingView({ room, socketRef, mcLog, mcVoiceEnabled, se
         </div>
       )}
 
-      {/* Spectator banner — sticky khi đang xem sau khi chết */}
-      {me && !me.alive && !showDeadOverlay && !g.winner && (
+      {/* Spectator banner — sticky khi đang xem sau khi chết (ẩn trong lúc Thợ Săn đang gồng bắn trả thù) */}
+      {me && !me.alive && !isMyHunterRevenge && !showDeadOverlay && !g.winner && (
         <div className="spectator-banner">
           👁️ QUAN SÁT — Bạn thấy tất cả nhưng không nói được
         </div>

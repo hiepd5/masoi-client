@@ -2,15 +2,19 @@ import { useState } from "react";
 import "./DevSandbox.css";
 
 const ROLE_OPTIONS = [
-  { id: null,        label: "🎲 Ngẫu nhiên" },
-  { id: "wolf",      label: "🐺 Sói" },
-  { id: "guard",     label: "🛡️ Bảo Vệ" },
-  { id: "witch",     label: "🧪 Phù Thủy" },
-  { id: "seer",      label: "🔮 Tiên Tri" },
-  { id: "tough_guy", label: "💪 Cứng Cỏi" },
-  { id: "cursed",    label: "🩸 Bị Nguyền" },
-  { id: "tanner",    label: "💀 Chán Đời" },
-  { id: "villager",  label: "👨‍🌾 Nông Dân" },
+  { id: null,         label: "🎲 Ngẫu nhiên" },
+  { id: "wolf",       label: "🐺 Sói" },
+  { id: "alpha_wolf", label: "🐺👑 Sói Đầu Đàn" },
+  { id: "guard",      label: "🛡️ Bảo Vệ" },
+  { id: "witch",      label: "🧪 Phù Thủy" },
+  { id: "seer",       label: "🔮 Tiên Tri" },
+  { id: "hunter",     label: "🏹 Thợ Săn" },
+  { id: "cupid",      label: "💘 Tình Yêu" },
+  { id: "mayor",      label: "👑 Trưởng Làng" },
+  { id: "tough_guy",  label: "💪 Cứng Cỏi" },
+  { id: "cursed",     label: "🩸 Bị Nguyền" },
+  { id: "tanner",     label: "💀 Chán Đời" },
+  { id: "villager",   label: "👨‍🌾 Nông Dân" },
 ];
 
 export default function DevSandbox({ socketRef, room }) {

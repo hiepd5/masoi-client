@@ -23,6 +23,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [nameInput, setNameInput] = useState("");
   const [error, setError] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const [showPwdEditor, setShowPwdEditor] = useState(false);
+  const [pwdDraft, setPwdDraft] = useState("");
 
   // Drawer tabs bên phải Sảnh 3D: 'roles' | 'chat' + nút thu gọn để ngắm 3D 100% màn hình
   const [mobileTab, setMobileTab] = useState("roles");
@@ -186,12 +188,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   const vsProfileId = localStorage.getItem('mc_voice_profile_id') || null;
 
-  // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam)
+  // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam; Circuit Breaker 60s cho Render Proxy)
   const vsAvailableRef = useRef(null); // null = unknown, true/false
   const vsLastCheckRef = useRef(0);
+  const proxyCooldownUntilRef = useRef(0);
 
   async function checkVoiceStudio() {
-    // Không có URL (production HTTPS) → luôn trả false, không cần check
+    // Không có URL trực tiếp (production HTTPS) → trả false để dùng server proxy
     if (!VOICESTUDIO_URL) return false;
     const now = Date.now();
     if (vsAvailableRef.current !== null && now - vsLastCheckRef.current < 30000) {
@@ -216,37 +219,44 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     if (!VOICESTUDIO_URL) return false; // production HTTPS → skip
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 25000); // timeout 25s
+      const tid = setTimeout(() => ctrl.abort(), 14000);
       const resp = await fetch(`${VOICESTUDIO_URL}/v1/audio/speech`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer local' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer local',
+          'ngrok-skip-browser-warning': 'true',
+        },
         body: JSON.stringify({
           model: 'omnivoice',
           voice: vsProfileId || 'alloy',
           input: text,
           response_format: 'mp3',
-          speed: 0.88,   // nhẹ chậm hơn, tone huyền bí
+          speed: 0.88,
         }),
         signal: ctrl.signal,
       });
       clearTimeout(tid);
-      if (!resp.ok) return false;
+      const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!resp.ok || (!ctype.includes('audio') && !ctype.includes('octet-stream'))) {
+        vsAvailableRef.current = false;
+        return false;
+      }
       const blob = await resp.blob();
       if (blob.size < 500) return false;
-      await playMp3(URL.createObjectURL(blob));
-      return true;
+      return await playMp3(URL.createObjectURL(blob));
     } catch {
-      vsAvailableRef.current = false; // đánh dấu offline
+      vsAvailableRef.current = false;
       return false;
     }
   }
 
-  // Gọi /api/tts trên server Render (HTTPS-safe, không bị CORS) → dùng cho production
-  // Server Render forward sang VoiceStudio qua ngrok tunnel
+  // Gọi /api/tts trên server Render (HTTPS-safe, không bị CORS) kèm Circuit Breaker 60s
   async function speakViaServerProxy(text) {
+    if (Date.now() < proxyCooldownUntilRef.current) return false;
     try {
       const ctrl = new AbortController();
-      const tid = setTimeout(() => ctrl.abort(), 35000); // timeout 35s (server timeout 30s + buffer)
+      const tid = setTimeout(() => ctrl.abort(), 13000);
       const resp = await fetch(SERVER_TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,12 +264,19 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         signal: ctrl.signal,
       });
       clearTimeout(tid);
-      if (!resp.ok) return false;
+      const ctype = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!resp.ok || !ctype.includes('audio')) {
+        proxyCooldownUntilRef.current = Date.now() + 60000;
+        return false;
+      }
       const blob = await resp.blob();
-      if (blob.size < 500) return false;
-      await playMp3(URL.createObjectURL(blob));
-      return true;
+      if (blob.size < 500) {
+        proxyCooldownUntilRef.current = Date.now() + 60000;
+        return false;
+      }
+      return await playMp3(URL.createObjectURL(blob));
     } catch {
+      proxyCooldownUntilRef.current = Date.now() + 60000;
       return false;
     }
   }
@@ -277,12 +294,19 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
+      const isBlob = typeof src === 'string' && src.startsWith('blob:');
+      const cleanup = (ok) => {
+        if (isBlob) {
+          try { URL.revokeObjectURL(src); } catch {}
+        }
+        resolve(ok);
+      };
       const audio = new Audio(src);
       audio.volume = 0.92;
       currentAudioRef.current = audio;
-      audio.onended = resolve;
-      audio.onerror = resolve;
-      audio.play().catch(resolve);
+      audio.onended = () => cleanup(true);
+      audio.onerror = () => cleanup(false);
+      audio.play().catch(() => cleanup(false));
     });
   }
 
@@ -333,25 +357,26 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       for (const msg of newMessages) {
         const text = msg.text || msg;
 
-        // Ưu tiên 1: MP3 file pre-generated (0 latency, giọng clone hoàn hảo)
+        // Ưu tiên 1: MP3 file pre-generated (nếu file chưa kịp tạo / 404 sẽ trả false để rơi mượt xuống TTS!)
         const audioSrc = findAudioFile(text);
         if (audioSrc) {
-          await playMp3(audioSrc);
-          continue;
+          const mp3Played = await playMp3(audioSrc);
+          if (mp3Played) continue;
         }
 
-        // Ưu tiên 2: Server proxy /api/tts → VoiceStudio qua ngrok (HTTPS-safe, giọng clone)
-        // Dùng cho phrase động có tên người chơi trên production
-        const proxyOk = await speakViaServerProxy(text);
-        if (proxyOk) continue;
-
-        // Ưu tiên 3: VoiceStudio local trực tiếp (local dev HTTP only)
-        if (vsOnline) {
-          const ok = await speakVoiceStudio(text);
-          if (ok) continue;
+        // Ưu tiên 2: Nếu có URL trực tiếp (Local HTTP localhost:3900 hoặc mc_vs_url override) → gọi thẳng 0 độ trễ
+        if (VOICESTUDIO_URL) {
+          if (vsOnline) {
+            const ok = await speakVoiceStudio(text);
+            if (ok) continue;
+          }
+        } else {
+          // Ưu tiên 2B (Production HTTPS): Gọi /api/tts trên Render → Ngrok static tunnel (kèm Circuit Breaker 60s)
+          const proxyOk = await speakViaServerProxy(text);
+          if (proxyOk) continue;
         }
 
-        // Ưu tiên 4: Browser speechSynthesis fallback (giọng hệ thống)
+        // Ưu tiên 3: Browser speechSynthesis fallback tức thì (không bao giờ câm tiếng!)
         await speakTTS(text, voice);
       }
     }
@@ -421,15 +446,57 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     setError("");
     const preset =
       mode === "classic"
-        ? generateDefaultRoles(room.players.length)
-        : generateExpandedV33Roles(room.players.length);
+        ? generateDefaultRoles(Math.max(6, room.players.length))
+        : generateExpandedV33Roles(Math.max(8, room.players.length));
     socketRef.current.emit("room:setRolesConfig", { rolesConfig: preset }, (res) => {
       if (res && !res.ok) setError(res.error || "Lỗi thiết lập preset.");
     });
   }
 
+  function handleChangeAccessMode(nextMode, providedPwd = "") {
+    if (!me?.isHost) return;
+    setError("");
+    if (nextMode === "password" && !providedPwd.trim()) {
+      setShowPwdEditor(true);
+      return;
+    }
+    socketRef.current.emit(
+      "room:setAccess",
+      { accessMode: nextMode, password: providedPwd.trim() },
+      (res) => {
+        if (res && !res.ok) {
+          setError(res.error || "Không thể đổi chế độ bảo mật phòng.");
+          return;
+        }
+        setShowPwdEditor(false);
+        setPwdDraft("");
+      }
+    );
+  }
+
+  function handleManageBots(action, count = 1) {
+    if (!me?.isHost) return;
+    setError("");
+    socketRef.current.emit("room:manageBots", { action, count }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không chỉnh được ghế AI Bot.");
+    });
+  }
+
+  function handleSelectSoloRole(roleKey) {
+    setError("");
+    socketRef.current.emit("room:setSoloRole", { role: roleKey || null }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không thể chọn vai test.");
+    });
+  }
+
   function handleKickPlayer(targetPlayer) {
     if (!me?.isHost || !targetPlayer || targetPlayer.id === myId) return;
+    if (targetPlayer.isBot) {
+      socketRef.current.emit("room:kick", { targetId: targetPlayer.id }, (res) => {
+        if (res && !res.ok) setError(res.error || "Không xóa được Bot.");
+      });
+      return;
+    }
     if (window.confirm(`Kick ${targetPlayer.name} khỏi phòng?`)) {
       socketRef.current.emit("room:kick", { targetId: targetPlayer.id }, (res) => {
         if (res && !res.ok) alert(res.error || "Không kick được.");
@@ -440,12 +507,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   function handleAutoFillVillagers() {
     if (!me?.isHost) return;
     setError("");
-    const currentCounts = room.rolesConfig || generateDefaultRoles(room.players.length);
+    const currentCounts = room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
     const specialCount = Object.entries(currentCounts)
       .filter(([k]) => k !== "villager")
       .reduce((sum, [, count]) => sum + (Number(count) || 0), 0);
 
-    const villagers = Math.max(0, room.players.length - specialCount);
+    const targetTotal = Math.max(6, room.players.length);
+    const villagers = Math.max(0, targetTotal - specialCount);
     const newConfig = { ...currentCounts, villager: villagers };
     socketRef.current.emit("room:setRolesConfig", { rolesConfig: newConfig }, (res) => {
       if (res && !res.ok) setError(res.error || "Lỗi bù nông dân.");
@@ -501,12 +569,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         mcLog={mcLog}
         mcVoiceEnabled={mcVoiceEnabled}
         setMcVoiceEnabled={setMcVoiceEnabled}
+        onLeave={handleLeave}
       />
     );
   }
 
   const me = room.players.find((p) => p.id === myId);
-  const rolesConfig = room.rolesConfig || generateDefaultRoles(room.players.length);
+  const rolesConfig = room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
   const totalRoles = Object.values(rolesConfig).reduce((s, v) => s + (Number(v) || 0), 0);
 
   const activeScenePresetId = room.scenePresetId || DEFAULT_SCENE_PRESET_ID;
@@ -523,18 +592,23 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const activeSceneMeta =
     effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
 
-  // Điều kiện bắt đầu game (tính cả Sói thường lẫn Sói Đầu Đàn)
+  // Điều kiện bắt đầu game (Hỗ trợ cả Đủ Người lẫn Chơi 1 Mình Tự Bù AI Bot!)
   const totalPlayers = room.players.length;
-  const isMinPlayers = totalPlayers >= 6;
-  const unreadyPlayers = room.players.filter((p) => !p.ready);
+  const realHumansCount = room.players.filter((p) => !p.isBot).length;
+  const botCount = totalPlayers - realHumansCount;
+  const unreadyPlayers = room.players.filter((p) => !p.isBot && !p.isHost && !p.ready);
   const readyCount = room.players.filter((p) => p.ready).length;
   const isAllReady = unreadyPlayers.length === 0;
+  const missingBotsToFill = Math.max(0, totalRoles - totalPlayers);
   const isRolesMatched = totalRoles === totalPlayers;
+  const isRolesValidForStart = totalRoles >= 6 && totalPlayers <= totalRoles;
   const totalWolfTeam =
     (Number(rolesConfig.wolf) || 0) + (Number(rolesConfig.alpha_wolf) || 0);
   const hasWolf = totalWolfTeam >= 1;
-  const canStartGame = isMinPlayers && isAllReady && isRolesMatched && hasWolf;
+  const canStartGame = realHumansCount >= 1 && isAllReady && isRolesValidForStart && hasWolf;
   const seatRingTarget = Math.min(18, Math.max(totalRoles || 6, totalPlayers, 6));
+  const roomAccessMode = room.accessMode || "public";
+  const activeSoloRole = realHumansCount === 1 ? room.soloPracticeRole || null : null;
 
   return (
     <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
@@ -598,20 +672,33 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <span className="code-text">{room.code}</span>
             <span className="copy-hint">{copiedCode ? "✅ Đã copy!" : "📋 Copy"}</span>
           </div>
-          <span className="lobby-wolf-stage-hint">
-            🐺 <strong>Sảnh Ghế Nóng:</strong> Vào ván mới bí mật phân vai!
+          <span
+            className={`lobby-privacy-chip mode-${roomAccessMode}`}
+            title={
+              roomAccessMode === "hidden"
+                ? "Phòng ẩn khỏi trang chủ — chỉ vào được bằng Mã 5 ký tự"
+                : roomAccessMode === "password"
+                  ? "Phòng có khóa mật khẩu"
+                  : "Phòng mở công khai trên trang chủ"
+            }
+          >
+            {roomAccessMode === "hidden"
+              ? "🕵️ Phòng ẩn (Gửi mã)"
+              : roomAccessMode === "password"
+                ? "🔐 Có mật khẩu"
+                : "🌍 Công khai"}
           </span>
         </div>
 
         <div className="lobby-header-center">
           <div className="lobby-stat-chip">
-            🐺 {totalPlayers}/{seatRingTarget} ghế
+            👤 {realHumansCount} người{botCount > 0 ? ` + 🤖 ${botCount} Bot` : ""} / {seatRingTarget} ghế
           </div>
           <div className={`lobby-stat-chip ${isAllReady ? "ready-all" : ""}`}>
             🟢 {readyCount}/{totalPlayers} sẵn sàng
           </div>
-          <div className={`lobby-stat-chip ${isRolesMatched && hasWolf ? "roles-matched" : "roles-mismatch"}`}>
-            🎭 {totalRoles}/{totalPlayers} vai
+          <div className={`lobby-stat-chip ${isRolesValidForStart && hasWolf ? "roles-matched" : "roles-mismatch"}`}>
+            🎭 {totalRoles} vai{missingBotsToFill > 0 ? ` (Tự bù +${missingBotsToFill} 🤖)` : ""}
           </div>
         </div>
 
@@ -704,6 +791,130 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 )}
               </div>
 
+              {/* Thanh Bảo Mật Phòng & Điều Khiển AI Bot Chính Thức (Chủ Phòng) */}
+              {me?.isHost && (
+                <div className="lobby-access-bot-panel">
+                  <div className="lobby-access-row">
+                    <span className="mini-panel-label">🔒 Chế độ phòng:</span>
+                    <div className="lobby-mini-pills">
+                      <button
+                        type="button"
+                        className={`mini-pill ${roomAccessMode === "public" && !showPwdEditor ? "active-pub" : ""}`}
+                        onClick={() => {
+                          setShowPwdEditor(false);
+                          handleChangeAccessMode("public");
+                        }}
+                      >
+                        🌍 Công khai
+                      </button>
+                      <button
+                        type="button"
+                        className={`mini-pill ${roomAccessMode === "password" || showPwdEditor ? "active-pwd" : ""}`}
+                        onClick={() => setShowPwdEditor((v) => !v)}
+                      >
+                        🔐 Mật khẩu
+                      </button>
+                      <button
+                        type="button"
+                        className={`mini-pill ${roomAccessMode === "hidden" && !showPwdEditor ? "active-hid" : ""}`}
+                        onClick={() => {
+                          setShowPwdEditor(false);
+                          handleChangeAccessMode("hidden");
+                        }}
+                      >
+                        🕵️ Phòng ẩn
+                      </button>
+                    </div>
+                  </div>
+
+                  {showPwdEditor && (
+                    <form
+                      className="lobby-pwd-inline-row"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleChangeAccessMode("password", pwdDraft);
+                      }}
+                    >
+                      <input
+                        type="password"
+                        value={pwdDraft}
+                        maxLength={32}
+                        onChange={(e) => setPwdDraft(e.target.value)}
+                        placeholder="Nhập mật khẩu mới cho phòng..."
+                        autoFocus
+                      />
+                      <button type="submit" className="btn-save-pwd">
+                        Lưu khóa
+                      </button>
+                    </form>
+                  )}
+
+                  <div className="lobby-access-row">
+                    <span className="mini-panel-label">🤖 Ghế AI Bot:</span>
+                    <div className="lobby-mini-pills">
+                      <button
+                        type="button"
+                        className="mini-pill bot-btn"
+                        onClick={() => handleManageBots("fill_roles")}
+                        title="Triệu hồi AI Bot ngồi vào ghế 3D cho khớp tổng số vai đang chọn"
+                      >
+                        ⚡ Lấp đủ ({totalRoles} ghế)
+                      </button>
+                      <button
+                        type="button"
+                        className="mini-pill bot-btn"
+                        onClick={() => handleManageBots("add", 1)}
+                        disabled={totalPlayers >= 18}
+                      >
+                        +1 Bot
+                      </button>
+                      {botCount > 0 && (
+                        <button
+                          type="button"
+                          className="mini-pill bot-clear"
+                          onClick={() => handleManageBots("clear")}
+                        >
+                          🗑️ Xóa Bot ({botCount})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Thanh Chọn Vai Muốn Test Khi Đang Ở Phòng 1 Mình (Tự Khóa Công Bằng Khi Có Người Thứ 2!) */}
+              {realHumansCount === 1 && (
+                <div className="solo-role-picker-box">
+                  <div className="solo-role-picker-header">
+                    <span>🎯 Chơi 1 mình — Chọn vai muốn thử:</span>
+                    <span className="solo-fair-note">Tự khóa ngẫu nhiên nếu có người thứ 2 vào</span>
+                  </div>
+                  <div className="solo-role-chips">
+                    <button
+                      type="button"
+                      className={`solo-role-chip ${!activeSoloRole ? "selected" : ""}`}
+                      onClick={() => handleSelectSoloRole(null)}
+                    >
+                      🎲 Ngẫu nhiên
+                    </button>
+                    {ORDERED_ROLES.map((rk) => {
+                      const rc = ROLES_CONFIG[rk];
+                      if (!rc) return null;
+                      return (
+                        <button
+                          key={rk}
+                          type="button"
+                          className={`solo-role-chip ${activeSoloRole === rk ? "selected" : ""}`}
+                          onClick={() => handleSelectSoloRole(rk)}
+                        >
+                          {rc.emoji} {rc.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Thanh Thiết Lập Nhanh 1-Click cho Chủ Phòng / Chú thích đồng bộ cho Khách */}
               {me?.isHost ? (
                 <div className="roles-preset-bar compact">
@@ -712,9 +923,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       type="button"
                       className="btn-preset-v33"
                       onClick={() => handlePresetRoles("v33")}
-                      title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng theo số người chơi!"
+                      title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng!"
                     >
-                      🔥 Mở Rộng V3.3 ({Math.max(6, totalPlayers)}p)
+                      🔥 Mở Rộng V3.3 ({Math.max(8, totalPlayers)}p)
                     </button>
                     <button
                       type="button"
@@ -728,7 +939,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       type="button"
                       className="btn-preset-autofill"
                       onClick={handleAutoFillVillagers}
-                      title="Tự động bù Nông Dân cho khớp tổng số người trong phòng"
+                      title="Tự động bù Nông Dân cho khớp số ghế"
                     >
                       ➕ Bù Dân
                     </button>
@@ -740,10 +951,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 </div>
               )}
 
-              {!isRolesMatched && (
+              {!isRolesValidForStart && (
                 <div className="roles-mismatch-alert">
-                  ⚠️ Đang chọn <strong>{totalRoles}</strong> vai cho <strong>{totalPlayers}</strong> người chơi.{" "}
-                  {me?.isHost ? "Bấm '+ / -', 'Mở Rộng V3.3' hoặc 'Bù Dân' để cân bằng." : "Chờ chủ phòng cân chỉnh."}
+                  ⚠️ Đang chọn <strong>{totalRoles}</strong> vai cho <strong>{totalPlayers}</strong> ghế (tối thiểu 6 vai & không ít hơn số người trong phòng).{" "}
+                  {me?.isHost ? "Bấm '+ / -', 'Mở Rộng V3.3' hoặc '➕ Bù Dân' để cân bằng." : "Chờ chủ phòng cân chỉnh."}
                 </div>
               )}
 
@@ -931,14 +1142,15 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       {/* ==================== 4. THANH KHỞI HÀNH / SẴN SÀNG NỔI DƯỚI ĐÁY SÂN KHẤU 3D ==================== */}
       <footer className={`lobby-3d-launch-dock ${drawerOpen ? "with-drawer" : "full-stage"}`}>
         <div className="lobby-checklist-box compact">
-          <span className={`checklist-item ${isMinPlayers ? "valid" : "invalid"}`}>
-            {isMinPlayers ? "✅" : "⚠️"} ≥6 người ({totalPlayers}/6)
+          <span className={`checklist-item ${realHumansCount >= 1 ? "valid" : "invalid"}`}>
+            ✅ {realHumansCount} người{botCount > 0 ? ` + ${botCount} 🤖` : ""}
+            {missingBotsToFill > 0 ? ` (Tự bù +${missingBotsToFill} 🤖)` : ""}
           </span>
           <span className={`checklist-item ${isAllReady ? "valid" : "invalid"}`}>
             {isAllReady ? "✅" : "⚠️"} Sẵn sàng ({readyCount}/{totalPlayers})
           </span>
-          <span className={`checklist-item ${isRolesMatched && hasWolf ? "valid" : "invalid"}`}>
-            {isRolesMatched && hasWolf ? "✅" : "⚠️"} Khớp {totalRoles}/{totalPlayers} vai (≥1 Sói)
+          <span className={`checklist-item ${isRolesValidForStart && hasWolf ? "valid" : "invalid"}`}>
+            {isRolesValidForStart && hasWolf ? "✅" : "⚠️"} Bộ bài {totalRoles} vai (≥1 Sói)
           </span>
         </div>
 
@@ -954,18 +1166,20 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             onClick={handleStartGame}
             disabled={!canStartGame}
             title={
-              !isMinPlayers
-                ? "Cần ít nhất 6 người chơi để bắt đầu (bạn có thể bấm +5 Bot ở góc trái nếu đang test)"
-                : !isAllReady
-                  ? `Còn ${unreadyPlayers.length} người chơi chưa sẵn sàng`
-                  : !isRolesMatched
-                    ? `Tổng số vai (${totalRoles}) chưa bằng số người chơi (${totalPlayers})`
-                    : !hasWolf
-                      ? "Cần ít nhất 1 Sói hoặc 1 Sói Đầu Đàn"
+              !isAllReady
+                ? `Còn ${unreadyPlayers.length} người chơi chưa sẵn sàng`
+                : !isRolesValidForStart
+                  ? `Cần tối thiểu 6 vai và không ít hơn số người hiện có (${totalRoles}/${totalPlayers})`
+                  : !hasWolf
+                    ? "Cần ít nhất 1 Sói hoặc 1 Sói Đầu Đàn"
+                    : missingBotsToFill > 0
+                      ? `Hệ thống sẽ tự triệu hồi thêm +${missingBotsToFill} AI Bot lấp đủ ${totalRoles} ghế và vào Đêm 1 ngay!`
                       : "Bấm để phân vai bí mật và bắt đầu Đêm đầu tiên!"
             }
           >
-            🚀 PHÂN VAI & BẮT ĐẦU VÁN ĐẤU
+            {missingBotsToFill > 0
+              ? `🚀 BẮT ĐẦU NGAY (Tự Bù +${missingBotsToFill} 🤖 Bot)`
+              : "🚀 PHÂN VAI & BẮT ĐẦU VÁN ĐẤU"}
           </button>
         ) : (
           <button

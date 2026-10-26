@@ -131,6 +131,13 @@ export default function GreyboxActor({
   isDefendant,
   isWolfVictim,
   isWolfTeammate,
+  alphaWolfId = null,
+  isMayorRevealed = false,
+  isMyLoverPartner = false,
+  isCupidSelected = false,
+  isHunterPending = false,
+  onLobbyKick = null,
+  canLobbyKick = false,
   wolfPicksOnThis = 0,
   seerResult = null,
   nominationVoters = [],
@@ -181,11 +188,15 @@ export default function GreyboxActor({
   }, [choreoActionSpec?.actionType, choreoTiming?.startedAtPerfMs]);
 
   // Trong lúc chiếu lại Story 2A, trạng thái Sống/Chết có thể tua ngược theo từng Đêm/Ngày!
+  // Đặc biệt: Trong 15s 'hunter_revenge', Thợ Săn vẫn giữ thân xác thật cầm Nỏ Bạc bóp cò rồi mới hóa Hồn Ma!
   const actualIsDead = !player.alive;
+  const isHoldingLastBreath = Boolean(isHunterPending && phase === "hunter_revenge" && !hasWinner);
   const effectiveIsDead =
     hasWinner && typeof recapActorState?.simAlive === "boolean"
       ? !recapActorState.simAlive
-      : actualIsDead;
+      : isHoldingLastBreath
+        ? false
+        : actualIsDead;
 
   const recapPose = hasWinner ? recapActorState?.pose || null : null; // 'castLunge' | 'hitRecoil' | 'cheer' | 'defend' | null
   const enduringFire = Boolean(recapActorState?.enduringFire);
@@ -196,40 +207,58 @@ export default function GreyboxActor({
     return (s % 100) * 0.13;
   }, [player.id]);
 
-  // ==================== MA TRẬN BẢO MẬT TẠO HÌNH ZERO-LEAK (8 VAI) ====================
+  const isEmptyLobbySeat = Boolean(player.isEmptyLobbySeat);
+  const isLobbyPhase = phase === "lobby";
+
+  // ==================== MA TRẬN BẢO MẬT TẠO HÌNH ZERO-LEAK (12 VAI V3.3 + SẢNH CHỜ SÓI 3D) ====================
   const authorizedWolfForm = useMemo(() => {
+    if (isEmptyLobbySeat) return false;
+    // Ở Sảnh Chờ (phase === 'lobby'): mọi người bước vào ghế nóng đều mặc tạo hình Ma Sói 3D sống động!
+    if (isLobbyPhase && !hasWinner) return true;
     if (metamorphWolfActive && hasWinner) return true;
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return false;
       const activeRole = recapActorState?.overrideRole || player.role;
-      return activeRole === "wolf";
+      return activeRole === "wolf" || activeRole === "alpha_wolf";
     }
     return (
-      (isNight && !actualIsDead && ((isMe && myRole === "wolf") || isWolfTeammate)) ||
-      (actualIsDead && player.role === "wolf")
+      (isNight &&
+        !actualIsDead &&
+        ((isMe && (myRole === "wolf" || myRole === "alpha_wolf")) || isWolfTeammate)) ||
+      (actualIsDead && (player.role === "wolf" || player.role === "alpha_wolf"))
     );
-  }, [metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
+  }, [isEmptyLobbySeat, isLobbyPhase, metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
 
   // Vai trò thực tế được phép gắn Phụ kiện 3D lên nhân vật trên màn hình của người đang xem:
   const visibleCostumeRole = useMemo(() => {
+    if (isEmptyLobbySeat) return null;
+    if (isLobbyPhase && !hasWinner) return "wolf";
     if (metamorphWolfActive && hasWinner) return "wolf";
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return null;
       return recapActorState?.overrideRole || player.role || "villager";
     }
-    if (authorizedWolfForm) return "wolf";
+    if (authorizedWolfForm) {
+      const isAlphaActor =
+        player.role === "alpha_wolf" ||
+        (isMe && myRole === "alpha_wolf") ||
+        (alphaWolfId && player.id === alphaWolfId);
+      return isAlphaActor ? "alpha_wolf" : "wolf";
+    }
     if (actualIsDead && player.role) return player.role;
+    // Trưởng Làng đã công bố Quyền Trượng -> cả làng đều thấy Vương Miện & Quyền Trượng Vàng!
+    if (isMayorRevealed && !actualIsDead) return "mayor";
     // Chỉ riêng bản thân (isMe) nhìn thấy phụ kiện vai bí mật của mình trên máy mình!
     if (isMe && myRole) return myRole;
     return null;
-  }, [metamorphWolfActive, hasWinner, recapActorState, player.role, authorizedWolfForm, actualIsDead, isMe, myRole]);
+  }, [isEmptyLobbySeat, isLobbyPhase, metamorphWolfActive, hasWinner, recapActorState, player.role, player.id, authorizedWolfForm, alphaWolfId, actualIsDead, isMayorRevealed, isMe, myRole]);
 
   const showTrialTorchSocket = Boolean(
     (isMe && phase === "day_final_vote" && myFinalVote === "hang") ||
       choreoActionSpec?.actionType === "tribunal_torch_stand"
   );
 
-  const isWolfVisual = visibleCostumeRole === "wolf";
+  const isWolfVisual = visibleCostumeRole === "wolf" || visibleCostumeRole === "alpha_wolf";
   const activeCharSlot = useMemo(
     () =>
       resolveActiveCharacterSlot({
@@ -284,12 +313,13 @@ export default function GreyboxActor({
   // Ngủ gục ban đêm nếu không phải Sói đang thức và không phải lượt vai của chính mình
   const isMyActiveNightRole =
     isMe &&
-    ((phase === "night_guard" && myRole === "guard") ||
-      (phase === "night_wolf" && myRole === "wolf") ||
+    ((phase === "night_cupid" && myRole === "cupid") ||
+      (phase === "night_guard" && myRole === "guard") ||
+      (phase === "night_wolf" && (myRole === "wolf" || myRole === "alpha_wolf")) ||
       (phase === "night_witch" && myRole === "witch") ||
       (phase === "night_seer" && myRole === "seer"));
   const isSleeping =
-    isNight && !hasWinner && !effectiveIsDead && !authorizedWolfForm && !isMyActiveNightRole;
+    !isLobbyPhase && isNight && !hasWinner && !effectiveIsDead && !authorizedWolfForm && !isMyActiveNightRole;
 
   // ==================== PROCEDURAL SPRING & SPATIAL CHOREOGRAPHY 60 FPS ====================
   useFrame((state, delta) => {
@@ -597,21 +627,43 @@ export default function GreyboxActor({
         />
       </group>
 
+      {/* Ghế trống chờ khách ở Sảnh Chờ 3D: chỉ dựng Ghế Gỗ Sồi + Nhãn ghế mờ tinh tế, ai bước vào sẽ hóa Sói ngồi lên ngay! */}
+      {isEmptyLobbySeat ? (
+        <Html position={[0, 1.0, 0]} center zIndexRange={[20, 0]}>
+          <div
+            style={{
+              padding: "2px 8px",
+              borderRadius: "999px",
+              fontSize: "10.5px",
+              fontWeight: 600,
+              color: "rgba(226, 232, 240, 0.58)",
+              background: "rgba(15, 23, 42, 0.48)",
+              border: "1px dashed rgba(148, 163, 184, 0.3)",
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              userSelect: "none",
+            }}
+          >
+            🪑 {player.name}
+          </div>
+        </Html>
+      ) : (
+        <>
       {/* ============ 2. VÒNG SÁNG TRẠNG THÁI DƯỚI CHÂN GHẾ ============ */}
       {isMe && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.015, 0]}>
           <ringGeometry args={[0.46, 0.56, 32]} />
-          <meshBasicMaterial color={roleAccentColor} transparent opacity={0.85} />
+          <meshBasicMaterial color={isLobbyPhase ? "#ef4444" : roleAccentColor} transparent opacity={0.85} />
         </mesh>
       )}
 
-      {(isSelected || (hovered && !actualIsDead && !hasWinner)) && (
+      {(isSelected || isCupidSelected || (hovered && !actualIsDead && !hasWinner)) && (
         <mesh ref={selectRingRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.022, 0]}>
           <ringGeometry args={[0.56, 0.68, 24]} />
           <meshBasicMaterial
-            color={isSelected ? "#f59e0b" : "#fde68a"}
+            color={isCupidSelected ? "#ec4899" : isSelected ? "#f59e0b" : "#fde68a"}
             transparent
-            opacity={isSelected ? 0.95 : 0.45}
+            opacity={isCupidSelected || isSelected ? 0.95 : 0.45}
           />
         </mesh>
       )}
@@ -1249,12 +1301,64 @@ export default function GreyboxActor({
               }}
             >
               {isSpeaking && <span>🔊</span>}
-              {!player.connected && <span>🔌</span>}
+              {!player.connected && !isLobbyPhase && <span>🔌</span>}
+              {isLobbyPhase && (
+                <span title={player.isHost ? "Chủ phòng" : player.ready ? "Đã sẵn sàng" : "Đang chờ sẵn sàng"}>
+                  {player.isHost ? "👑" : player.ready ? "🟢" : "⏳"}
+                </span>
+              )}
               {effectiveIsDead && <span>👻</span>}
+              {isHunterPending && <span title="Thợ Săn đang ngắm bắn trả thù!">🏹</span>}
+              {isMayorRevealed && !hasWinner && (
+                <span
+                  title="Trưởng Làng đã công bố Quyền Trượng (Lá phiếu x2)"
+                  style={{
+                    background: "linear-gradient(135deg, #f59e0b, #b45309)",
+                    color: "#0f172a",
+                    fontWeight: 900,
+                    fontSize: "9.5px",
+                    padding: "0 4px",
+                    borderRadius: "999px",
+                  }}
+                >
+                  👑x2
+                </span>
+              )}
+              {isMyLoverPartner && !hasWinner && <span title="Nửa kia Tình Nhân của bạn">💘</span>}
+              {isCupidSelected && !hasWinner && <span title="Đã chọn ghép đôi">💘</span>}
               {isDefendant && !hasWinner && <span title="Đang trên Ghế Nóng">⚖️</span>}
               {isWolfVictim && !hasWinner && <span title="Bị Sói cắn đêm nay">🩸</span>}
               <span>{player.name}</span>
               {isMe && <span>★</span>}
+              {isLobbyPhase && canLobbyKick && onLobbyKick && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLobbyKick(player);
+                  }}
+                  title={`Kick ${player.name} khỏi phòng`}
+                  style={{
+                    width: "16px",
+                    height: "16px",
+                    margin: "0 0 0 2px",
+                    padding: 0,
+                    borderRadius: "50%",
+                    fontSize: "9px",
+                    fontWeight: 800,
+                    background: "rgba(220, 38, 38, 0.85)",
+                    color: "#fff",
+                    border: "none",
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  ✕
+                </button>
+              )}
               {(actualIsDead || (hasWinner && revealedRole)) && (revealedRole || player.role) && (
                 <span style={{ fontSize: "10.5px", fontWeight: 700, opacity: 0.95 }}>
                   {ROLE_EMOJIS[revealedRole || player.role]}{" "}
@@ -1322,6 +1426,8 @@ export default function GreyboxActor({
         </div>
       </Html>
       </group>
+        </>
+      )}
     </group>
   );
 }

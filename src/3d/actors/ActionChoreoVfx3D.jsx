@@ -72,6 +72,9 @@ function getSharedVfxGeos() {
     beamCyl: new THREE.CylinderGeometry(0.045, 0.085, 1.0, 12, 1, true),
     beamCore: new THREE.CylinderGeometry(0.018, 0.032, 1.0, 8, 1, true),
     pillarCyl: new THREE.CylinderGeometry(0.56, 0.72, 2.35, 20, 1, true),
+    boltShaft: new THREE.CylinderGeometry(0.016, 0.028, 0.78, 8),
+    boltTip: new THREE.ConeGeometry(0.045, 0.16, 8),
+    tetherCord: new THREE.CylinderGeometry(0.016, 0.016, 1.0, 8, 1, true),
   };
   return sharedVfxGeos;
 }
@@ -1279,6 +1282,954 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
   );
 }
 
+/**
+ * =============================================================================
+ * NGUỒN SÁNG ĐỘNG DÙNG CHUNG 0MS GIẬT SHADER (POOLED DYNAMIC ACTION POINTLIGHT)
+ * - Luôn tồn tại cố định 1 đèn duy nhất trong Scene Graph (intensity = 0 khi nghỉ)
+ *   để Three.js KHÔNG BAO GIỜ biên dịch lại Fragment Shader lúc tung chiêu!
+ * - Chiếu sáng thật PBR lên mặt sân đá, ghế gỗ sồi và gương mặt nhân vật theo đúng màu chiêu thức.
+ * =============================================================================
+ */
+function PooledActionPointLight({ activeEffects, choreoTiming }) {
+  const lightRef = useRef(null);
+  const poolDiscRef = useRef(null);
+  const poolMatRef = useRef(null);
+  const tmpColor = useMemo(() => new THREE.Color(), []);
+
+  useFrame(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const u = resolveChoreoProgress(choreoTiming);
+    const fx = activeEffects && activeEffects.length > 0 ? activeEffects[0] : null;
+    if (!fx || u < 0.04 || u > 0.96 || !fx.actorSeat) {
+      light.intensity = 0;
+      if (poolDiscRef.current) poolDiscRef.current.visible = false;
+      return;
+    }
+
+    const aSeat = fx.actorSeat;
+    const tSeat = fx.targetSeat || aSeat;
+    const sSeat = fx.secondaryTargetSeat || tSeat;
+    let lx = aSeat.x;
+    let ly = 1.25;
+    let lz = aSeat.z;
+    let hex = "#ffffff";
+    let intensity = 0;
+    let dist = 7.2;
+
+    switch (fx.actionType) {
+      case "hunter_last_shot": {
+        hex = "#e0f2fe";
+        dist = 8.2;
+        if (u < 0.44) {
+          lx = aSeat.x + Math.sin(aSeat.facingYaw) * 0.55;
+          lz = aSeat.z + Math.cos(aSeat.facingYaw) * 0.55;
+          ly = 0.95;
+          intensity = clamp01((u - 0.16) / 0.26) * 1.4;
+        } else if (u < 0.58) {
+          const k = clamp01((u - 0.44) / 0.14);
+          lx = THREE.MathUtils.lerp(aSeat.x, tSeat.x, k);
+          lz = THREE.MathUtils.lerp(aSeat.z, tSeat.z, k);
+          ly = 1.05;
+          intensity = 4.6;
+        } else {
+          const fade = 1 - clamp01((u - 0.58) / 0.28);
+          lx = tSeat.x;
+          lz = tSeat.z;
+          ly = 1.1;
+          intensity = 3.8 * fade;
+        }
+        break;
+      }
+      case "cupid_love_arrow": {
+        hex = "#f472b6";
+        dist = 8.5;
+        if (u < 0.46) {
+          lx = aSeat.x + Math.sin(aSeat.facingYaw) * 0.45;
+          lz = aSeat.z + Math.cos(aSeat.facingYaw) * 0.45;
+          ly = 1.38;
+          intensity = clamp01((u - 0.12) / 0.3) * 2.8;
+        } else {
+          const k = clamp01((u - 0.46) / 0.22);
+          const midX = (tSeat.x + sSeat.x) * 0.5;
+          const midZ = (tSeat.z + sSeat.z) * 0.5;
+          lx = THREE.MathUtils.lerp(aSeat.x, midX, k);
+          lz = THREE.MathUtils.lerp(aSeat.z, midZ, k);
+          ly = 1.25;
+          intensity = 3.5 * (1 - clamp01((u - 0.78) / 0.18));
+        }
+        break;
+      }
+      case "lovers_heartbreak_cascade": {
+        hex = "#f43f5e";
+        dist = 7.8;
+        lx = (aSeat.x + tSeat.x) * 0.5;
+        lz = (aSeat.z + tSeat.z) * 0.5;
+        ly = 1.1;
+        const burst = u < 0.44 ? clamp01(u / 0.44) * 1.6 : 4.2 * (1 - clamp01((u - 0.44) / 0.38));
+        intensity = burst;
+        break;
+      }
+      case "alpha_blood_convert": {
+        hex = "#dc2626";
+        dist = 8.8;
+        const k = clamp01((u - 0.12) / 0.24);
+        lx = THREE.MathUtils.lerp(aSeat.x, tSeat.x, k);
+        lz = THREE.MathUtils.lerp(aSeat.z, tSeat.z, k);
+        ly = u > 0.56 ? 1.65 : 1.15;
+        intensity = u < 0.34 ? k * 2.4 : 4.5 * (1 - clamp01((u - 0.78) / 0.18));
+        break;
+      }
+      case "mayor_decree_slam": {
+        hex = "#fbbf24";
+        dist = 9.0;
+        lx = aSeat.x + Math.sin(aSeat.facingYaw) * 0.5;
+        lz = aSeat.z + Math.cos(aSeat.facingYaw) * 0.5;
+        ly = u < 0.42 ? 1.85 : 0.75;
+        intensity = u < 0.42 ? clamp01(u / 0.38) * 2.4 : 4.6 * (1 - clamp01((u - 0.52) / 0.38));
+        break;
+      }
+      case "wolf_pounce": {
+        hex = "#ef4444";
+        lx = tSeat.x;
+        lz = tSeat.z;
+        ly = 1.15;
+        intensity = u > 0.3 && u < 0.76 ? Math.sin(((u - 0.3) / 0.46) * Math.PI) * 3.2 : 0;
+        break;
+      }
+      case "guard_intercept":
+      case "guard_patrol_cast": {
+        hex = "#38bdf8";
+        lx = tSeat.x;
+        lz = tSeat.z;
+        ly = 1.2;
+        intensity = u > 0.26 && u < 0.8 ? Math.sin(((u - 0.26) / 0.54) * Math.PI) * 3.2 : 0;
+        break;
+      }
+      case "witch_poison_throw": {
+        hex = "#a855f7";
+        lx = tSeat.x;
+        lz = tSeat.z;
+        ly = 0.95;
+        intensity = u > 0.5 && u < 0.9 ? Math.sin(((u - 0.5) / 0.4) * Math.PI) * 3.1 : 0;
+        break;
+      }
+      case "witch_elixir_cast": {
+        hex = "#10b981";
+        lx = tSeat.x;
+        lz = tSeat.z;
+        ly = 1.15;
+        intensity = u > 0.38 && u < 0.88 ? Math.sin(((u - 0.38) / 0.5) * Math.PI) * 3.0 : 0;
+        break;
+      }
+      case "seer_divine_cast": {
+        hex = "#c084fc";
+        lx = tSeat.x;
+        lz = tSeat.z;
+        ly = 1.3;
+        intensity = u > 0.28 && u < 0.86 ? Math.sin(((u - 0.28) / 0.58) * Math.PI) * 2.8 : 0;
+        break;
+      }
+      default: {
+        hex = fx.actionType === "tough_iron_roar" ? "#f97316" : "#9333ea";
+        lx = aSeat.x;
+        lz = aSeat.z;
+        ly = 1.2;
+        intensity = u > 0.2 && u < 0.85 ? Math.sin(((u - 0.2) / 0.65) * Math.PI) * 3.0 : 0;
+        break;
+      }
+    }
+
+    tmpColor.set(hex);
+    light.color.copy(tmpColor);
+    light.position.set(lx, ly, lz);
+    light.distance = dist;
+    light.intensity = intensity;
+
+    if (poolDiscRef.current && poolMatRef.current) {
+      if (intensity > 0.15) {
+        poolDiscRef.current.visible = true;
+        poolDiscRef.current.position.set(lx, 0.022, lz);
+        const s = 1.3 + intensity * 0.45;
+        poolDiscRef.current.scale.set(s, s, 1);
+        poolMatRef.current.color.copy(tmpColor);
+        poolMatRef.current.opacity = Math.min(0.42, intensity * 0.085);
+      } else {
+        poolDiscRef.current.visible = false;
+      }
+    }
+  });
+
+  return (
+    <group>
+      <pointLight ref={lightRef} intensity={0} distance={7.5} decay={2} castShadow={false} />
+      <mesh
+        ref={poolDiscRef}
+        visible={false}
+        rotation={[-Math.PI / 2, 0, 0]}
+        raycast={NOOP_RAYCAST}
+      >
+        <circleGeometry args={[1, 24]} />
+        <meshBasicMaterial
+          ref={poolMatRef}
+          color="#ffffff"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * 7. GÓI VFX THỢ SĂN BẮN ĐẠN BẠC TRẢ THÙ (`hunter_last_shot`)
+ */
+function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+  const rootRef = useRef(null);
+  const muzzleRef = useRef(null);
+  const boltGroupRef = useRef(null);
+  const streakRef = useRef(null);
+  const streakMatRef = useRef(null);
+  const impactRingRef = useRef(null);
+  const impactRingMatRef = useRef(null);
+  const sparkRefs = useRef([]);
+
+  useFrame(() => {
+    const u = resolveChoreoProgress(choreoTiming);
+    if (!rootRef.current) return;
+    if (u < 0.22 || u > 0.94 || !actorSeat || !targetSeat) {
+      rootRef.current.visible = false;
+      return;
+    }
+    rootRef.current.visible = true;
+
+    const sx = actorSeat.x + Math.sin(actorSeat.facingYaw) * 0.58;
+    const sy = 0.88;
+    const sz = actorSeat.z + Math.cos(actorSeat.facingYaw) * 0.58;
+    const tx = targetSeat.x;
+    const ty = 0.92;
+    const tz = targetSeat.z;
+
+    // Quầng tụ lực & lóe nòng bạc (Muzzle Flash)
+    if (muzzleRef.current) {
+      muzzleRef.current.position.set(sx, sy, sz);
+      if (u < 0.44) {
+        const charge = clamp01((u - 0.22) / 0.22);
+        const s = 0.28 + charge * 0.45;
+        muzzleRef.current.scale.set(s, s, 1);
+        muzzleRef.current.material.opacity = charge * 0.72;
+        muzzleRef.current.visible = true;
+      } else if (u < 0.58) {
+        const flash = 1 - clamp01((u - 0.44) / 0.14);
+        const s = 0.5 + flash * 1.45;
+        muzzleRef.current.scale.set(s, s, 1);
+        muzzleRef.current.material.opacity = flash * 0.95;
+        muzzleRef.current.visible = true;
+      } else {
+        muzzleRef.current.visible = false;
+      }
+    }
+
+    // Mũi tên bạc siêu thanh xuyên ngang sân đá (u = 0.44 -> 0.56)
+    const inFlight = u >= 0.44 && u <= 0.57;
+    if (boltGroupRef.current) {
+      boltGroupRef.current.visible = inFlight;
+      if (inFlight) {
+        const k = easeOutCubic((u - 0.44) / 0.12);
+        TMP_VEC_A.set(
+          THREE.MathUtils.lerp(sx, tx, k),
+          THREE.MathUtils.lerp(sy, ty, k),
+          THREE.MathUtils.lerp(sz, tz, k)
+        );
+        TMP_DIR.set(tx - sx, ty - sy, tz - sz).normalize();
+        TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+        boltGroupRef.current.position.copy(TMP_VEC_A);
+        boltGroupRef.current.quaternion.copy(TMP_QUAT);
+      }
+    }
+
+    // Vệt rạch không khí trắng bạc kéo dài từ nỏ tới mục tiêu
+    if (streakRef.current && streakMatRef.current) {
+      if (u >= 0.44 && u <= 0.72) {
+        streakRef.current.visible = true;
+        const dist = Math.max(0.2, Math.hypot(tx - sx, ty - sy, tz - sz));
+        TMP_DIR.set(tx - sx, ty - sy, tz - sz).normalize();
+        TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+        streakRef.current.position.set((sx + tx) * 0.5, (sy + ty) * 0.5, (sz + tz) * 0.5);
+        streakRef.current.quaternion.copy(TMP_QUAT);
+        const fade = 1 - clamp01((u - 0.48) / 0.24);
+        streakRef.current.scale.set(0.55 + fade * 0.75, dist, 0.55 + fade * 0.75);
+        streakMatRef.current.opacity = fade * 0.85;
+      } else {
+        streakRef.current.visible = false;
+      }
+    }
+
+    // Vòng xung kích bạc + Tia lửa bạc văng tung tóe tại mục tiêu (u >= 0.54)
+    const hitActive = u >= 0.54 && u <= 0.9;
+    if (impactRingRef.current && impactRingMatRef.current) {
+      impactRingRef.current.visible = hitActive;
+      if (hitActive) {
+        const hk = clamp01((u - 0.54) / 0.34);
+        impactRingRef.current.position.set(tx, 0.05, tz);
+        const rs = 0.45 + easeOutCubic(hk) * 1.85;
+        impactRingRef.current.scale.set(rs, rs, 1);
+        impactRingMatRef.current.opacity = (1 - hk) * 0.88;
+      }
+    }
+
+    for (let i = 0; i < 6; i++) {
+      const sp = sparkRefs.current[i];
+      if (!sp) continue;
+      if (!hitActive) {
+        sp.visible = false;
+        continue;
+      }
+      sp.visible = true;
+      const hk = clamp01((u - 0.54) / 0.34);
+      const ang = (i / 6) * Math.PI * 2 + 0.3;
+      const rad = easeOutCubic(hk) * 1.15;
+      sp.position.set(
+        tx + Math.cos(ang) * rad,
+        ty + Math.sin(hk * Math.PI) * (0.45 + (i % 2) * 0.25) - hk * 0.35,
+        tz + Math.sin(ang) * rad
+      );
+      const sc = Math.max(0.02, (1 - hk) * 0.34);
+      sp.scale.set(sc, sc, 1);
+      sp.material.opacity = (1 - hk) * 0.9;
+    }
+  });
+
+  return (
+    <group ref={rootRef} visible={false}>
+      <sprite ref={muzzleRef} visible={false} raycast={NOOP_RAYCAST}>
+        <spriteMaterial
+          map={glowTex}
+          color="#e0f2fe"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+      <group ref={boltGroupRef} visible={false}>
+        <mesh geometry={geos.boltShaft} raycast={NOOP_RAYCAST}>
+          <meshBasicMaterial color="#f8fafc" />
+        </mesh>
+        <mesh geometry={geos.boltTip} position={[0, 0.45, 0]} raycast={NOOP_RAYCAST}>
+          <meshBasicMaterial color="#bae6fd" />
+        </mesh>
+      </group>
+      <mesh ref={streakRef} geometry={geos.beamCore} visible={false} raycast={NOOP_RAYCAST}>
+        <meshBasicMaterial
+          ref={streakMatRef}
+          color="#e0f2fe"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh
+        ref={impactRingRef}
+        geometry={geos.ringThin}
+        rotation={[-Math.PI / 2, 0, 0]}
+        visible={false}
+        raycast={NOOP_RAYCAST}
+      >
+        <meshBasicMaterial
+          ref={impactRingMatRef}
+          color="#bae6fd"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <sprite
+          key={`hspark_${i}`}
+          ref={(el) => {
+            sparkRefs.current[i] = el;
+          }}
+          visible={false}
+          raycast={NOOP_RAYCAST}
+        >
+          <spriteMaterial
+            map={glowTex}
+            color={i % 2 === 0 ? "#ffffff" : "#7dd3fc"}
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * 8. GÓI VFX CUPID BẮN ĐÔI MŨI TÊN & SỢI TƠ HỒNG KẾT DUYÊN (`cupid_love_arrow`)
+ */
+function CupidTwinArrowTetherVfx({
+  actorSeat,
+  targetSeat,
+  secondaryTargetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+}) {
+  const rootRef = useRef(null);
+  const arrowARef = useRef(null);
+  const arrowBRef = useRef(null);
+  const tetherRef = useRef(null);
+  const tetherMatRef = useRef(null);
+  const ringARef = useRef(null);
+  const ringBRef = useRef(null);
+  const moteRefs = useRef([]);
+
+  useFrame((state) => {
+    const u = resolveChoreoProgress(choreoTiming);
+    if (!rootRef.current) return;
+    const seatB = secondaryTargetSeat || targetSeat;
+    if (u < 0.3 || u > 0.98 || !actorSeat || !targetSeat || !seatB) {
+      rootRef.current.visible = false;
+      return;
+    }
+    rootRef.current.visible = true;
+    const t = state.clock.elapsedTime;
+
+    const sx = actorSeat.x + Math.sin(actorSeat.facingYaw) * 0.45;
+    const sy = 1.32;
+    const sz = actorSeat.z + Math.cos(actorSeat.facingYaw) * 0.45;
+
+    const updateArrow = (ref, destSeat, startU, endU) => {
+      if (!ref.current) return;
+      if (u < startU || u > endU) {
+        ref.current.visible = false;
+        return;
+      }
+      ref.current.visible = true;
+      const k = clamp01((u - startU) / (endU - startU));
+      const px = THREE.MathUtils.lerp(sx, destSeat.x, k);
+      const pz = THREE.MathUtils.lerp(sz, destSeat.z, k);
+      const py = THREE.MathUtils.lerp(sy, 0.88, k) + Math.sin(k * Math.PI) * 0.72;
+      const kNext = Math.min(1, k + 0.04);
+      const nx = THREE.MathUtils.lerp(sx, destSeat.x, kNext);
+      const nz = THREE.MathUtils.lerp(sz, destSeat.z, kNext);
+      const ny = THREE.MathUtils.lerp(sy, 0.88, kNext) + Math.sin(kNext * Math.PI) * 0.72;
+      TMP_DIR.set(nx - px, ny - py, nz - pz).normalize();
+      TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+      ref.current.position.set(px, py, pz);
+      ref.current.quaternion.copy(TMP_QUAT);
+    };
+
+    updateArrow(arrowARef, targetSeat, 0.45, 0.64);
+    updateArrow(arrowBRef, seatB, 0.5, 0.69);
+
+    // Sợi Dây Tơ Hồng phát sáng nối liền 2 ghế Tình Nhân (u >= 0.62)
+    const tetherOn = u >= 0.62;
+    if (tetherRef.current && tetherMatRef.current) {
+      tetherRef.current.visible = tetherOn;
+      if (tetherOn) {
+        const tk = clamp01((u - 0.62) / 0.16);
+        const fade = 1 - clamp01((u - 0.86) / 0.12);
+        const dx = seatB.x - targetSeat.x;
+        const dz = seatB.z - targetSeat.z;
+        const dist = Math.max(0.2, Math.hypot(dx, dz) * tk);
+        TMP_DIR.set(dx, 0, dz).normalize();
+        TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+        tetherRef.current.position.set(
+          targetSeat.x + dx * 0.5 * tk,
+          0.84 + Math.sin(t * 5) * 0.03,
+          targetSeat.z + dz * 0.5 * tk
+        );
+        tetherRef.current.quaternion.copy(TMP_QUAT);
+        tetherRef.current.scale.set(1, dist, 1);
+        tetherMatRef.current.opacity = 0.86 * fade;
+      }
+    }
+
+    const updateHaloRing = (rRef, seat, startU) => {
+      if (!rRef.current) return;
+      if (u < startU) {
+        rRef.current.visible = false;
+        return;
+      }
+      rRef.current.visible = true;
+      const rk = clamp01((u - startU) / 0.3);
+      const fade = 1 - clamp01((u - 0.84) / 0.14);
+      rRef.current.position.set(seat.x, 0.05, seat.z);
+      const sc = 0.65 + rk * 0.55;
+      rRef.current.scale.set(sc, sc, 1);
+      rRef.current.material.opacity = 0.78 * fade;
+    };
+    updateHaloRing(ringARef, targetSeat, 0.62);
+    updateHaloRing(ringBRef, seatB, 0.67);
+
+    for (let i = 0; i < 6; i++) {
+      const m = moteRefs.current[i];
+      if (!m) continue;
+      if (!tetherOn) {
+        m.visible = false;
+        continue;
+      }
+      m.visible = true;
+      const frac = ((i / 6) + t * 0.35) % 1;
+      m.position.set(
+        THREE.MathUtils.lerp(targetSeat.x, seatB.x, frac),
+        0.84 + Math.sin(frac * Math.PI) * 0.22,
+        THREE.MathUtils.lerp(targetSeat.z, seatB.z, frac)
+      );
+      const sc = 0.22 + Math.sin(t * 6 + i) * 0.05;
+      m.scale.set(sc, sc, 1);
+      m.material.opacity = 0.82 * (1 - clamp01((u - 0.86) / 0.12));
+    }
+  });
+
+  return (
+    <group ref={rootRef} visible={false}>
+      {[arrowARef, arrowBRef].map((aRef, idx) => (
+        <group key={`carrow_${idx}`} ref={aRef} visible={false}>
+          <mesh geometry={geos.boltShaft} raycast={NOOP_RAYCAST}>
+            <meshBasicMaterial color="#fbcfe8" />
+          </mesh>
+          <mesh geometry={geos.shard} position={[0, 0.42, 0]} scale={[1.4, 1.8, 1.4]} raycast={NOOP_RAYCAST}>
+            <meshBasicMaterial color="#ec4899" />
+          </mesh>
+        </group>
+      ))}
+      <mesh ref={tetherRef} geometry={geos.tetherCord} visible={false} raycast={NOOP_RAYCAST}>
+        <meshBasicMaterial
+          ref={tetherMatRef}
+          color="#f472b6"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      {[ringARef, ringBRef].map((rRef, idx) => (
+        <mesh
+          key={`cring_${idx}`}
+          ref={rRef}
+          geometry={geos.ringThin}
+          rotation={[-Math.PI / 2, 0, 0]}
+          visible={false}
+          raycast={NOOP_RAYCAST}
+        >
+          <meshBasicMaterial
+            color="#f472b6"
+            transparent
+            opacity={0}
+            side={THREE.DoubleSide}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <sprite
+          key={`cmote_${i}`}
+          ref={(el) => {
+            moteRefs.current[i] = el;
+          }}
+          visible={false}
+          raycast={NOOP_RAYCAST}
+        >
+          <spriteMaterial
+            map={glowTex}
+            color={i % 2 === 0 ? "#fbcfe8" : "#ec4899"}
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * 9. GÓI VFX ĐÔI TÌNH NHÂN ĐỨT DÂY TƠ HỒNG TAN VỠ (`lovers_heartbreak_cascade`)
+ */
+function LoversHeartbreakShatterVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+  const rootRef = useRef(null);
+  const tetherRef = useRef(null);
+  const shardRefs = useRef([]);
+  const flashRef = useRef(null);
+
+  useFrame((state) => {
+    const u = resolveChoreoProgress(choreoTiming);
+    if (!rootRef.current) return;
+    if (u < 0.08 || u > 0.95 || !actorSeat || !targetSeat) {
+      rootRef.current.visible = false;
+      return;
+    }
+    rootRef.current.visible = true;
+    const t = state.clock.elapsedTime;
+    const midX = (actorSeat.x + targetSeat.x) * 0.5;
+    const midZ = (actorSeat.z + targetSeat.z) * 0.5;
+
+    // Trước u = 0.44: Sợi tơ hồng rung bần bật căng đứt giữa 2 ghế
+    if (tetherRef.current) {
+      if (u < 0.44) {
+        tetherRef.current.visible = true;
+        const dx = targetSeat.x - actorSeat.x;
+        const dz = targetSeat.z - actorSeat.z;
+        const dist = Math.max(0.2, Math.hypot(dx, dz));
+        TMP_DIR.set(dx, 0, dz).normalize();
+        TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+        const jitter = Math.sin(t * 42) * 0.035 * (u / 0.44);
+        tetherRef.current.position.set(midX + jitter, 0.88, midZ - jitter);
+        tetherRef.current.quaternion.copy(TMP_QUAT);
+        tetherRef.current.scale.set(1.2, dist, 1.2);
+        tetherRef.current.material.opacity = 0.9;
+      } else {
+        tetherRef.current.visible = false;
+      }
+    }
+
+    // Từ u = 0.44: Nổ vỡ thành 8 mảnh tinh thể pha lê hồng rơi lả tả xuống đá!
+    const shattered = u >= 0.44;
+    if (flashRef.current) {
+      flashRef.current.visible = shattered && u < 0.64;
+      if (flashRef.current.visible) {
+        const fk = 1 - clamp01((u - 0.44) / 0.2);
+        flashRef.current.position.set(midX, 0.92, midZ);
+        const fs = 0.6 + fk * 1.65;
+        flashRef.current.scale.set(fs, fs, 1);
+        flashRef.current.material.opacity = fk * 0.92;
+      }
+    }
+
+    for (let i = 0; i < 8; i++) {
+      const sh = shardRefs.current[i];
+      if (!sh) continue;
+      if (!shattered) {
+        sh.visible = false;
+        continue;
+      }
+      sh.visible = true;
+      const sk = clamp01((u - 0.44) / 0.48);
+      const frac = (i + 0.5) / 8;
+      const baseX = THREE.MathUtils.lerp(actorSeat.x, targetSeat.x, frac);
+      const baseZ = THREE.MathUtils.lerp(actorSeat.z, targetSeat.z, frac);
+      const spreadAng = i * 1.9;
+      sh.position.set(
+        baseX + Math.cos(spreadAng) * sk * 0.55,
+        Math.max(0.05, 0.88 + Math.sin(sk * Math.PI) * 0.28 - sk * sk * 1.15),
+        baseZ + Math.sin(spreadAng) * sk * 0.55
+      );
+      sh.rotation.set(sk * 8 + i, sk * 6, sk * 5);
+      sh.material.opacity = (1 - sk) * 0.95;
+    }
+  });
+
+  return (
+    <group ref={rootRef} visible={false}>
+      <mesh ref={tetherRef} geometry={geos.tetherCord} visible={false} raycast={NOOP_RAYCAST}>
+        <meshBasicMaterial
+          color="#fb7185"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <sprite ref={flashRef} visible={false} raycast={NOOP_RAYCAST}>
+        <spriteMaterial
+          map={glowTex}
+          color="#fda4af"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+        <mesh
+          key={`lshard_${i}`}
+          ref={(el) => {
+            shardRefs.current[i] = el;
+          }}
+          geometry={geos.shard}
+          scale={[1.35, 1.35, 1.35]}
+          visible={false}
+          raycast={NOOP_RAYCAST}
+        >
+          <meshBasicMaterial color={i % 2 === 0 ? "#fda4af" : "#e11d48"} transparent opacity={0} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * 10. GÓI VFX SÓI ĐẦU ĐÀN KHẮC ẤN HUYẾT NGUYỆT & CỘT MÁU TRU TRĂNG (`alpha_blood_convert`)
+ */
+function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+  const rootRef = useRef(null);
+  const pillarRef = useRef(null);
+  const hexSealRef = useRef(null);
+  const clawARef = useRef(null);
+  const clawBRef = useRef(null);
+  const howlWaveRef = useRef(null);
+
+  useFrame((state) => {
+    const u = resolveChoreoProgress(choreoTiming);
+    if (!rootRef.current) return;
+    if (u < 0.3 || u > 0.92 || !actorSeat || !targetSeat) {
+      rootRef.current.visible = false;
+      return;
+    }
+    rootRef.current.visible = true;
+    const t = state.clock.elapsedTime;
+    const tx = targetSeat.x;
+    const tz = targetSeat.z;
+
+    // Nhát vuốt Huyết Ấn chữ X đỏ thẫm (u = 0.34 -> 0.58)
+    const slashOn = u >= 0.34 && u <= 0.6;
+    [clawARef, clawBRef].forEach((cRef, idx) => {
+      if (!cRef.current) return;
+      cRef.current.visible = slashOn;
+      if (slashOn) {
+        const sk = clamp01((u - 0.34) / 0.24);
+        cRef.current.position.set(tx, 1.02, tz);
+        cRef.current.rotation.set(0.3, targetSeat.facingYaw || 0, idx === 0 ? 0.78 : -0.78);
+        const sc = 0.8 + easeOutCubic(sk) * 0.65;
+        cRef.current.scale.set(sc, sc, sc);
+        cRef.current.material.opacity = (1 - sk) * 0.95;
+      }
+    });
+
+    // Vòng cổ ngữ lục giác Huyết Nguyệt xoay dưới chân nạn nhân (u >= 0.36)
+    if (hexSealRef.current) {
+      hexSealRef.current.visible = u >= 0.36;
+      if (hexSealRef.current.visible) {
+        const hk = clamp01((u - 0.36) / 0.22);
+        const fade = 1 - clamp01((u - 0.76) / 0.16);
+        hexSealRef.current.position.set(tx, 0.045, tz);
+        hexSealRef.current.rotation.z = t * 1.8;
+        const sc = 0.6 + easeOutCubic(hk) * 0.95;
+        hexSealRef.current.scale.set(sc, sc, 1);
+        hexSealRef.current.material.opacity = 0.88 * fade;
+      }
+    }
+
+    // Cột Hào Quang Huyết Nguyệt & Sóng Hú Trăng (u = 0.54 -> 0.86)
+    const howlOn = u >= 0.54 && u <= 0.88;
+    if (pillarRef.current) {
+      pillarRef.current.visible = howlOn;
+      if (howlOn) {
+        const pk = Math.sin(((u - 0.54) / 0.34) * Math.PI);
+        pillarRef.current.position.set(tx, 1.2, tz);
+        pillarRef.current.scale.set(0.95 + pk * 0.35, 1.25, 0.95 + pk * 0.35);
+        pillarRef.current.material.opacity = pk * 0.52;
+      }
+    }
+    if (howlWaveRef.current) {
+      howlWaveRef.current.visible = howlOn;
+      if (howlOn) {
+        const wk = clamp01((u - 0.56) / 0.28);
+        howlWaveRef.current.position.set(tx, 1.55 + wk * 0.65, tz);
+        const ws = 0.5 + easeOutCubic(wk) * 2.2;
+        howlWaveRef.current.scale.set(ws, ws, 1);
+        howlWaveRef.current.material.opacity = (1 - wk) * 0.8;
+      }
+    }
+  });
+
+  return (
+    <group ref={rootRef} visible={false}>
+      {[clawARef, clawBRef].map((cRef, i) => (
+        <mesh key={`aclaw_${i}`} ref={cRef} geometry={geos.clawArc} visible={false} raycast={NOOP_RAYCAST}>
+          <meshBasicMaterial
+            color="#ef4444"
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+      <mesh
+        ref={hexSealRef}
+        geometry={geos.hexRing}
+        rotation={[-Math.PI / 2, 0, 0]}
+        visible={false}
+        raycast={NOOP_RAYCAST}
+      >
+        <meshBasicMaterial
+          color="#dc2626"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={pillarRef} geometry={geos.pillarCyl} visible={false} raycast={NOOP_RAYCAST}>
+        <meshBasicMaterial
+          color="#b91c1c"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <sprite ref={howlWaveRef} visible={false} raycast={NOOP_RAYCAST}>
+        <spriteMaterial
+          map={glowTex}
+          color="#f87171"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+    </group>
+  );
+}
+
+/**
+ * 11. GÓI VFX TRƯỞNG LÀNG DẬM QUYỀN TRƯỢNG SẮC LỆNH HOÀNG KIM X2 (`mayor_decree_slam`)
+ */
+function MayorGoldenDecreeVfx({ actorSeat, choreoTiming, geos, glowTex }) {
+  const rootRef = useRef(null);
+  const sunCrownRef = useRef(null);
+  const waveInnerRef = useRef(null);
+  const waveOuterRef = useRef(null);
+  const pillarRef = useRef(null);
+
+  useFrame((state) => {
+    const u = resolveChoreoProgress(choreoTiming);
+    if (!rootRef.current) return;
+    if (u < 0.14 || u > 0.94 || !actorSeat) {
+      rootRef.current.visible = false;
+      return;
+    }
+    rootRef.current.visible = true;
+    const t = state.clock.elapsedTime;
+    const slamX = actorSeat.x + Math.sin(actorSeat.facingYaw) * 0.58;
+    const slamZ = actorSeat.z + Math.cos(actorSeat.facingYaw) * 0.58;
+
+    // Quầng Mặt Trời Hoàng Kim tụ trên đỉnh Quyền Trượng khi giơ cao (u < 0.42)
+    if (sunCrownRef.current) {
+      const pre = u < 0.44;
+      sunCrownRef.current.visible = pre || u < 0.78;
+      if (pre) {
+        const rk = clamp01((u - 0.14) / 0.26);
+        sunCrownRef.current.position.set(slamX, 1.95, slamZ);
+        const sc = 0.35 + rk * 0.75;
+        sunCrownRef.current.scale.set(sc, sc, 1);
+        sunCrownRef.current.material.opacity = rk * 0.9;
+      } else {
+        const fk = 1 - clamp01((u - 0.44) / 0.34);
+        sunCrownRef.current.position.set(slamX, 1.82 + Math.sin(t * 6) * 0.04, slamZ);
+        sunCrownRef.current.scale.set(0.85, 0.85, 1);
+        sunCrownRef.current.material.opacity = fk * 0.72;
+      }
+    }
+
+    // Sóng chấn động Hoàng Kim đôi lan rộng trên mặt sân đá lúc dậm trượng (u >= 0.42)
+    const slammed = u >= 0.42;
+    if (waveInnerRef.current) {
+      waveInnerRef.current.visible = slammed;
+      if (slammed) {
+        const wk = clamp01((u - 0.42) / 0.42);
+        waveInnerRef.current.position.set(slamX, 0.045, slamZ);
+        waveInnerRef.current.rotation.z = -t * 1.5;
+        const sc = 0.5 + easeOutCubic(wk) * 2.35;
+        waveInnerRef.current.scale.set(sc, sc, 1);
+        waveInnerRef.current.material.opacity = (1 - wk) * 0.92;
+      }
+    }
+    if (waveOuterRef.current) {
+      waveOuterRef.current.visible = u >= 0.48;
+      if (waveOuterRef.current.visible) {
+        const wk = clamp01((u - 0.48) / 0.42);
+        waveOuterRef.current.position.set(slamX, 0.048, slamZ);
+        const sc = 0.4 + easeOutCubic(wk) * 1.75;
+        waveOuterRef.current.scale.set(sc, sc, 1);
+        waveOuterRef.current.material.opacity = (1 - wk) * 0.82;
+      }
+    }
+    if (pillarRef.current) {
+      pillarRef.current.visible = slammed && u < 0.82;
+      if (pillarRef.current.visible) {
+        const pk = Math.sin(((u - 0.42) / 0.4) * Math.PI);
+        pillarRef.current.position.set(slamX, 1.18, slamZ);
+        pillarRef.current.scale.set(0.85, 1.15, 0.85);
+        pillarRef.current.material.opacity = pk * 0.46;
+      }
+    }
+  });
+
+  return (
+    <group ref={rootRef} visible={false}>
+      <sprite ref={sunCrownRef} visible={false} raycast={NOOP_RAYCAST}>
+        <spriteMaterial
+          map={glowTex}
+          color="#fef08a"
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </sprite>
+      <mesh
+        ref={waveInnerRef}
+        geometry={geos.hexRing}
+        rotation={[-Math.PI / 2, 0, 0]}
+        visible={false}
+        raycast={NOOP_RAYCAST}
+      >
+        <meshBasicMaterial
+          color="#f59e0b"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh
+        ref={waveOuterRef}
+        geometry={geos.ringThin}
+        rotation={[-Math.PI / 2, 0, 0]}
+        visible={false}
+        raycast={NOOP_RAYCAST}
+      >
+        <meshBasicMaterial
+          color="#fde047"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh ref={pillarRef} geometry={geos.pillarCyl} visible={false} raycast={NOOP_RAYCAST}>
+        <meshBasicMaterial
+          color="#fbbf24"
+          transparent
+          opacity={0}
+          side={THREE.DoubleSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
+  );
+}
+
 export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMap }) {
   const geos = useMemo(() => getSharedVfxGeos(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
@@ -1292,6 +2243,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
       const actorSeat = seatMap[actorId];
       if (!actorSeat) return;
       const targetSeat = spec.targetId ? seatMap[spec.targetId] : actorSeat;
+      const secondaryTargetSeat = spec.secondaryTargetId ? seatMap[spec.secondaryTargetId] : null;
 
       if (
         spec.actionType === "witch_poison_throw" ||
@@ -1301,13 +2253,19 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
         spec.actionType === "guard_patrol_cast" ||
         spec.actionType === "seer_divine_cast" ||
         spec.actionType === "cursed_blood_metamorph" ||
-        spec.actionType === "tough_iron_roar"
+        spec.actionType === "tough_iron_roar" ||
+        spec.actionType === "hunter_last_shot" ||
+        spec.actionType === "cupid_love_arrow" ||
+        spec.actionType === "lovers_heartbreak_cascade" ||
+        spec.actionType === "alpha_blood_convert" ||
+        spec.actionType === "mayor_decree_slam"
       ) {
         list.push({
           key: `${actorId}_${spec.actionType}_${spec.targetId || "self"}_${spec.slotIndex ?? 0}`,
           actionType: spec.actionType,
           actorSeat,
           targetSeat,
+          secondaryTargetSeat,
           slotIndex: spec.slotIndex ?? 0,
           totalSlots: spec.totalSlots ?? 1,
         });
@@ -1316,88 +2274,145 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
     return list;
   }, [actorChoreoMap, seatMap]);
 
-  if (activeEffects.length === 0 || !choreoTiming) return null;
-
   return (
     <group name="ActionChoreoVfx3DLayer">
-      {activeEffects.map((fx) => {
-        switch (fx.actionType) {
-          case "witch_poison_throw":
-            return (
-              <WitchPoisonThrowVfx
-                key={fx.key}
-                actorSeat={fx.actorSeat}
-                targetSeat={fx.targetSeat}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-                mistTex={mistTex}
-              />
-            );
-          case "witch_elixir_cast":
-            return (
-              <WitchElixirCastVfx
-                key={fx.key}
-                actorSeat={fx.actorSeat}
-                targetSeat={fx.targetSeat}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-              />
-            );
-          case "wolf_pounce":
-            return (
-              <WolfPounceSlashVfx
-                key={fx.key}
-                actorSeat={fx.actorSeat}
-                targetSeat={fx.targetSeat}
-                slotIndex={fx.slotIndex}
-                totalSlots={fx.totalSlots}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-              />
-            );
-          case "guard_intercept":
-          case "guard_patrol_cast":
-            return (
-              <GuardShieldBarrierVfx
-                key={fx.key}
-                mode={fx.actionType}
-                actorSeat={fx.actorSeat}
-                targetSeat={fx.targetSeat}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-              />
-            );
-          case "seer_divine_cast":
-            return (
-              <SeerDivinationBeamVfx
-                key={fx.key}
-                actorSeat={fx.actorSeat}
-                targetSeat={fx.targetSeat}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-              />
-            );
-          case "cursed_blood_metamorph":
-          case "tough_iron_roar":
-            return (
-              <SelfAuraBurstVfx
-                key={fx.key}
-                mode={fx.actionType}
-                actorSeat={fx.actorSeat}
-                choreoTiming={choreoTiming}
-                geos={geos}
-                glowTex={glowTex}
-              />
-            );
-          default:
-            return null;
-        }
-      })}
+      {/* Đèn Flash Động Dùng Chung (0ms giật biên dịch lại WebGL Shader!) */}
+      <PooledActionPointLight activeEffects={activeEffects} choreoTiming={choreoTiming} />
+
+      {choreoTiming &&
+        activeEffects.map((fx) => {
+          switch (fx.actionType) {
+            case "witch_poison_throw":
+              return (
+                <WitchPoisonThrowVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                  mistTex={mistTex}
+                />
+              );
+            case "witch_elixir_cast":
+              return (
+                <WitchElixirCastVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "wolf_pounce":
+              return (
+                <WolfPounceSlashVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  slotIndex={fx.slotIndex}
+                  totalSlots={fx.totalSlots}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "guard_intercept":
+            case "guard_patrol_cast":
+              return (
+                <GuardShieldBarrierVfx
+                  key={fx.key}
+                  mode={fx.actionType}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "seer_divine_cast":
+              return (
+                <SeerDivinationBeamVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "cursed_blood_metamorph":
+            case "tough_iron_roar":
+              return (
+                <SelfAuraBurstVfx
+                  key={fx.key}
+                  mode={fx.actionType}
+                  actorSeat={fx.actorSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "hunter_last_shot":
+              return (
+                <HunterSilverBoltVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "cupid_love_arrow":
+              return (
+                <CupidTwinArrowTetherVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  secondaryTargetSeat={fx.secondaryTargetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "lovers_heartbreak_cascade":
+              return (
+                <LoversHeartbreakShatterVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "alpha_blood_convert":
+              return (
+                <AlphaBloodCrestVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  targetSeat={fx.targetSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            case "mayor_decree_slam":
+              return (
+                <MayorGoldenDecreeVfx
+                  key={fx.key}
+                  actorSeat={fx.actorSeat}
+                  choreoTiming={choreoTiming}
+                  geos={geos}
+                  glowTex={glowTex}
+                />
+              );
+            default:
+              return null;
+          }
+        })}
     </group>
   );
 }

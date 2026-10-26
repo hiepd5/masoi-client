@@ -227,11 +227,13 @@ export function evaluateActorChoreography({
   const {
     actionType,
     targetId = null,
+    secondaryTargetId = null,
     slotIndex = 0,
     totalSlots = 1,
   } = choreoRoleAction;
 
   const targetSeat = targetId && seatMap ? seatMap[targetId] : null;
+  const secondaryTargetSeat = secondaryTargetId && seatMap ? seatMap[secondaryTargetId] : null;
 
   // Khởi tạo giá trị mặc định (= ngồi yên trên ghế)
   let worldX = seatTransform.x;
@@ -865,6 +867,294 @@ export function evaluateActorChoreography({
       break;
     }
 
+    // =========================================================================
+    // 13. THỢ SĂN (#19) — QUỲ 1 GỐI GIƯƠNG NỎ BẠC BẮN TRẢ THÙ GIẬT NẢY VAI!
+    // =========================================================================
+    case "hunter_last_shot": {
+      const activeW = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.88 ? (1 - u) / 0.12 : 1);
+      const fwd = 0.44 * activeW;
+      worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+      worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+      worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, activeW);
+      sitFactor = 1 - activeW;
+
+      // Thế quỳ 1 gối xạ thủ Bắc Âu: chân trái chống vuông góc trước, gối phải chạm sát đá (-0.24m)
+      worldY = -0.24 * activeW;
+      leftThighAddX = -0.95 * activeW;
+      leftKneeAddX = 1.42 * activeW;
+      rightThighAddX = 0.25 * activeW;
+      rightKneeAddX = 1.55 * activeW;
+      leftFootPitch = -0.18 * activeW;
+      rightFootPitch = 0.45 * activeW;
+
+      if (u < 0.44) {
+        // Nhịp 1 & 2: Nén đau giương Nỏ Bạc khóa chết tâm ngắm vào mục tiêu
+        const aimW = smoothstep01(u / 0.32);
+        spineLeanX = 0.18 * activeW;
+        spineTwistY = -0.14 * aimW;
+        headPitchX = -0.06 * aimW;
+        rightArmPitchX = -0.45 - 0.98 * aimW;
+        rightForeArmBend = -0.52 + 0.34 * aimW;
+        leftArmPitchX = -0.45 - 0.92 * aimW;
+        leftForeArmBend = -0.58;
+        leftArmSpreadZ = -0.28 * aimW;
+        bodyEmissiveHex = "#38bdf8";
+        bodyEmissiveIntensity = 0.28 * aimW;
+      } else if (u < 0.72) {
+        // Nhịp 3 (44% -> 72%): BÓP CÒ PHÓNG ĐẠN BẠC — Giật nảy bả vai & ngửa ngực!
+        const recoil = Math.sin(((u - 0.44) / 0.28) * Math.PI);
+        spineLeanX = 0.18 - 0.32 * recoil;
+        spineTwistY = -0.14 + 0.12 * recoil;
+        headPitchX = -0.22 * recoil;
+        rightArmPitchX = -1.43 - 0.38 * recoil;
+        rightForeArmBend = -0.18 - 0.32 * recoil;
+        leftArmPitchX = -1.37 - 0.22 * recoil;
+        leftForeArmBend = -0.62;
+        leftArmSpreadZ = -0.22;
+        bodyEmissiveHex = "#e2e8f0";
+        bodyEmissiveIntensity = 0.78 * recoil;
+      } else {
+        // Nhịp 4: Hạ nỏ thở dốc anh dũng rồi thu về ghế
+        const settle = smoothstep01((u - 0.72) / 0.28);
+        spineLeanX = 0.26 * (1 - settle * 0.5) * activeW;
+        headPitchX = 0.24 * activeW;
+        rightArmPitchX = THREE.MathUtils.lerp(-1.43, -0.55, settle);
+        leftArmPitchX = THREE.MathUtils.lerp(-1.37, -0.5, settle);
+      }
+      break;
+    }
+
+    // =========================================================================
+    // 14. THẦN TÌNH YÊU CUPID (#20) — BAY LƠ LỬNG GIƯƠNG CUNG BẮN ĐÔI TƠ HỒNG!
+    // =========================================================================
+    case "cupid_love_arrow": {
+      const standW = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.86 ? (1 - u) / 0.14 : 1);
+      const fwd = 0.4 * standW;
+      worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+      worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+      sitFactor = 1 - standW;
+
+      // Xoay hướng nhìn về trung điểm của Đôi Tình Nhân A & B (hoặc quét nhẹ từ A sang B)
+      const yawA = yawToTargetFromSeat;
+      const yawB = secondaryTargetSeat
+        ? Math.atan2(secondaryTargetSeat.x - seatTransform.x, secondaryTargetSeat.z - seatTransform.z)
+        : yawA;
+      const panMix = smoothstep01((u - 0.36) / 0.24);
+      let diffYaw = yawB - yawA;
+      while (diffYaw > Math.PI) diffYaw -= Math.PI * 2;
+      while (diffYaw < -Math.PI) diffYaw += Math.PI * 2;
+      const aimYaw = yawA + diffYaw * (0.25 + 0.5 * panMix);
+      worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, aimYaw, standW);
+
+      // Bay lơ lửng thần thoại cách mặt sân đá 22cm + co nhẹ chân trên không
+      worldY = (0.22 + Math.sin(tClock * 4.4) * 0.035) * standW;
+      leftKneeAddX = 0.34 * standW;
+      rightKneeAddX = 0.52 * standW;
+      leftFootPitch = 0.28 * standW;
+      rightFootPitch = 0.36 * standW;
+
+      if (u < 0.46) {
+        // Kéo căng dây tơ hồng sát gò má phải, tay trái duỗi thẳng nâng Cung Pha Lê (#26)
+        const drawK = smoothstep01(u / 0.38);
+        spineLeanX = -0.08 * drawK;
+        spineTwistY = -0.32 * drawK;
+        leftArmPitchX = -0.45 - 1.08 * drawK;
+        leftForeArmBend = -0.52 + 0.44 * drawK;
+        leftArmSpreadZ = 0.12 * drawK;
+        rightArmPitchX = -0.45 - 1.02 * drawK;
+        rightForeArmBend = -0.52 - 0.92 * drawK;
+        rightArmSpreadZ = -0.24 * drawK;
+        bodyEmissiveHex = "#f472b6";
+        bodyEmissiveIntensity = 0.42 * drawK;
+      } else {
+        // Buông dây bắn liên hoàn 2 mũi tên pha lê hồng!
+        const releasePulse = Math.sin(clamp01((u - 0.46) / 0.32) * Math.PI);
+        spineLeanX = -0.14 * standW;
+        spineTwistY = -0.18 * standW;
+        leftArmPitchX = -1.55 * standW;
+        leftForeArmBend = -0.08;
+        rightArmPitchX = (-1.52 - 0.28 * releasePulse) * standW;
+        rightForeArmBend = -0.35;
+        rightArmSpreadZ = -0.44 * standW;
+        bodyEmissiveHex = "#ec4899";
+        bodyEmissiveIntensity = 0.72 * Math.max(0.35, releasePulse) * standW;
+      }
+      break;
+    }
+
+    // =========================================================================
+    // 15. ĐÔI TÌNH NHÂN ĐỨT TƠ HỒNG — VƯƠN TAY TUYỆT VỌNG & ÔM NGỰC QUỲ GỤC!
+    // =========================================================================
+    case "lovers_heartbreak_cascade": {
+      const standW = smoothstep01(u < 0.14 ? u / 0.14 : u > 0.88 ? (1 - u) / 0.12 : 1);
+      const fwd = 0.36 * standW;
+      worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+      worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+      worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, standW);
+      sitFactor = 1 - standW;
+
+      if (u < 0.44) {
+        // Nhịp 1: Đứng bật dậy vươn hai tay về phía người thương đối diện trước khi dây tơ đứt
+        const reach = smoothstep01(u / 0.34);
+        spineLeanX = 0.22 * reach;
+        leftArmPitchX = -0.45 - 1.05 * reach;
+        rightArmPitchX = -0.45 - 1.05 * reach;
+        leftForeArmBend = -0.24;
+        rightForeArmBend = -0.24;
+        bodyEmissiveHex = "#f472b6";
+        bodyEmissiveIntensity = 0.38 * reach;
+      } else {
+        // Nhịp 2 (44%+): Dây Tơ Hồng Nổ Vỡ — Giật ôm chặt lồng ngực và khuỵu cả 2 gối xuống đất!
+        const shatterK = smoothstep01((u - 0.44) / 0.26);
+        const tremor = Math.sin(tClock * 26) * 0.06 * (1 - clamp01((u - 0.65) / 0.25));
+        worldY = -0.3 * shatterK * standW;
+        leftThighAddX = -0.62 * shatterK * standW;
+        rightThighAddX = -0.62 * shatterK * standW;
+        leftKneeAddX = 1.48 * shatterK * standW;
+        rightKneeAddX = 1.48 * shatterK * standW;
+        spineLeanX = (0.44 * shatterK + tremor) * standW;
+        headPitchX = 0.42 * shatterK * standW;
+        leftArmPitchX = -1.18 * standW;
+        rightArmPitchX = -1.18 * standW;
+        leftForeArmBend = -1.45 * standW;
+        rightForeArmBend = -1.45 * standW;
+        leftArmSpreadZ = -0.26 * standW;
+        rightArmSpreadZ = 0.26 * standW;
+        bodyEmissiveHex = "#f43f5e";
+        bodyEmissiveIntensity = 0.68 * (1 - clamp01((u - 0.52) / 0.38));
+      }
+      break;
+    }
+
+    // =========================================================================
+    // 16. SÓI ĐẦU ĐÀN (#21) — PHÓNG VỒ BEZIER KHẮC ẤN HUYẾT NGUYỆT & HÚ TRĂNG!
+    // =========================================================================
+    case "alpha_blood_convert": {
+      const land = computeVictimFrontLandingXZ(targetSeat || { x: 0, z: 0, facingYaw: 0 }, 0.88, 0, 1);
+      const curve = computeCampfireSafeBezierXZ(
+        seatTransform.x,
+        seatTransform.z,
+        land.x,
+        land.z,
+        CAMPFIRE_SAFE_RADIUS,
+        0
+      );
+
+      if (u < 0.34) {
+        // Nhịp 1: Sói Vương 2.18m phóng bật cao 1.08m uy lực vượt lửa trại
+        const jumpK = clamp01((u - 0.06) / 0.28);
+        const sample = sampleQuadraticBezierXZ(curve, easeInOutQuad(jumpK));
+        const arcSin = Math.sin(jumpK * Math.PI);
+        worldX = sample.x;
+        worldZ = sample.z;
+        worldY = arcSin * 1.08;
+        worldYaw = jumpK < 0.82 ? sample.tangentYaw : land.faceTargetYaw;
+        sitFactor = u < 0.08 ? 1 - u / 0.08 : 0;
+        spineLeanX = 0.44;
+        leftArmPitchX = -2.05 * arcSin - 0.45;
+        rightArmPitchX = -2.05 * arcSin - 0.45;
+        leftArmSpreadZ = 0.38;
+        rightArmSpreadZ = -0.38;
+        leftKneeAddX = 0.62 * arcSin;
+        rightKneeAddX = 0.48 * arcSin;
+        jawOpen = 0.48 * arcSin;
+        tailPitch = 0.32 * arcSin;
+      } else if (u < 0.56) {
+        // Nhịp 2 (34% -> 56%): Đáp sầm xuống đất, ấn thẳng vuốt phải khắc Huyết Ấn Đỏ Thẫm lên con mồi!
+        const brandK = smoothstep01((u - 0.34) / 0.18);
+        worldX = land.x;
+        worldZ = land.z;
+        worldY = 0;
+        worldYaw = land.faceTargetYaw;
+        sitFactor = 0;
+        spineLeanX = 0.34;
+        spineTwistY = -0.24 * brandK;
+        rightArmPitchX = -1.68;
+        rightForeArmBend = -0.18;
+        leftArmPitchX = -0.95;
+        leftArmSpreadZ = 0.36;
+        jawOpen = 0.42;
+        bodyEmissiveHex = "#dc2626";
+        bodyEmissiveIntensity = 0.68 * brandK;
+      } else if (u < 0.8) {
+        // Nhịp 3 (56% -> 80%): Ngửa ngực há nanh hú vang lên Huyết Nguyệt gọi đàn!
+        const howlK = Math.sin(((u - 0.56) / 0.24) * Math.PI);
+        worldX = land.x;
+        worldZ = land.z;
+        worldY = 0.04 * howlK;
+        worldYaw = land.faceTargetYaw;
+        sitFactor = 0;
+        spineLeanX = -0.36 * howlK;
+        headPitchX = -0.54 * howlK;
+        leftArmPitchX = -0.55 - 1.72 * howlK;
+        rightArmPitchX = -0.55 - 1.72 * howlK;
+        leftArmSpreadZ = 0.58 * howlK;
+        rightArmSpreadZ = -0.58 * howlK;
+        leftForeArmBend = -0.38;
+        rightForeArmBend = -0.38;
+        jawOpen = 0.65 * howlK;
+        tailPitch = -0.3 * howlK;
+        bodyEmissiveHex = "#dc2626";
+        bodyEmissiveIntensity = 0.82 * howlK;
+      } else {
+        // Nhịp 4 (80% -> 100%): Bật lùi về lại ngai ghế Sói Vương
+        const retK = clamp01((u - 0.8) / 0.2);
+        const sample = sampleQuadraticBezierXZ(curve, 1 - easeInOutQuad(retK));
+        const arcSin = Math.sin(retK * Math.PI);
+        worldX = sample.x;
+        worldZ = sample.z;
+        worldY = arcSin * 0.64;
+        worldYaw = THREE.MathUtils.lerp(land.faceTargetYaw, seatTransform.facingYaw, retK);
+        sitFactor = retK > 0.78 ? (retK - 0.78) / 0.22 : 0;
+        spineLeanX = 0.22 * (1 - retK);
+      }
+      break;
+    }
+
+    // =========================================================================
+    // 17. TRƯỞNG LÀNG (#22) — BƯỚC LÊN GIƠ CAO & DẬM QUYỀN TRƯỢNG PHIẾU X2!
+    // =========================================================================
+    case "mayor_decree_slam": {
+      const standW = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.86 ? (1 - u) / 0.14 : 1);
+      const fwd = 0.44 * standW;
+      worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+      worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+      worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, standW * 0.65);
+      sitFactor = 1 - standW;
+
+      if (u < 0.42) {
+        // Nhịp 1: Đứng thẳng uy nghiêm, giơ cao Quyền Trượng Đại Bàng đón nắng Hoàng Kim
+        const raiseK = smoothstep01(u / 0.36);
+        spineLeanX = -0.14 * raiseK;
+        headPitchX = -0.2 * raiseK;
+        rightArmPitchX = -0.45 - 2.02 * raiseK;
+        rightForeArmBend = -0.22;
+        rightArmSpreadZ = -0.14 * raiseK;
+        leftArmPitchX = -0.62 * raiseK;
+        leftForeArmBend = -0.78;
+        leftArmSpreadZ = 0.22 * raiseK;
+        bodyEmissiveHex = "#f59e0b";
+        bodyEmissiveIntensity = 0.42 * raiseK;
+      } else {
+        // Nhịp 2 (42%+): DẬM MẠNH ĐẾ QUYỀN TRƯỢNG XUỐNG SÂN ĐÁ — Lan tỏa Sắc Lệnh Hoàng Kim x2!
+        const slamSnap = smoothstep01((u - 0.42) / 0.09);
+        const shockPulse = Math.sin(clamp01((u - 0.42) / 0.36) * Math.PI);
+        worldY = -0.05 * shockPulse * standW;
+        leftKneeAddX = 0.16 * shockPulse * standW;
+        rightKneeAddX = 0.16 * shockPulse * standW;
+        spineLeanX = THREE.MathUtils.lerp(-0.14, 0.14, slamSnap) * standW;
+        headPitchX = 0.04 * standW;
+        rightArmPitchX = THREE.MathUtils.lerp(-2.47, -0.96, slamSnap) * standW;
+        rightForeArmBend = THREE.MathUtils.lerp(-0.22, -0.42, slamSnap);
+        leftArmPitchX = -0.68 * standW;
+        leftForeArmBend = -0.85;
+        leftArmSpreadZ = 0.25 * standW;
+        bodyEmissiveHex = "#fbbf24";
+        bodyEmissiveIntensity = (0.35 + 0.5 * shockPulse) * standW;
+      }
+      break;
+    }
+
     default:
       return null;
   }
@@ -949,6 +1239,59 @@ export function buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpo
       endXZ = [land.x, land.z];
       color = "#3b82f6";
       peakHeight = 0.58;
+    } else if (spec.actionType === "alpha_blood_convert" && spec.targetId && seatMap[spec.targetId]) {
+      const land = computeVictimFrontLandingXZ(seatMap[spec.targetId], 0.88, 0, 1);
+      endXZ = [land.x, land.z];
+      color = "#dc2626";
+      peakHeight = 1.08;
+    } else if (spec.actionType === "hunter_last_shot" && spec.targetId && seatMap[spec.targetId]) {
+      const tSeat = seatMap[spec.targetId];
+      arcs.push({
+        id: `arc_${actorId}_hunter_shot`,
+        color: "#e2e8f0",
+        points: [
+          [startSeat.x, 0.92, startSeat.z],
+          [(startSeat.x + tSeat.x) * 0.5, 0.98, (startSeat.z + tSeat.z) * 0.5],
+          [tSeat.x, 0.88, tSeat.z],
+        ],
+        landingXZ: [tSeat.x, tSeat.z],
+      });
+      return;
+    } else if (spec.actionType === "cupid_love_arrow") {
+      const targets = [
+        spec.targetId ? seatMap[spec.targetId] : null,
+        spec.secondaryTargetId ? seatMap[spec.secondaryTargetId] : null,
+      ].filter(Boolean);
+      targets.forEach((tSeat, ti) => {
+        const pts = [];
+        for (let i = 0; i <= 20; i++) {
+          const k = i / 20;
+          pts.push([
+            THREE.MathUtils.lerp(startSeat.x, tSeat.x, k),
+            1.15 + Math.sin(k * Math.PI) * 0.65 - k * 0.25,
+            THREE.MathUtils.lerp(startSeat.z, tSeat.z, k),
+          ]);
+        }
+        arcs.push({
+          id: `arc_${actorId}_cupid_${ti}`,
+          color: "#ec4899",
+          points: pts,
+          landingXZ: [tSeat.x, tSeat.z],
+        });
+      });
+      if (targets.length === 2) {
+        arcs.push({
+          id: `arc_${actorId}_cupid_tether`,
+          color: "#f9a8d4",
+          points: [
+            [targets[0].x, 0.78, targets[0].z],
+            [(targets[0].x + targets[1].x) * 0.5, 1.08, (targets[0].z + targets[1].z) * 0.5],
+            [targets[1].x, 0.78, targets[1].z],
+          ],
+          landingXZ: [targets[1].x, targets[1].z],
+        });
+      }
+      return;
     } else if (
       spec.actionType === "gallows_walk_hang" ||
       spec.actionType === "gallows_walk_tanner_win"
@@ -1057,12 +1400,230 @@ export const TRIPO_ROLE_RIG_GUIDES = {
       "Model quan trọng nhất lúc đang chơi (nhân bản cho mọi ghế ẩn danh): mũ trùm che trán nhưng thoáng cằm để xoay đầu theo Mic, vạt áo rủ gọn tới gối để ngồi ghế 0.48m đẹp 100%.",
     socketNote: "Bề mặt áo choàng trung tính để nhận 10 màu nhuộm ghế tự động.",
   },
+  hunter: {
+    slotFile: "char_hunter.glb (#19) + prop_hand_hunter_crossbow.glb (#25)",
+    title: "🏹 Thợ Săn Bạc Bắc Âu (Hunter — Cao 1.86m)",
+    rigNotes:
+      "Áo khoác da xanh rừng rậm xẻ vạt trước từ thắt lưng trở xuống để chân trái chống vuông 90° & gối phải chạm đất (thế quỳ 1 gối bắn trả thù) không bị căng rách tà áo!",
+    socketNote: "TUYỆT ĐỐI để 2 bàn tay trống A-Pose — Cổng #25 tự gắn Nỏ Bạc Hạng Nặng vào xương RightHand!",
+  },
+  cupid: {
+    slotFile: "char_cupid.glb (#20) + prop_hand_cupid_bow.glb (#26)",
+    title: "💘 Thần Tình Yêu Bắc Âu (Cupid — Cao 1.76m)",
+    rigNotes:
+      "Đôi cánh lông vũ sau lưng gọn nhẹ (sải cánh <= 0.75m, gắn cứng xương Chest) để không che khuất người ngồi cạnh; ống tay lụa gọn để tay phải kéo căng dây cung sát má!",
+    socketNote: "Bàn tay trái mở nhẹ — Cổng #26 tự gắn Cung Pha Lê Tơ Hồng vào xương LeftHand!",
+  },
+  alpha_wolf: {
+    slotFile: "char_alpha_wolf.glb (#21)",
+    title: "🐺👑 Sói Đầu Đàn Huyết Nguyệt (Alpha Wolf — Cao 2.18m)",
+    rigNotes:
+      "Cao to đồ sộ hơn Sói thường (2.18m vs 2.05m), có đủ 20 xương (gồm Jaw đớp nanh + Tail đuôi). Vương miện sắt sừng gắn liền đỉnh đầu (headCrownRatio = 0.86), giáp vai lông thú tách khấc nách 45°.",
+    socketNote: "Hai bàn tay vuốt sắc khổng lồ khắc cổ ngữ đỏ thẫm (không dùng vũ khí rời).",
+  },
+  mayor: {
+    slotFile: "char_mayor.glb (#22) + prop_hand_mayor_scepter.glb (#27)",
+    title: "👑 Trưởng Làng Quyền Trượng (Mayor — Cao 1.84m)",
+    rigNotes:
+      "Áo choàng nhung đỏ thẫm viền lông gấu mở thoáng vạt trước để đứng thẳng giơ cao tay phải góc -140° và dậm mạnh Quyền Trượng xuống sân đá cực kỳ uy nghiêm!",
+    socketNote: "Bàn tay phải để trống — Cổng #27 tự gắn Quyền Trượng Đại Bàng Hoàng Kim vào xương RightHand!",
+  },
+  villager_female: {
+    slotFile: "char_villager_female.glb (#23)",
+    title: "🧣 Thôn Nữ Khăn Choàng (Villager Female — Cao 1.72m)",
+    rigNotes:
+      "Khăn len trùm vai gọn gàng, váy dạ Bắc Âu mềm tới bắp chân (garmentSkirt = 0.42) để xoay vòng ghế ẩn danh seatIndex % 3 ngồi khít mặt ghế sồi 0.48m.",
+    socketNote: "Hỗ trợ tintableCloak nhuộm sắc màu ghế tự động & cầm Đuốc Phán Quyết tay phải.",
+  },
+  villager_elder: {
+    slotFile: "char_villager_elder.glb (#24)",
+    title: "🧙‍♂️ Bô Lão Thông Thái (Villager Elder — Cao 1.74m)",
+    rigNotes:
+      "Chòm râu bạc tết gọn trước ngực (gắn mượt theo Chest/Head), áo dạ cổ lông ấm áp để đa dạng tạo hình vòng tròn Dân Làng Bắc Âu.",
+    socketNote: "Hỗ trợ tintableCloak & cầm Đuốc Phán Quyết tay phải.",
+  },
 };
 
 /**
  * 10 Kịch bản Diễn Thử 1-Click trong '🎬 Studio Hoạt Cảnh 9 Vai' (chạy ngay trên 8–9 ghế mẫu!)
  */
 export const STUDIO_CHOREO_SCENARIOS = [
+  // ================== 6 KỊCH BẢN MỞ RỘNG V3.3 (DỰNG TRƯỚC ÁNH SÁNG & CỔNG #19->#27) ==================
+  {
+    id: "hunter_silver_revenge",
+    tier: "v3_3",
+    label: "🏹💥 Thợ Săn Quỳ Bắn Đạn Bạc",
+    roleFocus: "hunter",
+    mood: "dawn",
+    durationMs: 4800,
+    defaultShotType: "high_pack_hunt",
+    vfxType: "hunter_shot",
+    description:
+      "[Cổng #19 + #25 · Bình Minh] Thợ Săn bước khuỵu 1 gối trước ghế, giương Nỏ Bạc Hạng Nặng khóa mục tiêu rồi bóp cò phóng tia đạn bạc xuyên tâm làm lóe sáng cả sân đá!",
+    buildMap: (ids) => {
+      const hunter = ids[2] || ids[0];
+      const wolfTarget = ids[6] || ids[1];
+      return {
+        sourceId: hunter,
+        targetId: wolfTarget,
+        roles: { [hunter]: "hunter", [wolfTarget]: "wolf" },
+        choreo: {
+          [hunter]: { actionType: "hunter_last_shot", targetId: wolfTarget },
+          [wolfTarget]: { actionType: "victim_hit_recoil", targetId: hunter },
+        },
+      };
+    },
+  },
+  {
+    id: "cupid_twin_tether",
+    tier: "v3_3",
+    label: "💘✨ Cupid Bắn Đôi Tên Tơ Hồng",
+    roleFocus: "cupid",
+    mood: "night",
+    durationMs: 5200,
+    defaultShotType: "high_pack_hunt",
+    vfxType: "cupid_tether",
+    description:
+      "[Cổng #20 + #26 · Đêm Trăng] Thần Tình Yêu Cupid bay lơ lửng cách đất 22cm, kéo căng Cung Pha Lê Hồng bắn 2 mũi tên vòng cung kết nối Sợi Tơ Hồng phát sáng giữa Ghế #3 & Ghế #6!",
+    buildMap: (ids) => {
+      const cupid = ids[0];
+      const loverA = ids[2] || ids[1];
+      const loverB = ids[5] || ids[3] || ids[1];
+      return {
+        sourceId: cupid,
+        targetId: loverA,
+        secondaryTargetId: loverB,
+        roles: { [cupid]: "cupid", [loverA]: "guard", [loverB]: "wolf" },
+        choreo: {
+          [cupid]: {
+            actionType: "cupid_love_arrow",
+            targetId: loverA,
+            secondaryTargetId: loverB,
+          },
+        },
+      };
+    },
+  },
+  {
+    id: "lovers_tragic_shatter",
+    tier: "v3_3",
+    label: "💔🕯️ Đôi Tình Nhân Đứt Tơ Hồng",
+    roleFocus: "cupid",
+    mood: "dawn",
+    durationMs: 4800,
+    defaultShotType: "high_pack_hunt",
+    vfxType: "lovers_shatter",
+    description:
+      "[Hiệu Ứng Dây Chuyền · Bình Minh Sương Lạnh] Khi 1 người ngã xuống, Sợi Tơ Hồng căng giữa 2 ghế nổ vỡ thành mảnh tinh thể pha lê hồng — người còn lại ôm ngực khuỵu gối gục theo!",
+    buildMap: (ids) => {
+      const fallenPartner = ids[2] || ids[0];
+      const heartbroken = ids[5] || ids[1];
+      return {
+        sourceId: heartbroken,
+        targetId: fallenPartner,
+        secondaryTargetId: heartbroken,
+        roles: { [fallenPartner]: "seer", [heartbroken]: "hunter", [ids[0]]: "cupid" },
+        choreo: {
+          [heartbroken]: {
+            actionType: "lovers_heartbreak_cascade",
+            targetId: fallenPartner,
+            secondaryTargetId: heartbroken,
+          },
+          [fallenPartner]: { actionType: "victim_hit_recoil", targetId: heartbroken },
+        },
+      };
+    },
+  },
+  {
+    id: "alpha_wolf_blood_brand",
+    tier: "v3_3",
+    label: "🐺👑 Sói Đầu Đàn Huyết Nguyệt",
+    roleFocus: "alpha_wolf",
+    mood: "night",
+    durationMs: 5400,
+    defaultShotType: "high_pack_hunt",
+    vfxType: "alpha_blood_moon",
+    description:
+      "[Cổng #21 · Đêm Huyết Nguyệt] Sói Đầu Đàn cao 2.18m đội Vương Miện Sừng Thép phóng vọt cao 1.08m khắc Ấn Huyết Nguyệt đỏ thẫm đồng hóa nạn nhân rồi ngửa cổ tru vang!",
+    buildMap: (ids) => {
+      const alpha = ids[0];
+      const convertVictim = ids[4] || ids[1];
+      const packMate = ids[7] || ids[2];
+      return {
+        sourceId: alpha,
+        targetId: convertVictim,
+        roles: { [alpha]: "alpha_wolf", [packMate]: "wolf", [convertVictim]: "villager" },
+        choreo: {
+          [alpha]: { actionType: "alpha_blood_convert", targetId: convertVictim },
+          [packMate]: { actionType: "wolf_stalk_preview", targetId: convertVictim },
+          [convertVictim]: { actionType: "cursed_blood_metamorph", targetId: alpha },
+        },
+      };
+    },
+  },
+  {
+    id: "mayor_golden_decree",
+    tier: "v3_3",
+    label: "👑⚖️ Trưởng Làng Dậm Trượng x2",
+    roleFocus: "mayor",
+    mood: "dusk_trial",
+    durationMs: 4800,
+    defaultShotType: "high_tribunal",
+    vfxType: "mayor_decree",
+    description:
+      "[Cổng #22 + #27 · Hoàng Hôn Phán Quyết] Trưởng Làng bước lên giơ cao Quyền Trượng Đại Bàng đón nắng rồi dậm mạnh xuống sân đá phát sóng chấn động Hoàng Kim x2 lá phiếu!",
+    buildMap: (ids) => {
+      const mayor = ids[1] || ids[0];
+      const suspect = ids[5] || ids[2] || ids[0];
+      const choreo = {
+        [mayor]: { actionType: "mayor_decree_slam", targetId: suspect },
+      };
+      const roles = { [mayor]: "mayor", [suspect]: "wolf" };
+      ids.forEach((id, idx) => {
+        if (id !== mayor && id !== suspect && idx % 2 === 0) {
+          roles[id] = "villager";
+          choreo[id] = { actionType: "day_accuse_stand", targetId: suspect, slotIndex: idx };
+        }
+      });
+      return {
+        sourceId: mayor,
+        targetId: suspect,
+        roles,
+        choreo,
+      };
+    },
+  },
+  {
+    id: "villager_trio_showcase",
+    tier: "v3_3",
+    label: "🧣🧙‍♂️ Vòng Ghế 3 Tạo Hình Dân Làng",
+    roleFocus: "villager_female",
+    mood: "day",
+    durationMs: 5000,
+    defaultShotType: "high_tribunal",
+    vfxType: null,
+    description:
+      "[Cổng #11 · #23 · #24 · Ban Ngày] Soi trực quan sự đa dạng của vòng tròn Dân Làng xen kẽ 3 tạo hình (Nông Dân · Thôn Nữ Khăn Choàng · Bô Lão Râu Bạc) dưới nắng ban ngày!",
+    buildMap: (ids) => {
+      const roles = {};
+      const choreo = {};
+      const trio = ["villager", "villager_female", "villager_elder"];
+      ids.forEach((id, idx) => {
+        roles[id] = trio[idx % 3];
+        if (idx % 2 === 1) {
+          choreo[id] = { actionType: "tribunal_torch_stand", targetId: ids[0], slotIndex: idx };
+        }
+      });
+      return {
+        sourceId: ids[1] || ids[0],
+        targetId: ids[0],
+        roles,
+        choreo,
+      };
+    },
+  },
+
+  // ================== 11 KỊCH BẢN GỐC BẢN LỀ V3.2 ==================
   {
     id: "wolf_solo_pounce",
     label: "🐺 1 Sói Phóng Vồ Cắn",
