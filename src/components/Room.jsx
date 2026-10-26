@@ -168,15 +168,22 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   ];
 
   // ── VoiceStudio Hybrid TTS ──────────────────────────────────────────────
-  // Chỉ kích hoạt khi chạy trên localhost (tránh Mixed-Content CORS khi deploy HTTPS)
-  // Override: localStorage.setItem('mc_vs_url', 'https://your-vs-host') để dùng remote
+  // Chỉ kích hoạt trực tiếp khi chạy local HTTP (tránh Mixed-Content CORS khi deploy HTTPS)
+  // Trên production HTTPS → dùng /api/tts server proxy để không bị CORS
+  // Override local: localStorage.setItem('mc_vs_url', 'https://your-vs-host')
   const VOICESTUDIO_URL = (() => {
     const override = localStorage.getItem('mc_vs_url');
     if (override) return override;
-    // Chỉ dùng localhost khi đang ở HTTP (local dev) — tránh CORS trên production HTTPS
+    // Chỉ gọi trực tiếp khi local HTTP — tránh CORS trên production HTTPS
     if (window.location.protocol === 'http:') return 'http://localhost:3900';
-    return null; // Production HTTPS → skip VoiceStudio, dùng pre-gen MP3 + speechSynthesis
+    return null; // Production HTTPS → dùng server proxy /api/tts
   })();
+
+  // URL server Render để proxy TTS (giải quyết CORS cho production)
+  const SERVER_TTS_URL = import.meta.env.PROD
+    ? 'https://masoi-server-2eca.onrender.com/api/tts'
+    : 'http://localhost:3001/api/tts';
+
   const vsProfileId = localStorage.getItem('mc_voice_profile_id') || null;
 
   // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam)
@@ -230,6 +237,29 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       return true;
     } catch {
       vsAvailableRef.current = false; // đánh dấu offline
+      return false;
+    }
+  }
+
+  // Gọi /api/tts trên server Render (HTTPS-safe, không bị CORS) → dùng cho production
+  // Server Render forward sang VoiceStudio qua ngrok tunnel
+  async function speakViaServerProxy(text) {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 35000); // timeout 35s (server timeout 30s + buffer)
+      const resp = await fetch(SERVER_TTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: vsProfileId, speed: 0.88 }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      if (!resp.ok) return false;
+      const blob = await resp.blob();
+      if (blob.size < 500) return false;
+      await playMp3(URL.createObjectURL(blob));
+      return true;
+    } catch {
       return false;
     }
   }
@@ -303,20 +333,25 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       for (const msg of newMessages) {
         const text = msg.text || msg;
 
-        // Ưu tiên 1: MP3 file pre-generated
+        // Ưu tiên 1: MP3 file pre-generated (0 latency, giọng clone hoàn hảo)
         const audioSrc = findAudioFile(text);
         if (audioSrc) {
           await playMp3(audioSrc);
           continue;
         }
 
-        // Ưu tiên 2: VoiceStudio real-time TTS (cho phrase động có tên người chơi)
+        // Ưu tiên 2: Server proxy /api/tts → VoiceStudio qua ngrok (HTTPS-safe, giọng clone)
+        // Dùng cho phrase động có tên người chơi trên production
+        const proxyOk = await speakViaServerProxy(text);
+        if (proxyOk) continue;
+
+        // Ưu tiên 3: VoiceStudio local trực tiếp (local dev HTTP only)
         if (vsOnline) {
           const ok = await speakVoiceStudio(text);
           if (ok) continue;
         }
 
-        // Ưu tiên 3: Browser speechSynthesis fallback
+        // Ưu tiên 4: Browser speechSynthesis fallback (giọng hệ thống)
         await speakTTS(text, voice);
       }
     }
