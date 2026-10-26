@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
-import { ROLES_CONFIG, generateDefaultRoles } from "../config/roles.config.js";
+import Scene3DErrorBoundary from "../3d/components/Scene3DErrorBoundary.jsx";
+import {
+  PLAYABLE_ROLE_KEYS,
+  ROLES_CONFIG,
+  generateDefaultRoles,
+  generateExpandedV33Roles,
+} from "../config/roles.config.js";
 import {
   DEFAULT_SCENE_PRESET_ID,
   loadScenePresetsIndex,
 } from "../3d/editor/defaultVillageLayout.js";
 import "./Room.css";
 
-const ORDERED_ROLES = ["wolf", "guard", "witch", "seer", "tough_guy", "cursed", "tanner", "villager"];
+const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
+
+const ORDERED_ROLES = PLAYABLE_ROLE_KEYS;
 
 export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArchitectStudio = null }) {
   const room = roomData;
@@ -16,8 +24,11 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [error, setError] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
 
-  // Mobile navigation tabs: 'players' | 'roles' | 'chat'
-  const [mobileTab, setMobileTab] = useState("players");
+  // Drawer tabs bên phải Sảnh 3D: 'roles' | 'chat' + nút thu gọn để ngắm 3D 100% màn hình
+  const [mobileTab, setMobileTab] = useState("roles");
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [lobbyView3D, setLobbyView3D] = useState(() => (localStorage.getItem("ws_view_mode") || "3d") !== "2d");
+  const [lobbyBubbleLog, setLobbyBubbleLog] = useState({});
   const [hasUnreadChat, setHasUnreadChat] = useState(false);
 
   // Lobby chat
@@ -80,7 +91,18 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         if (prev.some((m) => m.id === msg.id)) return prev;
         return [...prev, msg];
       });
-      if (mobileTab !== "chat") {
+      if (msg?.senderId && msg?.text) {
+        setLobbyBubbleLog((prev) => ({ ...prev, [msg.senderId]: msg.text }));
+        setTimeout(() => {
+          setLobbyBubbleLog((prev) => {
+            if (prev[msg.senderId] !== msg.text) return prev;
+            const next = { ...prev };
+            delete next[msg.senderId];
+            return next;
+          });
+        }, 4200);
+      }
+      if (!drawerOpen || mobileTab !== "chat") {
         setHasUnreadChat(true);
       }
     };
@@ -115,25 +137,102 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     }
   }, [mobileTab]);
 
-  // ============ AUDIO: MiniMax MP3 + TTS fallback ============
+  // ============ AUDIO: MP3 pre-generated + VoiceStudio Hybrid TTS ============
+  // Thứ tự ưu tiên: (1) MP3 file khớp pattern → (2) VoiceStudio local API → (3) speechSynthesis fallback
   const AUDIO_MAP = [
-    { pattern: /Đêm đầu tiên buông xuống/,        file: 'game_start.mp3' },
-    { pattern: /Bảo Vệ ơi.*thức dậy/,             file: 'night_starts.mp3' },
-    { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,       file: 'wolf_wake.mp3' },
-    { pattern: /Sói đã ngủ lại.*Phù Thủy/,         file: 'witch_wake.mp3' },
-    { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,   file: 'seer_wake.mp3' },
-    { pattern: /Đêm qua không ai chết/,            file: 'no_death.mp3' },
-    { pattern: /đêm đẫm máu/i,                     file: 'night_bloody.mp3' },
-    { pattern: /Cả làng thảo luận/,               file: 'begin_discuss.mp3' },
-    { pattern: /Mời cả làng đề cử/,               file: 'begin_nominate.mp3' },
-    { pattern: /Không ai bị đề cử/,               file: 'no_nominee.mp3' },
-    { pattern: /Treo cổ hay Tha/,                  file: 'begin_vote.mp3' },
-    { pattern: /sẽ rời khỏi ván đấu/,             file: 'hang_announce.mp3' },
-    { pattern: /Làng đã tha/,                      file: 'spare_announce.mp3' },
-    { pattern: /Phe Sói chiến thắng/,              file: 'wolf_wins.mp3' },
-    { pattern: /Phe Dân chiến thắng/,              file: 'village_wins.mp3' },
-    { pattern: /Chán Đời.*thắng/,                  file: 'tanner_wins.mp3' },
+    { pattern: /Đêm đầu tiên buông xuống/,               file: 'game_start.mp3' },
+    { pattern: /Bảo Vệ ơi.*thức dậy/,                   file: 'night_starts.mp3' },
+    { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,             file: 'wolf_wake.mp3' },
+    { pattern: /Sói đã ngủ lại.*Phù Thủy/,               file: 'witch_wake.mp3' },
+    { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,         file: 'seer_wake.mp3' },
+    { pattern: /Thần Tình Yêu ơi.*thức dậy/,            file: 'cupid_wake.mp3' },
+    { pattern: /Thần Tình Yêu đã ngủ lại/,              file: 'cupid_sleep.mp3' },
+    { pattern: /Đêm qua không ai chết/,                  file: 'no_death.mp3' },
+    { pattern: /đêm đẫm máu/i,                           file: 'night_bloody.mp3' },
+    { pattern: /Cả làng thảo luận/,                     file: 'begin_discuss.mp3' },
+    { pattern: /Mời cả làng đề cử/,                     file: 'begin_nominate.mp3' },
+    { pattern: /Không ai bị đề cử/,                     file: 'no_nominee.mp3' },
+    { pattern: /Treo cổ hay Tha/,                        file: 'begin_vote.mp3' },
+    { pattern: /sẽ rời khỏi ván đấu/,                   file: 'hang_announce.mp3' },
+    { pattern: /Làng đã tha/,                            file: 'spare_announce.mp3' },
+    { pattern: /Phe Sói chiến thắng/,                    file: 'wolf_wins.mp3' },
+    { pattern: /Phe Dân chiến thắng/,                    file: 'village_wins.mp3' },
+    { pattern: /Chán Đời.*thắng/,                        file: 'tanner_wins.mp3' },
+    { pattern: /Cặp Đôi Định Mệnh.*chiến thắng/,        file: 'lovers_win.mp3' },
+    // Recap
+    { pattern: /những gì đã xảy ra trong đêm qua/,      file: 'recap_intro.mp3' },
+    { pattern: /Bầy Sói đã bí mật lựa chọn/,           file: 'recap_wolf.mp3' },
+    { pattern: /Bảo Vệ đã dũng cảm đứng canh/,         file: 'recap_guard.mp3' },
+    { pattern: /bình cứu chữa để vực dậy/,              file: 'recap_witch_save.mp3' },
+    { pattern: /rút bình độc.*gieo chết/,               file: 'recap_witch_poison.mp3' },
   ];
+
+  // ── VoiceStudio Hybrid TTS ──────────────────────────────────────────────
+  // Chỉ kích hoạt khi chạy trên localhost (tránh Mixed-Content CORS khi deploy HTTPS)
+  // Override: localStorage.setItem('mc_vs_url', 'https://your-vs-host') để dùng remote
+  const VOICESTUDIO_URL = (() => {
+    const override = localStorage.getItem('mc_vs_url');
+    if (override) return override;
+    // Chỉ dùng localhost khi đang ở HTTP (local dev) — tránh CORS trên production HTTPS
+    if (window.location.protocol === 'http:') return 'http://localhost:3900';
+    return null; // Production HTTPS → skip VoiceStudio, dùng pre-gen MP3 + speechSynthesis
+  })();
+  const vsProfileId = localStorage.getItem('mc_voice_profile_id') || null;
+
+  // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam)
+  const vsAvailableRef = useRef(null); // null = unknown, true/false
+  const vsLastCheckRef = useRef(0);
+
+  async function checkVoiceStudio() {
+    // Không có URL (production HTTPS) → luôn trả false, không cần check
+    if (!VOICESTUDIO_URL) return false;
+    const now = Date.now();
+    if (vsAvailableRef.current !== null && now - vsLastCheckRef.current < 30000) {
+      return vsAvailableRef.current;
+    }
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 2000);
+      const resp = await fetch(`${VOICESTUDIO_URL}/health`, { signal: ctrl.signal });
+      clearTimeout(tid);
+      const data = await resp.json();
+      vsAvailableRef.current = ['ok', 'ready', 'starting'].includes(data?.status);
+    } catch {
+      vsAvailableRef.current = false;
+    }
+    vsLastCheckRef.current = Date.now();
+    return vsAvailableRef.current;
+  }
+
+  // Gọi VoiceStudio OpenAI-compat /v1/audio/speech → trả blob URL → play
+  async function speakVoiceStudio(text) {
+    if (!VOICESTUDIO_URL) return false; // production HTTPS → skip
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 25000); // timeout 25s
+      const resp = await fetch(`${VOICESTUDIO_URL}/v1/audio/speech`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer local' },
+        body: JSON.stringify({
+          model: 'omnivoice',
+          voice: vsProfileId || 'alloy',
+          input: text,
+          response_format: 'mp3',
+          speed: 0.88,   // nhẹ chậm hơn, tone huyền bí
+        }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      if (!resp.ok) return false;
+      const blob = await resp.blob();
+      if (blob.size < 500) return false;
+      await playMp3(URL.createObjectURL(blob));
+      return true;
+    } catch {
+      vsAvailableRef.current = false; // đánh dấu offline
+      return false;
+    }
+  }
 
   function findAudioFile(text) {
     for (const { pattern, file } of AUDIO_MAP) {
@@ -157,6 +256,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     });
   }
 
+  // Browser TTS fallback cuối cùng
   function speakTTS(text, voice) {
     return new Promise((resolve) => {
       if (!window.speechSynthesis) { resolve(); return; }
@@ -197,14 +297,27 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
     async function playAll() {
       const voice = pickBestViVoice();
+      // Kiểm tra VoiceStudio 1 lần cho cả batch
+      const vsOnline = await checkVoiceStudio();
+
       for (const msg of newMessages) {
         const text = msg.text || msg;
+
+        // Ưu tiên 1: MP3 file pre-generated
         const audioSrc = findAudioFile(text);
         if (audioSrc) {
           await playMp3(audioSrc);
-        } else {
-          await speakTTS(text, voice);
+          continue;
         }
+
+        // Ưu tiên 2: VoiceStudio real-time TTS (cho phrase động có tên người chơi)
+        if (vsOnline) {
+          const ok = await speakVoiceStudio(text);
+          if (ok) continue;
+        }
+
+        // Ưu tiên 3: Browser speechSynthesis fallback
+        await speakTTS(text, voice);
       }
     }
 
@@ -253,8 +366,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     setError("");
     const currentCounts = room.rolesConfig || generateDefaultRoles(room.players.length);
     const current = Number(currentCounts[roleKey]) || 0;
-    const minVal = roleKey === "wolf" ? 1 : 0;
-    const nextVal = Math.max(minVal, current + delta);
+    const totalWolfNow =
+      (Number(currentCounts.wolf) || 0) + (Number(currentCounts.alpha_wolf) || 0);
+    const isWolfCard = roleKey === "wolf" || roleKey === "alpha_wolf";
+    if (delta < 0 && isWolfCard && current <= 1 && totalWolfNow <= 1) {
+      return; // Giữ tối thiểu 1 Sói hoặc 1 Sói Đầu Đàn
+    }
+    const nextVal = Math.max(0, current + delta);
     if (nextVal === current) return;
 
     const newConfig = { ...currentCounts, [roleKey]: nextVal };
@@ -263,13 +381,25 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     });
   }
 
-  function handlePresetRoles() {
+  function handlePresetRoles(mode = "v33") {
     if (!me?.isHost) return;
     setError("");
-    const preset = generateDefaultRoles(room.players.length);
+    const preset =
+      mode === "classic"
+        ? generateDefaultRoles(room.players.length)
+        : generateExpandedV33Roles(room.players.length);
     socketRef.current.emit("room:setRolesConfig", { rolesConfig: preset }, (res) => {
       if (res && !res.ok) setError(res.error || "Lỗi thiết lập preset.");
     });
+  }
+
+  function handleKickPlayer(targetPlayer) {
+    if (!me?.isHost || !targetPlayer || targetPlayer.id === myId) return;
+    if (window.confirm(`Kick ${targetPlayer.name} khỏi phòng?`)) {
+      socketRef.current.emit("room:kick", { targetId: targetPlayer.id }, (res) => {
+        if (res && !res.ok) alert(res.error || "Không kick được.");
+      });
+    }
   }
 
   function handleAutoFillVillagers() {
@@ -358,463 +488,428 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const activeSceneMeta =
     effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
 
-  // Điều kiện bắt đầu game
+  // Điều kiện bắt đầu game (tính cả Sói thường lẫn Sói Đầu Đàn)
   const totalPlayers = room.players.length;
   const isMinPlayers = totalPlayers >= 6;
   const unreadyPlayers = room.players.filter((p) => !p.ready);
+  const readyCount = room.players.filter((p) => p.ready).length;
   const isAllReady = unreadyPlayers.length === 0;
   const isRolesMatched = totalRoles === totalPlayers;
-  const hasWolf = (Number(rolesConfig.wolf) || 0) >= 1;
+  const totalWolfTeam =
+    (Number(rolesConfig.wolf) || 0) + (Number(rolesConfig.alpha_wolf) || 0);
+  const hasWolf = totalWolfTeam >= 1;
   const canStartGame = isMinPlayers && isAllReady && isRolesMatched && hasWolf;
+  const seatRingTarget = Math.min(18, Math.max(totalRoles || 6, totalPlayers, 6));
 
   return (
-    <div className="lobby-container">
-      {/* --- TOP HEADER BAR --- */}
-      <header className="lobby-header-bar">
+    <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
+      {/* ==================== 1. SÂN KHẤU LÀNG 3D TỔNG QUAN (AI VÀO PHÒNG NGỒI GHẾ HÓA SÓI NGAY!) ==================== */}
+      <div className="lobby-3d-stage-bg">
+        {lobbyView3D ? (
+          <Scene3DErrorBoundary
+            onFallback2D={() => {
+              setLobbyView3D(false);
+              localStorage.setItem("ws_view_mode", "2d");
+            }}
+          >
+            <Suspense
+              fallback={
+                <div className="lobby-3d-loading">
+                  🐺 Đang dựng vòng ghế Sói 3D quanh lửa trại...
+                </div>
+              }
+            >
+              <WerewolfScene3D
+                players={room.players}
+                me={me}
+                phase="lobby"
+                isNight={true}
+                myRole="wolf"
+                hasWinner={false}
+                lobbyTargetSeatCount={seatRingTarget}
+                onLobbyKickPlayer={handleKickPlayer}
+                wolfChatLog={lobbyBubbleLog}
+                scenePresetId={activeScenePresetId}
+              />
+            </Suspense>
+          </Scene3DErrorBoundary>
+        ) : (
+          <div className="lobby-2d-fallback-ring">
+            <div className="lobby-2d-bonfire">🔥 Vòng Tròn Sảnh Chờ ({totalPlayers}/{seatRingTarget} ghế)</div>
+            <div className="lobby-2d-seats">
+              {Array.from({ length: seatRingTarget }, (_, idx) => {
+                const p = room.players[idx];
+                return (
+                  <div key={p?.id || `empty-${idx}`} className={`lobby-2d-seat-card ${p ? "occupied" : "empty"}`}>
+                    <div className="seat-wolf-icon">{p ? "🐺" : "🪑"}</div>
+                    <div className="seat-wolf-name">{p ? p.name : `Ghế #${idx + 1}`}</div>
+                    {p && (
+                      <div className="seat-wolf-state">
+                        {p.isHost ? "👑 Chủ phòng" : p.ready ? "🟢 Sẵn sàng" : "⏳ Chờ"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ==================== 2. THANH KÍNH MỜ TRÊN ĐỈNH (MÃ PHÒNG + CHỈ SỐ + NÚT THU GỌN BẢNG VAI) ==================== */}
+      <header className="lobby-3d-topbar">
         <div className="lobby-header-left">
-          <div className="lobby-room-code-badge" onClick={copyRoomCode} title="Nhấn để copy mã phòng">
+          <div className="lobby-room-code-badge" onClick={copyRoomCode} title="Nhấn để copy mã phòng mời bạn bè">
             <span className="code-text">{room.code}</span>
             <span className="copy-hint">{copiedCode ? "✅ Đã copy!" : "📋 Copy"}</span>
           </div>
+          <span className="lobby-wolf-stage-hint">
+            🐺 <strong>Sảnh Ghế Nóng:</strong> Vào ván mới bí mật phân vai!
+          </span>
         </div>
 
         <div className="lobby-header-center">
           <div className="lobby-stat-chip">
-            👥 {totalPlayers}/18 người
+            🐺 {totalPlayers}/{seatRingTarget} ghế
           </div>
           <div className={`lobby-stat-chip ${isAllReady ? "ready-all" : ""}`}>
-            🟢 {room.players.filter((p) => p.ready).length}/{totalPlayers} sẵn sàng
+            🟢 {readyCount}/{totalPlayers} sẵn sàng
           </div>
-          <div className={`lobby-stat-chip ${isRolesMatched ? "roles-matched" : "roles-mismatch"}`}>
-            🎭 {totalRoles}/{totalPlayers} vai trò
-          </div>
-          <div className="lobby-stat-chip" title="Bối cảnh không gian 3D của phòng chơi">
-            🗺️ {activeSceneMeta?.name || "Làng Bắc Âu V3"}
+          <div className={`lobby-stat-chip ${isRolesMatched && hasWolf ? "roles-matched" : "roles-mismatch"}`}>
+            🎭 {totalRoles}/{totalPlayers} vai
           </div>
         </div>
 
-        <div className="lobby-header-actions" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="lobby-header-actions">
+          <button
+            type="button"
+            className="btn-lobby-pill"
+            onClick={() => {
+              const next = !lobbyView3D;
+              setLobbyView3D(next);
+              localStorage.setItem("ws_view_mode", next ? "3d" : "2d");
+            }}
+            title="Chuyển đổi Sảnh 3D hoặc Sảnh 2D siêu nhẹ"
+          >
+            {lobbyView3D ? "🎮 3D" : "⚡ 2D"}
+          </button>
+
+          <button
+            type="button"
+            className={`btn-lobby-pill ${drawerOpen ? "active" : ""}`}
+            onClick={() => setDrawerOpen((v) => !v)}
+            title="Thu gọn hoặc mở rộng Bảng Thumbnail Vai Trò & Chat để ngắm toàn cảnh 3D"
+          >
+            {drawerOpen ? "👁️ Ngắm 3D" : `🎭 Bảng Vai (${totalRoles}/${totalPlayers})`}
+            {!drawerOpen && hasUnreadChat && <span className="tab-unread-dot" />}
+          </button>
+
           {onOpenArchitectStudio && (
             <button
               type="button"
+              className="btn-lobby-architect"
               onClick={onOpenArchitectStudio}
-              style={{
-                width: "auto",
-                margin: 0,
-                padding: "7px 13px",
-                borderRadius: 9,
-                fontSize: "0.82rem",
-                fontWeight: 800,
-                background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                color: "#0f172a",
-                border: "1px solid #fde047",
-                boxShadow: "0 3px 12px rgba(245, 158, 11, 0.45)",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-              title="Mở Studio Cảnh Quan D5 độc lập toàn màn hình (không cần bắt đầu ván)"
+              title="Mở Studio Cảnh Quan D5 độc lập toàn màn hình"
             >
-              🏗️ Studio Cảnh Quan D5
+              🏗️ Studio D5
             </button>
           )}
+
           <button className="btn-header-leave" onClick={handleLeave}>
-            🚪 Rời phòng
+            🚪 Rời
           </button>
         </div>
       </header>
 
-      {/* --- MOBILE NAVIGATION TABS (< 768px) --- */}
-      <nav className="lobby-mobile-tabs">
-        <button
-          className={`btn-mobile-tab ${mobileTab === "players" ? "active" : ""}`}
-          onClick={() => setMobileTab("players")}
-        >
-          👥 Người chơi ({totalPlayers})
-        </button>
-        <button
-          className={`btn-mobile-tab ${mobileTab === "roles" ? "active" : ""}`}
-          onClick={() => setMobileTab("roles")}
-        >
-          🎭 Vai trò ({totalRoles}/{totalPlayers})
-        </button>
-        <button
-          className={`btn-mobile-tab ${mobileTab === "chat" ? "active" : ""}`}
-          onClick={() => setMobileTab("chat")}
-        >
-          💬 Thảo luận {hasUnreadChat && <span className="tab-unread-dot" />}
-        </button>
-      </nav>
-
-      {/* --- MAIN 3-COLUMN DASHBOARD (DESKTOP) / TABS (MOBILE) --- */}
-      <main className="lobby-grid-layout">
-        {/* ================= COLUMN 1: PLAYERS & READY STATUS ================= */}
-        <section className={`lobby-panel ${mobileTab === "players" ? "active-mobile-tab" : ""}`}>
-          <div className="lobby-panel-header">
-            <h2>👥 Người chơi</h2>
-            <span className="lobby-panel-badge">{totalPlayers}/18</span>
-          </div>
-
-          <div className="lobby-panel-body">
-            <div className="lobby-players-list">
-              {room.players.map((p) => {
-                const isMe = p.id === myId;
-                const isReady = Boolean(p.ready);
-                return (
-                  <div
-                    key={p.id}
-                    className={`lobby-player-item ${isMe ? "is-me" : ""} ${isReady ? "is-ready" : "not-ready"}`}
-                  >
-                    <div className={`lobby-player-avatar ${isReady ? "ready" : ""}`}>
-                      <img src={p.avatar} alt={p.name} />
-                    </div>
-
-                    <div className="lobby-player-info">
-                      <div className="lobby-player-name-row">
-                        <span className="lobby-player-name">{p.name}</span>
-                        {p.isHost && <span className="lobby-badge-host">Chủ phòng</span>}
-                        {isMe && <span className="lobby-badge-you">Bạn</span>}
-                      </div>
-                      <span className={`lobby-player-status-tag ${isReady ? "ready" : "waiting"}`}>
-                        {p.isHost ? "👑 Chủ phòng" : isReady ? "🟢 Đã sẵn sàng" : "⏳ Đang chờ..."}
-                      </span>
-                    </div>
-
-                    {me?.isHost && !isMe && (
-                      <button
-                        className="btn-player-kick"
-                        title={`Kick ${p.name} khỏi phòng`}
-                        onClick={() => {
-                          if (window.confirm(`Kick ${p.name} khỏi phòng?`)) {
-                            socketRef.current.emit("room:kick", { targetId: p.id }, (res) => {
-                              if (res && !res.ok) alert(res.error || "Không kick được.");
-                            });
-                          }
-                        }}
-                      >
-                        Kick ✕
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* My controls inside column 1 */}
-            <div className="lobby-my-actions">
-              {!me?.isHost && (
-                <button
-                  className={`btn-ready-toggle ${me?.ready ? "is-ready" : ""}`}
-                  onClick={handleToggleReady}
-                >
-                  {me?.ready ? "✅ BẠN ĐÃ SẴN SÀNG (Bấm để hủy)" : "⚡ BẤM SẴN SÀNG"}
-                </button>
-              )}
-
-              {!editingName ? (
-                <button
-                  className="btn-secondary"
-                  style={{ width: "100%", margin: 0, padding: "8px" }}
-                  onClick={() => {
-                    setNameInput(me?.name || "");
-                    setEditingName(true);
-                  }}
-                >
-                  ✏️ Đổi tên hiển thị
-                </button>
-              ) : (
-                <div className="rename-box">
-                  <input
-                    value={nameInput}
-                    maxLength={20}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="Tên mới..."
-                  />
-                  <button className="btn-primary" onClick={handleRename}>
-                    Lưu
-                  </button>
-                  <button className="btn-secondary" onClick={() => setEditingName(false)}>
-                    Hủy
-                  </button>
-                </div>
-              )}
-
-              <button
-                className="btn-secondary"
-                style={{ width: "100%", margin: 0, padding: "8px", opacity: 0.8 }}
-                onClick={handleLeave}
-              >
-                🚪 Rời phòng
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* ================= COLUMN 2: ROLE DECK CONFIG ================= */}
-        <section className={`lobby-panel ${mobileTab === "roles" ? "active-mobile-tab" : ""}`}>
-          <div className="lobby-panel-header">
-            <h2>🎭 Cấu hình vai trò</h2>
-            <span
-              className="lobby-panel-badge"
-              style={{
-                background: isRolesMatched ? "rgba(34, 197, 94, 0.25)" : "rgba(239, 68, 68, 0.25)",
-                color: isRolesMatched ? "#86efac" : "#fca5a5",
-                border: `1px solid ${isRolesMatched ? "#22c55e" : "#ef4444"}`,
+      {/* ==================== 3. NGĂN KÍNH MỜ BÊN PHẢI: THUMBNAIL 12 VAI ĐỒNG BỘ + CHAT ==================== */}
+      {drawerOpen && (
+        <aside className="lobby-3d-drawer">
+          <div className="lobby-drawer-tabs">
+            <button
+              type="button"
+              className={`lobby-drawer-tab ${mobileTab === "roles" ? "active" : ""}`}
+              onClick={() => setMobileTab("roles")}
+            >
+              🎭 Bộ Bài Thumbnail ({totalRoles}/{totalPlayers})
+            </button>
+            <button
+              type="button"
+              className={`lobby-drawer-tab ${mobileTab === "chat" ? "active" : ""}`}
+              onClick={() => {
+                setMobileTab("chat");
+                setHasUnreadChat(false);
               }}
             >
-              {totalRoles} / {totalPlayers} vai
-            </span>
+              💬 Bàn Luận & Ghế ({lobbyMessages.length})
+              {hasUnreadChat && <span className="tab-unread-dot" />}
+            </button>
           </div>
 
-          <div className="lobby-panel-body">
-            {/* Bộ chọn Bối Cảnh Không Gian 3D (Scene Preset Selector) */}
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "6px",
-                padding: "9px 11px",
-                marginBottom: "8px",
-                borderRadius: "10px",
-                background: "rgba(15, 23, 42, 0.65)",
-                border: "1px solid rgba(56, 189, 248, 0.3)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <span style={{ fontSize: "0.82rem", fontWeight: 700, color: "#7dd3fc" }}>
-                  🗺️ Bối cảnh không gian 3D:
-                </span>
-                {onOpenArchitectStudio && me?.isHost && (
-                  <button
-                    type="button"
-                    onClick={onOpenArchitectStudio}
-                    style={{
-                      width: "auto",
-                      margin: 0,
-                      padding: "3px 9px",
-                      borderRadius: "6px",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      background: "rgba(245, 158, 11, 0.2)",
-                      color: "#fde68a",
-                      border: "1px solid rgba(245, 158, 11, 0.45)",
-                      cursor: "pointer",
-                    }}
-                    title="Mở D5 Studio để tạo thêm Bối cảnh tùy chọn từ kho MODEL CONCEPT THEM"
+          {mobileTab === "roles" ? (
+            <div className="lobby-drawer-content">
+              {/* Bộ chọn Bối cảnh 3D cập nhật trực tiếp ngôi làng dưới nền */}
+              <div className="lobby-scene-bar">
+                <span className="scene-bar-label">🗺️ Bối cảnh 3D:</span>
+                {me?.isHost ? (
+                  <select
+                    className="scene-bar-select"
+                    value={activeScenePresetId}
+                    onChange={(e) => handleSelectScenePreset(e.target.value)}
                   >
-                    🏗️ Dựng bối cảnh mới
-                  </button>
+                    {effectivePresets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.nodeCount ?? 0} vật thể)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="scene-bar-readonly">
+                    {activeSceneMeta?.name || "🌲 Làng Bắc Âu V3"}
+                  </span>
                 )}
               </div>
 
+              {/* Thanh Thiết Lập Nhanh 1-Click cho Chủ Phòng / Chú thích đồng bộ cho Khách */}
               {me?.isHost ? (
-                <select
-                  value={activeScenePresetId}
-                  onChange={(e) => handleSelectScenePreset(e.target.value)}
-                  style={{
-                    width: "100%",
-                    margin: 0,
-                    padding: "7px 10px",
-                    borderRadius: "8px",
-                    fontSize: "0.84rem",
-                    fontWeight: 600,
-                    background: "rgba(9, 14, 28, 0.92)",
-                    color: "#f8fafc",
-                    border: "1px solid rgba(56, 189, 248, 0.45)",
-                    cursor: "pointer",
-                  }}
-                >
-                  {effectivePresets.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} ({p.nodeCount ?? 0} vật thể)
-                    </option>
-                  ))}
-                </select>
+                <div className="roles-preset-bar compact">
+                  <div className="roles-preset-buttons">
+                    <button
+                      type="button"
+                      className="btn-preset-v33"
+                      onClick={() => handlePresetRoles("v33")}
+                      title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng theo số người chơi!"
+                    >
+                      🔥 Mở Rộng V3.3 ({Math.max(6, totalPlayers)}p)
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-preset-default"
+                      onClick={() => handlePresetRoles("classic")}
+                      title="Áp dụng bộ 8 vai cổ điển"
+                    >
+                      ⚖️ Cổ Điển
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-preset-autofill"
+                      onClick={handleAutoFillVillagers}
+                      title="Tự động bù Nông Dân cho khớp tổng số người trong phòng"
+                    >
+                      ➕ Bù Dân
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <div
-                  style={{
-                    fontSize: "0.84rem",
-                    fontWeight: 600,
-                    color: "#e2e8f0",
-                    padding: "4px 2px",
-                  }}
-                >
-                  {activeSceneMeta?.name || "🌲 Làng Bắc Âu V3"}{" "}
-                  <span style={{ color: "#94a3b8", fontSize: "0.78rem" }}>
-                    (Chủ phòng chọn)
-                  </span>
+                <div className="guest-sync-banner">
+                  👀 Bảng bài trực tiếp từ Chủ phòng — các thẻ phát sáng là vai có mặt trong ván!
                 </div>
               )}
-            </div>
 
-            {me?.isHost ? (
-              <div className="roles-preset-bar">
-                <span>Thiết lập nhanh:</span>
-                <div className="roles-preset-buttons">
-                  <button
-                    className="btn-preset-default"
-                    onClick={handlePresetRoles}
-                    title="Áp dụng cấu hình chuẩn cân bằng theo số người chơi"
-                  >
-                    ⚡ Gợi ý chuẩn ({totalPlayers}p)
-                  </button>
-                  <button
-                    className="btn-preset-autofill"
-                    onClick={handleAutoFillVillagers}
-                    title="Tự động tính số Nông Dân bù đủ số lượng người chơi"
-                  >
-                    ⚖️ Bù Nông Dân
-                  </button>
+              {!isRolesMatched && (
+                <div className="roles-mismatch-alert">
+                  ⚠️ Đang chọn <strong>{totalRoles}</strong> vai cho <strong>{totalPlayers}</strong> người chơi.{" "}
+                  {me?.isHost ? "Bấm '+ / -', 'Mở Rộng V3.3' hoặc 'Bù Dân' để cân bằng." : "Chờ chủ phòng cân chỉnh."}
                 </div>
-              </div>
-            ) : (
-              <div className="roles-preset-bar">
-                <span>🛡️ Chủ phòng đang điều chỉnh cấu hình vai trò</span>
-              </div>
-            )}
+              )}
 
-            {!isRolesMatched && (
-              <div
-                style={{
-                  background: "rgba(239, 68, 68, 0.15)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontSize: "0.82rem",
-                  color: "#fca5a5",
-                }}
-              >
-                ⚠️ Tổng số vai trò ({totalRoles}) chưa khớp với số người chơi ({totalPlayers}).{" "}
-                {me?.isHost ? "Hãy bấm nút '+' hoặc '-' hoặc 'Bù Nông Dân' để cân bằng." : "Đang chờ chủ phòng chỉnh lại."}
-              </div>
-            )}
+              {/* LƯỚI 12 THẺ THUMBNAIL CHỨC NĂNG & SỐ LƯỢNG ĐỒNG BỘ CHO CẢ PHÒNG */}
+              <div className="roles-thumb-grid">
+                {ORDERED_ROLES.map((roleKey) => {
+                  const conf = ROLES_CONFIG[roleKey] || {
+                    label: roleKey,
+                    emoji: "🎭",
+                    color: "#94a3b8",
+                    thumbGradient: "linear-gradient(145deg, #1e293b, #334155)",
+                    shortSkill: "",
+                    team: "village",
+                    description: "",
+                  };
+                  const count = Number(rolesConfig[roleKey]) || 0;
+                  const isWolfCard = roleKey === "wolf" || roleKey === "alpha_wolf";
+                  const disableMinus =
+                    count <= 0 || (isWolfCard && count === 1 && totalWolfTeam <= 1);
+                  const teamText =
+                    conf.team === "wolf" ? "Phe Sói" : conf.team === "neutral" ? "Độc Lập" : "Phe Dân";
 
-            <div className="roles-list-grid">
-              {ORDERED_ROLES.map((roleKey) => {
-                const conf = ROLES_CONFIG[roleKey] || {
-                  label: roleKey,
-                  emoji: "🎭",
-                  team: "village",
-                  description: "",
-                };
-                const count = Number(rolesConfig[roleKey]) || 0;
-                const minVal = roleKey === "wolf" ? 1 : 0;
-
-                return (
-                  <div key={roleKey} className={`role-card-item ${count > 0 ? "active" : ""}`}>
-                    <div className="role-info-left">
-                      <div className="role-emoji-circle">{conf.emoji}</div>
-                      <div className="role-details">
-                        <div className="role-label-name">
-                          <span>{conf.label}</span>
-                          <span className={`role-team-pill ${conf.team}`}>
-                            {conf.team === "wolf" ? "Phe Sói" : conf.team === "neutral" ? "Độc Lập" : "Phe Dân"}
-                          </span>
-                        </div>
-                        <div className="role-desc-summary">{conf.description}</div>
-                      </div>
-                    </div>
-
-                    {me?.isHost ? (
-                      <div className="role-counter-control">
-                        <button
-                          className="btn-role-stepper"
-                          onClick={() => handleRoleChange(roleKey, -1)}
-                          disabled={count <= minVal}
-                          title="Giảm số lượng"
-                        >
-                          -
-                        </button>
-                        <span className="role-count-display">{count}</span>
-                        <button
-                          className="btn-role-stepper"
-                          onClick={() => handleRoleChange(roleKey, 1)}
-                          disabled={count >= totalPlayers}
-                          title="Tăng số lượng"
-                        >
-                          +
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="role-count-readonly">x{count}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* ================= COLUMN 3: LOBBY CHAT ================= */}
-        <section className={`lobby-panel ${mobileTab === "chat" ? "active-mobile-tab" : ""}`}>
-          <div className="lobby-panel-header">
-            <h2>💬 Bàn luận phòng chờ</h2>
-            <span className="lobby-panel-badge">{lobbyMessages.length} tin</span>
-          </div>
-
-          <div className="lobby-panel-body">
-            <div className="lobby-chat-messages">
-              {lobbyMessages.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#64748b", margin: "auto", fontSize: "0.85rem" }}>
-                  Chưa có tin nhắn nào. Hãy gửi lời chào và góp ý cấu hình ván đấu! 👋
-                </div>
-              ) : (
-                lobbyMessages.map((msg) => {
-                  const isMine = msg.senderId === myId;
                   return (
-                    <div key={msg.id} className={`lobby-chat-msg ${isMine ? "mine" : ""}`}>
-                      <img className="lobby-chat-avatar" src={msg.avatar} alt={msg.senderName} />
-                      <div className="lobby-chat-bubble">
-                        <div className="lobby-chat-header">
-                          <span className="lobby-chat-sender">{isMine ? "Bạn" : msg.senderName}</span>
-                          <span className="lobby-chat-time">{msg.time}</span>
-                        </div>
-                        <div className="lobby-chat-text">{msg.text}</div>
+                    <div
+                      key={roleKey}
+                      className={`role-thumb-card ${count > 0 ? "active-thumb" : "zero-thumb"}`}
+                      style={{ "--role-accent": conf.color || "#fbbf24" }}
+                      title={`${conf.label} (${teamText}): ${conf.description}`}
+                    >
+                      {/* Khung ảnh Thumbnail nghệ thuật + Huy hiệu Phe + Huy hiệu Số lượng to rõ */}
+                      <div
+                        className="role-thumb-art"
+                        style={{ background: conf.thumbGradient || "linear-gradient(145deg, #1e293b, #334155)" }}
+                      >
+                        <span className={`role-thumb-team ${conf.team}`}>{teamText}</span>
+                        <span className={`role-thumb-qty-badge ${count > 0 ? "has-qty" : ""}`}>
+                          x{count}
+                        </span>
+                        <div className="role-thumb-emblem">{conf.emoji}</div>
                       </div>
+
+                      {/* Tên vai + Tag chức năng 1 dòng */}
+                      <div className="role-thumb-meta">
+                        <div className="role-thumb-title">{conf.label}</div>
+                        <div className="role-thumb-skill">{conf.shortSkill || conf.description}</div>
+                      </div>
+
+                      {/* Bộ đếm trực tiếp cho Chủ phòng / Nhãn đồng bộ cho Khách */}
+                      {me?.isHost ? (
+                        <div className="role-thumb-stepper">
+                          <button
+                            type="button"
+                            className="btn-thumb-step"
+                            onClick={() => handleRoleChange(roleKey, -1)}
+                            disabled={disableMinus}
+                            title="Giảm số lượng"
+                          >
+                            −
+                          </button>
+                          <span className="thumb-step-val">{count}</span>
+                          <button
+                            type="button"
+                            className="btn-thumb-step"
+                            onClick={() => handleRoleChange(roleKey, 1)}
+                            disabled={count >= Math.max(totalPlayers, 18)}
+                            title="Tăng số lượng"
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={`role-thumb-guest-footer ${count > 0 ? "in-play" : ""}`}>
+                          {count > 0 ? `Có ${count} vai trong ván` : "Không dùng"}
+                        </div>
+                      )}
                     </div>
                   );
-                })
-              )}
-              <div ref={chatEndRef} />
+                })}
+              </div>
             </div>
+          ) : (
+            /* TAB 2: DANH SÁCH GHẾ GỌN + ĐỔI TÊN + CHAT BONG BÓNG 3D */
+            <div className="lobby-drawer-content chat-mode">
+              <div className="lobby-seat-strip">
+                <div className="seat-strip-header">
+                  <span>👥 Ghế trong vòng tròn ({totalPlayers}/18)</span>
+                  {!editingName ? (
+                    <button
+                      type="button"
+                      className="btn-mini-rename"
+                      onClick={() => {
+                        setNameInput(me?.name || "");
+                        setEditingName(true);
+                      }}
+                    >
+                      ✏️ Đổi tên tôi
+                    </button>
+                  ) : null}
+                </div>
 
-            <form className="lobby-chat-form" onSubmit={handleSendChat}>
-              <input
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Nhập tin nhắn..."
-                maxLength={100}
-              />
-              <button type="submit">Gửi</button>
-            </form>
-          </div>
-        </section>
-      </main>
+                {editingName && (
+                  <div className="rename-box" style={{ marginBottom: 8 }}>
+                    <input
+                      value={nameInput}
+                      maxLength={20}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="Tên hiển thị mới..."
+                    />
+                    <button className="btn-primary" onClick={handleRename}>
+                      Lưu
+                    </button>
+                    <button className="btn-secondary" onClick={() => setEditingName(false)}>
+                      Hủy
+                    </button>
+                  </div>
+                )}
 
-      {/* --- LAUNCH & STATUS DECK (HOST START & READINESS CHECKLIST) --- */}
-      <footer className="lobby-launch-deck">
-        <div className="lobby-checklist-box">
+                <div className="seat-chips-wrap">
+                  {room.players.map((p, idx) => {
+                    const isMeChip = p.id === myId;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`seat-mini-chip ${p.ready ? "ready" : "waiting"} ${isMeChip ? "mine" : ""}`}
+                      >
+                        <span>{p.isHost ? "👑" : p.ready ? "🟢" : "⏳"}</span>
+                        <span className="chip-name">
+                          #{idx + 1} {p.name}
+                        </span>
+                        {me?.isHost && !isMeChip && (
+                          <button
+                            type="button"
+                            className="chip-kick-btn"
+                            onClick={() => handleKickPlayer(p)}
+                            title={`Kick ${p.name}`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="lobby-chat-messages">
+                {lobbyMessages.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "#94a3b8", margin: "auto", fontSize: "0.82rem" }}>
+                    💬 Nhắn tin tại đây sẽ hiện bong bóng thoại ngay trên đầu Sói 3D của bạn quanh lửa trại!
+                  </div>
+                ) : (
+                  lobbyMessages.map((msg) => {
+                    const isMine = msg.senderId === myId;
+                    return (
+                      <div key={msg.id} className={`lobby-chat-msg ${isMine ? "mine" : ""}`}>
+                        <img className="lobby-chat-avatar" src={msg.avatar} alt={msg.senderName} />
+                        <div className="lobby-chat-bubble">
+                          <div className="lobby-chat-header">
+                            <span className="lobby-chat-sender">{isMine ? "Bạn" : msg.senderName}</span>
+                            <span className="lobby-chat-time">{msg.time}</span>
+                          </div>
+                          <div className="lobby-chat-text">{msg.text}</div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                <div ref={chatEndRef} />
+              </div>
+
+              <form className="lobby-chat-form" onSubmit={handleSendChat}>
+                <input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Nhắn tin lên đầu Sói 3D..."
+                  maxLength={100}
+                />
+                <button type="submit">Gửi</button>
+              </form>
+            </div>
+          )}
+        </aside>
+      )}
+
+      {/* ==================== 4. THANH KHỞI HÀNH / SẴN SÀNG NỔI DƯỚI ĐÁY SÂN KHẤU 3D ==================== */}
+      <footer className={`lobby-3d-launch-dock ${drawerOpen ? "with-drawer" : "full-stage"}`}>
+        <div className="lobby-checklist-box compact">
           <span className={`checklist-item ${isMinPlayers ? "valid" : "invalid"}`}>
-            {isMinPlayers ? "✅" : "⚠️"} Tối thiểu 6 người ({totalPlayers}/6)
+            {isMinPlayers ? "✅" : "⚠️"} ≥6 người ({totalPlayers}/6)
           </span>
           <span className={`checklist-item ${isAllReady ? "valid" : "invalid"}`}>
-            {isAllReady ? "✅" : "⚠️"} Mọi người sẵn sàng ({room.players.filter((p) => p.ready).length}/{totalPlayers})
+            {isAllReady ? "✅" : "⚠️"} Sẵn sàng ({readyCount}/{totalPlayers})
           </span>
           <span className={`checklist-item ${isRolesMatched && hasWolf ? "valid" : "invalid"}`}>
-            {isRolesMatched && hasWolf ? "✅" : "⚠️"} Khớp vai trò ({totalRoles}/{totalPlayers} vai, ≥1 Sói)
+            {isRolesMatched && hasWolf ? "✅" : "⚠️"} Khớp {totalRoles}/{totalPlayers} vai (≥1 Sói)
           </span>
         </div>
 
         {error && (
-          <div style={{ color: "#f87171", fontSize: "0.85rem", width: "100%", textAlign: "center" }}>
-            {error}
+          <div className="lobby-dock-error">
+            ⚠️ {error}
           </div>
         )}
 
@@ -825,30 +920,26 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             disabled={!canStartGame}
             title={
               !isMinPlayers
-                ? "Cần ít nhất 6 người chơi để bắt đầu"
+                ? "Cần ít nhất 6 người chơi để bắt đầu (bạn có thể bấm +5 Bot ở góc trái nếu đang test)"
                 : !isAllReady
-                ? `Còn ${unreadyPlayers.length} người chơi chưa sẵn sàng`
-                : !isRolesMatched
-                ? `Tổng số vai (${totalRoles}) chưa bằng số người chơi (${totalPlayers})`
-                : !hasWolf
-                ? "Cần ít nhất 1 Sói"
-                : "Bấm để bắt đầu ván đấu ngay!"
+                  ? `Còn ${unreadyPlayers.length} người chơi chưa sẵn sàng`
+                  : !isRolesMatched
+                    ? `Tổng số vai (${totalRoles}) chưa bằng số người chơi (${totalPlayers})`
+                    : !hasWolf
+                      ? "Cần ít nhất 1 Sói hoặc 1 Sói Đầu Đàn"
+                      : "Bấm để phân vai bí mật và bắt đầu Đêm đầu tiên!"
             }
           >
-            🚀 BẮT ĐẦU VÁN ĐẤU
+            🚀 PHÂN VAI & BẮT ĐẦU VÁN ĐẤU
           </button>
         ) : (
-          <div className="lobby-mobile-dock-player">
-            <button
-              className={`btn-ready-toggle ${me?.ready ? "is-ready" : ""}`}
-              onClick={handleToggleReady}
-            >
-              {me?.ready ? "✅ ĐÃ SẴN SÀNG" : "⚡ BẤM SẴN SÀNG"}
-            </button>
-            <button className="btn-header-leave" onClick={handleLeave}>
-              🚪 Rời
-            </button>
-          </div>
+          <button
+            className={`btn-ready-toggle ${me?.ready ? "is-ready" : ""}`}
+            onClick={handleToggleReady}
+            style={{ maxWidth: 320 }}
+          >
+            {me?.ready ? "✅ BẠN ĐÃ SẴN SÀNG (Bấm để hủy)" : "⚡ BẤM SẴN SÀNG"}
+          </button>
         )}
       </footer>
     </div>
