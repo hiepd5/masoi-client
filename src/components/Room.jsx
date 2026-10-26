@@ -186,7 +186,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     ? 'https://masoi-server-2eca.onrender.com/api/tts'
     : 'http://localhost:3001/api/tts';
 
-  const vsProfileId = localStorage.getItem('mc_voice_profile_id') || null;
+  const vsProfileId = localStorage.getItem('mc_voice_profile_id') || 'b5d182f3';
 
   // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam; Circuit Breaker 60s cho Render Proxy)
   const vsAvailableRef = useRef(null); // null = unknown, true/false
@@ -229,10 +229,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         },
         body: JSON.stringify({
           model: 'omnivoice',
-          voice: vsProfileId || 'alloy',
+          voice: vsProfileId || 'b5d182f3',
           input: text,
           response_format: 'mp3',
-          speed: 0.88,
+          speed: 0.82,
         }),
         signal: ctrl.signal,
       });
@@ -260,7 +260,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const resp = await fetch(SERVER_TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: vsProfileId, speed: 0.88 }),
+        body: JSON.stringify({ text, voice: vsProfileId, speed: 0.82 }),
         signal: ctrl.signal,
       });
       clearTimeout(tid);
