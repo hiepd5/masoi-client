@@ -266,17 +266,17 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       clearTimeout(tid);
       const ctype = (resp.headers.get('content-type') || '').toLowerCase();
       if (!resp.ok || !ctype.includes('audio')) {
-        proxyCooldownUntilRef.current = Date.now() + 60000;
+        proxyCooldownUntilRef.current = Date.now() + 10000;
         return false;
       }
       const blob = await resp.blob();
       if (blob.size < 500) {
-        proxyCooldownUntilRef.current = Date.now() + 60000;
+        proxyCooldownUntilRef.current = Date.now() + 10000;
         return false;
       }
       return await playMp3(URL.createObjectURL(blob));
     } catch {
-      proxyCooldownUntilRef.current = Date.now() + 60000;
+      proxyCooldownUntilRef.current = Date.now() + 10000;
       return false;
     }
   }
@@ -350,7 +350,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
 
     async function playAll() {
-      const voice = pickBestViVoice();
+      const voice = null; // speechSynthesis disabled
       // Kiểm tra VoiceStudio 1 lần cho cả batch
       const vsOnline = await checkVoiceStudio();
 
@@ -376,16 +376,12 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           if (proxyOk) continue;
         }
 
-        // Ưu tiên 3: Browser speechSynthesis fallback tức thì (không bao giờ câm tiếng!)
-        await speakTTS(text, voice);
+        // Ưu tiên 3: Bỏ qua — không dùng speechSynthesis (tránh giọng tiếng Anh)
+        // Nếu MP3 + server proxy đều fail → im lặng, không đọc sai giọng
       }
     }
 
-    if (!window.speechSynthesis || window.speechSynthesis.getVoices().length > 0) {
-      playAll();
-    } else {
-      window.speechSynthesis.addEventListener('voiceschanged', playAll, { once: true });
-    }
+    playAll();
 
     lastSpokenRef.current = mcLog.length - 1;
   }, [mcLog, mcVoiceEnabled]);
