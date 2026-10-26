@@ -57,6 +57,8 @@ export default function PlayingView({
   mcVoiceEnabled,
   setMcVoiceEnabled,
   onLeave = null,
+  voicePregening = false,
+  voicePregenProgress = { done: 0, total: 0 },
 }) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
@@ -779,6 +781,14 @@ export default function PlayingView({
             >
               {mcVoiceEnabled ? '🔊' : '🔇'}
             </button>
+          )}
+          {voicePregening && (
+            <span
+              title={`MC đang chuẩn bị giọng: ${voicePregenProgress.done}/${voicePregenProgress.total}`}
+              style={{ fontSize: '0.7rem', color: '#facc15', whiteSpace: 'nowrap' }}
+            >
+              🎙️ {voicePregenProgress.done}/{voicePregenProgress.total}
+            </span>
           )}
           <FullscreenButton />
           {onLeave && (

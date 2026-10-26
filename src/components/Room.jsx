@@ -44,6 +44,11 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const lastSpokenRef = useRef(-1);
   const currentAudioRef = useRef(null);
 
+  // Pre-gen voice cache: Map<phrase, blobURL>
+  const voiceCacheRef = useRef(new Map());
+  const [voicePregening, setVoicePregening] = useState(false);
+  const [voicePregenProgress, setVoicePregenProgress] = useState({ done: 0, total: 0 });
+
   // Danh sách Bối cảnh 3D (Scene Presets) cho Chủ Phòng chọn ở sảnh chờ
   const [scenePresets, setScenePresets] = useState([]);
   const syncedDefaultPresetRef = useRef(false);
@@ -188,6 +193,66 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   const vsProfileId = localStorage.getItem('mc_voice_profile_id') || 'b5d182f3';
 
+  // Build danh sach tat ca cau dynamic co ten nguoi choi
+  function buildDynamicPhrases(players) {
+    const names = players.map(p => p.name).filter(Boolean);
+    const phrases = new Set();
+    for (const name of names) {
+      phrases.add(`${name} đã không qua khỏi đêm qua.`);
+      phrases.add(`Làng đã quyết định! ${name} sẽ rời khỏi ván đấu. Xin hãy giữ im lặng tuyệt đối.`);
+      phrases.add(`Mời ${name} lên biện hộ.`);
+      phrases.add(`Làng đã tha ${name}! Không ai bị xử tử hôm nay.`);
+    }
+    // Cac cap tinh nhan (combination 2 nguoi)
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        phrases.add(`💔 Tình đoạn tuyệt đoạn! Tình Nhân ${names[i]} và ${names[j]} không chịu nổi nỗi đau đã gục ngã theo!`);
+      }
+    }
+    // Cau co nhieu nguoi chet
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        phrases.add(`${names[i]} và ${names[j]} đã không qua khỏi đêm qua.`);
+      }
+    }
+    return [...phrases];
+  }
+
+  // Pre-gen tat ca phrase -> cache vao RAM Map
+  async function pregenVoice(players) {
+    if (!mcVoiceEnabled) return;
+    const phrases = buildDynamicPhrases(players);
+    if (phrases.length === 0) return;
+    setVoicePregening(true);
+    setVoicePregenProgress({ done: 0, total: phrases.length });
+    try {
+      const serverUrl = import.meta.env.PROD
+        ? 'https://masoi-server-2eca.onrender.com/api/tts-batch'
+        : 'http://localhost:3001/api/tts-batch';
+      const resp = await fetch(serverUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phrases, speed: 0.82 }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const { results } = await resp.json();
+      let done = 0;
+      for (const [text, b64] of Object.entries(results)) {
+        if (b64) {
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const blob = new Blob([bytes], { type: 'audio/mpeg' });
+          voiceCacheRef.current.set(text, URL.createObjectURL(blob));
+        }
+        done++;
+        setVoicePregenProgress({ done, total: phrases.length });
+      }
+    } catch (e) {
+      console.warn('[VoicePregen] failed:', e.message);
+    } finally {
+      setVoicePregening(false);
+    }
+  }
+
   // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam; Circuit Breaker 60s cho Render Proxy)
   const vsAvailableRef = useRef(null); // null = unknown, true/false
   const vsLastCheckRef = useRef(0);
@@ -254,6 +319,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   // Gọi /api/tts trên server Render (HTTPS-safe, không bị CORS) kèm Circuit Breaker 60s
   async function speakViaServerProxy(text) {
     if (Date.now() < proxyCooldownUntilRef.current) return false;
+    // Uu tien cache RAM truoc
+    const cached = voiceCacheRef.current.get(text.trim());
+    if (cached) return await playMp3(cached);
     try {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), 13000);
@@ -544,6 +612,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     socketRef.current.emit("game:start", {}, (res) => {
       if (!res?.ok) {
         setError(res?.error || "Không thể bắt đầu game.");
+      } else {
+        // Pre-gen voice ngay khi server xac nhan game bat dau
+        pregenVoice(room.players || []);
       }
     });
   }
@@ -556,7 +627,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     );
   }
 
-  // Chuyển sang màn hình chơi game khi ván bắt đầu
+  // Chuyen sang man hinh choi game khi van bat dau
   if (room.phase === "playing" || room.phase === "ended") {
     return (
       <PlayingView 
@@ -566,6 +637,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         mcVoiceEnabled={mcVoiceEnabled}
         setMcVoiceEnabled={setMcVoiceEnabled}
         onLeave={handleLeave}
+        voicePregening={voicePregening}
+        voicePregenProgress={voicePregenProgress}
       />
     );
   }
