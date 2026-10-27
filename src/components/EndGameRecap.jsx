@@ -8,6 +8,9 @@ import {
 } from "../utils/cinemaVideoRecorder.js";
 import { getSession } from "../hooks/useSocket.js";
 import { getTtsCacheKey } from "../utils/ttsTextUtils.js";
+import { getApiBaseUrl } from "../config/runtimeEnv.js";
+import { awardMatchXp } from "../utils/xpProgression.js";
+import { generateMvpShareCardBlob, shareOrDownloadMvpCard } from "../utils/mvpShareCard.js";
 import "./EndGameRecap.css";
 
 const WINNER_CONFIG = {
@@ -1838,6 +1841,11 @@ function deriveBeatActorChoreography(beat, players = []) {
 }
 
 export default function EndGameRecap({
+  roomCode = "MASOI",
+  gameStartedAt = 0,
+  myPlayerId = null,
+  serverGoldenHour = null,
+  didActOrVote = true,
   history = [],
   replayTimeline = [],
   awards = [],
@@ -1918,8 +1926,33 @@ export default function EndGameRecap({
   const [recordedVideo, setRecordedVideo] = useState(null);
   const [showVideoPlayerModal, setShowVideoPlayerModal] = useState(false);
   const [recordErrorMsg, setRecordErrorMsg] = useState("");
+  const [xpAwardResult, setXpAwardResult] = useState(null);
+  const [sharingMvpCard, setSharingMvpCard] = useState(false);
   const activeRecorderRef = useRef(null);
   const overlayStateRef = useRef({});
+
+  // Cộng điểm Kinh Nghiệm Cổ Ngữ (x2 trong Giờ Vàng 20h–23h UTC+7 chuẩn đồng hồ Server — Chốt #9, Idempotent theo matchKey)
+  useEffect(() => {
+    if (isSpectator || !myPlayerId) return;
+    const myPl = players.find((p) => p.id === myPlayerId);
+    if (!myPl) return;
+    const isLoverWin = winner === "lovers" && Array.isArray(loversPublic) && loversPublic.includes(myPl.id);
+    const isWolfWin = (winner === "wolf" || winner === "wolves") && isWolfTeamRole(myPl.role);
+    const isTannerWin = winner === "tanner" && myPl.role === "tanner";
+    const isVillageWin =
+      winner === "village" && !isWolfTeamRole(myPl.role) && myPl.role !== "tanner";
+    const didWin = Boolean(isLoverWin || isWolfWin || isTannerWin || isVillageWin);
+    const matchKey = `${roomCode}_${gameStartedAt || "end"}_${myPl.id}`;
+
+    const res = awardMatchXp({
+      matchKey,
+      didWin,
+      ghostBetBonusXp,
+      serverGoldenHour,
+      didActOrVote,
+    });
+    setXpAwardResult(res);
+  }, [isSpectator, myPlayerId, players, winner, loversPublic, roomCode, gameStartedAt, ghostBetBonusXp, serverGoldenHour, didActOrVote]);
 
   const winConfig = WINNER_CONFIG[winner] || WINNER_CONFIG.village;
 
@@ -2322,9 +2355,7 @@ export default function EndGameRecap({
 
     const ctrl = new AbortController();
     const vsProfileId = localStorage.getItem("mc_voice_profile_id") || "b5d182f3";
-    const batchUrl = import.meta.env.PROD
-      ? "https://masoi-server-2eca.onrender.com/api/tts-batch"
-      : "http://localhost:3001/api/tts-batch";
+    const batchUrl = `${getApiBaseUrl()}/api/tts-batch`;
     const buildBatchHeaders = () => ({
       "Content-Type": "application/json",
       "x-game-session": sessionTokenRef.current || getSession()?.sessionToken || "",
@@ -2665,6 +2696,7 @@ export default function EndGameRecap({
     try {
       const recSession = startCinemaStoryRecording({
         getOverlayState: () => overlayStateRef.current,
+        aspectMode: "16:9",
       });
       activeRecorderRef.current = recSession;
       setDrawerTab(null);
@@ -2679,6 +2711,84 @@ export default function EndGameRecap({
       setRecordErrorMsg(err?.message || "Không thể khởi động trình ghi video.");
     }
   }, [viewMode, onToggleViewMode]);
+
+  // Nút [📱 Xuất Clip Dọc 9:16 (TikTok ~18s)]: Tự gom 3–4 cảnh cao trào cuối trận + MVP ở khổ dọc 720x1280 đóng dấu masoi.hiepd5.com!
+  const handleStartTikTokVerticalRecording = useCallback(() => {
+    unlockCinemaAudioEngine();
+    setRecordErrorMsg("");
+    if (viewMode !== "3d" && onToggleViewMode) {
+      onToggleViewMode();
+    }
+    try {
+      const recSession = startCinemaStoryRecording({
+        getOverlayState: () => overlayStateRef.current,
+        aspectMode: "9:16",
+      });
+      activeRecorderRef.current = recSession;
+      const startHighlightIdx = Math.max(0, storyBeats.length - 4);
+      setDrawerTab(null);
+      setShowVideoPlayerModal(false);
+      setFollowDirector(true);
+      setRelockToken((t) => t + 1);
+      setRecapSpeed(2);
+      setBeatIndex(startHighlightIdx);
+      setIsPlaying(true);
+      setIsRecordingVideo(true);
+      setHudVisible(false);
+    } catch (err) {
+      setRecordErrorMsg(err?.message || "Không thể quay clip dọc 9:16 trên trình duyệt này.");
+    }
+  }, [viewMode, onToggleViewMode, storyBeats.length]);
+
+  const handleShareMvpCard = useCallback(async () => {
+    if (sharingMvpCard) return;
+    setSharingMvpCard(true);
+    setRecordErrorMsg("");
+    try {
+      const myPl = myPlayerId ? players.find((p) => p.id === myPlayerId) : null;
+      const normalizedAwards = awards.map((a) => ({
+        icon: a.id === "mvp" ? "👑" : "🏆",
+        title: a.title || "Ngôi Sao Ván Đấu",
+        playerName: a.name || a.playerName || "Ẩn danh",
+        desc: a.description || a.desc || "",
+      }));
+      const blob = await generateMvpShareCardBlob({
+        winner: winner === "wolf" ? "wolves" : winner,
+        players,
+        awards: normalizedAwards,
+        progression: xpAwardResult?.progression || null,
+        xpSummary: xpAwardResult?.summary || null,
+        roomCode,
+        myPlayerName: myPl?.name || "",
+      });
+      await shareOrDownloadMvpCard(blob, roomCode);
+    } catch (err) {
+      setRecordErrorMsg(err?.message || "Không thể tạo thẻ ảnh chiến tích MVP.");
+    } finally {
+      setSharingMvpCard(false);
+    }
+  }, [sharingMvpCard, myPlayerId, players, awards, winner, xpAwardResult, roomCode]);
+
+  const handleShareRecordedVideoFile = useCallback(async () => {
+    if (!recordedVideo?.blob) return;
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof File !== "undefined") {
+        const fileName = `MaSoi3D_${recordedVideo.aspectMode === "9:16" ? "TikTok9x16" : "Cinema16x9"}_${roomCode}.${recordedVideo.ext}`;
+        const file = new File([recordedVideo.blob], fileName, {
+          type: recordedVideo.mimeType || "video/webm",
+        });
+        if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: "🐺 Highlight Ma Sói Online 3D",
+            text: "Xem lại cú lừa đỉnh cao tại Ngôi Làng Ma Sói 3D: https://masoi.hiepd5.com!",
+            files: [file],
+          });
+        }
+      }
+    } catch {
+      // ignore user cancel
+    }
+  }, [recordedVideo, roomCode]);
 
   function cycleSpeed() {
     setRecapSpeed((s) => {
@@ -2857,16 +2967,44 @@ export default function EndGameRecap({
         </div>
 
         <div className="vf-right-cluster">
-          {/* Nút Quay Lại Video & Xem Lại Ngay Trong Game */}
+          {/* Nút Quay Lại Video 16:9, Clip Dọc TikTok 9:16 & Thẻ Ảnh Chiến Tích MVP */}
           {!isRecordingVideo && (
-            <button
-              type="button"
-              className="vf-record-movie-btn"
-              onClick={handleStartFullStoryVideoRecording}
-              title="Tự động quay lại toàn bộ bộ phim kể chuyện 3D kèm phụ đề & âm thanh để xem lại và lưu về máy"
-            >
-              🔴 Quay Video Phim
-            </button>
+            <>
+              <button
+                type="button"
+                className="vf-record-movie-btn"
+                onClick={handleStartTikTokVerticalRecording}
+                style={{
+                  background: "linear-gradient(135deg, #db2777, #7c3aed)",
+                  borderColor: "rgba(244, 114, 182, 0.7)",
+                }}
+                title="Quay nhanh cao trào cuối trận ở khổ dọc 9:16 (720x1280) chuẩn đăng TikTok / Reels / Shorts!"
+              >
+                📱 Clip Dọc 9:16
+              </button>
+              <button
+                type="button"
+                className="vf-record-movie-btn"
+                onClick={handleStartFullStoryVideoRecording}
+                title="Tự động quay lại toàn bộ bộ phim kể chuyện 3D 16:9 kèm phụ đề & âm thanh để lưu về máy"
+              >
+                🔴 Quay Phim 16:9
+              </button>
+              <button
+                type="button"
+                className="vf-tool-btn"
+                onClick={handleShareMvpCard}
+                disabled={sharingMvpCard}
+                style={{
+                  borderColor: "rgba(250, 204, 21, 0.55)",
+                  color: "#fef08a",
+                  fontWeight: 800,
+                }}
+                title="Tạo & Chia sẻ Thẻ Ảnh Chiến Tích MVP 1080x1350 lên Zalo / Facebook / Story"
+              >
+                {sharingMvpCard ? "⏳ Đang vẽ..." : "🖼️ Thẻ MVP"}
+              </button>
+            </>
           )}
 
           {recordedVideo && !isRecordingVideo && (
@@ -3298,6 +3436,23 @@ export default function EndGameRecap({
                 👑 MVP ({awards.length})
               </button>
 
+              {xpAwardResult?.summary?.gainedXp > 0 && (
+                <span
+                  className="director-wait-host"
+                  style={{
+                    color: "#fef08a",
+                    borderColor: "rgba(250, 204, 21, 0.65)",
+                    background: "rgba(120, 53, 15, 0.52)",
+                    fontWeight: 800,
+                  }}
+                  title={`Cấp hiện tại: Lv.${xpAwardResult.progression?.level || 1} ${xpAwardResult.progression?.rankTitle || ""}`}
+                >
+                  ✨ +{xpAwardResult.summary.gainedXp} XP
+                  {xpAwardResult.summary.goldenMultiplier > 1 ? " (🌕 X2!)" : ""}
+                  {xpAwardResult.summary.leveledUp ? ` • 🎉 Lên Lv.${xpAwardResult.summary.newLevel}!` : ""}
+                </span>
+              )}
+
               {ghostBetBonusXp > 0 && (
                 <span
                   className="director-wait-host"
@@ -3346,25 +3501,44 @@ export default function EndGameRecap({
           <div className="cinema-video-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="cinema-video-modal-header">
               <div className="cinema-video-modal-title">
-                <span>🎬 Bản Thu Video Phim Kể Chuyện</span>
+                <span>
+                  🎬 Bản Thu Video {recordedVideo.aspectMode === "9:16" ? "Dọc TikTok 9:16" : "Phim Kể Chuyện 16:9"}
+                </span>
                 <small>
-                  Thời lượng ~{recordedVideo.durationSec}s • Lúc {recordedVideo.createdAt} • Chuẩn HD 16:9 kèm Phụ đề
+                  Thời lượng ~{recordedVideo.durationSec}s • Lúc {recordedVideo.createdAt} • Đóng dấu masoi.hiepd5.com
                 </small>
               </div>
               <div className="cinema-video-modal-actions">
+                {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
+                  <button
+                    type="button"
+                    className="btn-download-story-video"
+                    onClick={handleShareRecordedVideoFile}
+                    style={{ border: "none", cursor: "pointer" }}
+                  >
+                    📲 Chia Sẻ Ngay (TikTok / Zalo)
+                  </button>
+                )}
                 <a
                   href={recordedVideo.url}
-                  download={`MaSoi3D_PhimKeChuyen_${Date.now()}.${recordedVideo.ext}`}
+                  download={`MaSoi3D_${recordedVideo.aspectMode === "9:16" ? "TikTok_9x16" : "Phim_16x9"}_${Date.now()}.${recordedVideo.ext}`}
                   className="btn-download-story-video"
                 >
-                  ⬇️ Tải Video Về Máy (.{recordedVideo.ext})
+                  ⬇️ Tải Video (.{recordedVideo.ext})
                 </a>
+                <button
+                  type="button"
+                  className="btn-re-record-video"
+                  onClick={handleStartTikTokVerticalRecording}
+                >
+                  📱 Quay Dọc 9:16
+                </button>
                 <button
                   type="button"
                   className="btn-re-record-video"
                   onClick={handleStartFullStoryVideoRecording}
                 >
-                  🔴 Quay Lại Bản Mới
+                  🔴 Quay Ngang 16:9
                 </button>
                 <button
                   type="button"

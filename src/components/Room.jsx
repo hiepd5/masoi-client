@@ -24,6 +24,7 @@ import {
 import { getTtsCacheKey, normalizeTtsText } from "../utils/ttsTextUtils.js";
 import { unlockCinemaAudioEngine } from "../utils/cinemaVideoRecorder.js";
 import { getSession } from "../hooks/useSocket.js";
+import { getApiBaseUrl, isNativeCapacitor } from "../config/runtimeEnv.js";
 import "./Room.css";
 
 const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
@@ -261,15 +262,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const VOICESTUDIO_URL = (() => {
     const override = localStorage.getItem('mc_vs_url');
     if (override) return override;
-    // Chỉ gọi trực tiếp khi local HTTP — tránh CORS trên production HTTPS
-    if (window.location.protocol === 'http:') return 'http://localhost:3900';
-    return null; // Production HTTPS → dùng server proxy /api/tts
+    // Chỉ gọi trực tiếp khi chạy Web Dev HTTP trên PC — tránh CORS trên HTTPS hoặc App Capacitor Native
+    if (!isNativeCapacitor() && window.location.protocol === 'http:') return 'http://localhost:3900';
+    return null; // Production HTTPS / Capacitor App → dùng server proxy /api/tts
   })();
 
-  // URL server Render để proxy TTS & kiểm tra trạng thái sống thật (giải quyết CORS cho production)
-  const SERVER_BASE_URL = import.meta.env.PROD
-    ? 'https://masoi-server-2eca.onrender.com'
-    : 'http://localhost:3001';
+  // URL server Render / Local để proxy TTS & kiểm tra trạng thái sống thật (tương thích 100% Web + CapacitorJS)
+  const SERVER_BASE_URL = getApiBaseUrl();
   const SERVER_TTS_URL = `${SERVER_BASE_URL}/api/tts`;
   const SERVER_TTS_STATUS_URL = `${SERVER_BASE_URL}/api/tts-status`;
 

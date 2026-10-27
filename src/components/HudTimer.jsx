@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { safeHaptic } from "../utils/hapticsAndSound.js";
 
 // Thời lượng chuẩn từng phase (khớp 1:1 với server/gameEngine.js & gameController.js)
 const PHASE_DURATIONS_SEC = {
@@ -47,6 +48,7 @@ export function HudGameClock({ gameStartedAt }) {
  */
 export function HudPhaseCountdown({ phaseEndsAt, isNight, isMyTurn, hasWinner }) {
   const [leftSec, setLeftSec] = useState(null);
+  const hapticFiredForEndsAtRef = useRef(0);
 
   useEffect(() => {
     if (!phaseEndsAt || hasWinner) {
@@ -56,11 +58,24 @@ export function HudPhaseCountdown({ phaseEndsAt, isNight, isMyTurn, hasWinner })
     const tick = () => {
       const left = Math.max(0, Math.ceil((phaseEndsAt - Date.now()) / 1000));
       setLeftSec(left);
+      // Chốt #7: Rung nhắc 1 nhịp duy nhất khi tới lượt CỦA MÌNH mà chỉ còn <= 6 giây!
+      if (isMyTurn && left > 0 && left <= 6 && hapticFiredForEndsAtRef.current !== phaseEndsAt) {
+        hapticFiredForEndsAtRef.current = phaseEndsAt;
+        safeHaptic("countdown_urgent");
+      }
     };
     tick();
     const id = setInterval(tick, 500);
-    return () => clearInterval(id);
-  }, [phaseEndsAt, hasWinner]);
+    // Chốt #12: Tính lại đồng hồ ngay lập tức (0ms) khi người chơi quay lại từ cuộc gọi!
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [phaseEndsAt, hasWinner, isMyTurn]);
 
   if (leftSec === null || hasWinner) return null;
 

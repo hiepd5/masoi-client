@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { saveSession, getDeviceId } from "../hooks/useSocket.js";
 import RolePortrait from "./RolePortrait.jsx";
 import CitizenAvatarVaultModal from "./CitizenAvatarVaultModal.jsx";
+import { getApiBaseUrl } from "../config/runtimeEnv.js";
+import { getPlayerProgressionState } from "../utils/xpProgression.js";
 import {
   BUILTIN_VILLAGER_AVATARS,
   getCitizenAvatarMeta,
@@ -88,6 +90,28 @@ export default function Lobby({
   const [citizenModelId, setCitizenModelId] = useState(() => getStoredCitizenModelId());
   const [showAvatarVault, setShowAvatarVault] = useState(false);
   const [, setCatalogTick] = useState(0);
+  const [goldenHourInfo, setGoldenHourInfo] = useState(null);
+  const [progression, setProgression] = useState(() => getPlayerProgressionState());
+
+  useEffect(() => {
+    let alive = true;
+    const fetchGolden = () => {
+      fetch(`${getApiBaseUrl()}/api/golden-hour`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!alive || !data?.ok) return;
+          setGoldenHourInfo(data);
+          setProgression(getPlayerProgressionState(data.serverDateKey));
+        })
+        .catch(() => {});
+    };
+    fetchGolden();
+    const timer = window.setInterval(fetchGolden, 60_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeCitizenAvatarCatalog(() => setCatalogTick((t) => t + 1));
@@ -570,6 +594,14 @@ export default function Lobby({
             <span className="home-live-pill">
               🟢 {waitingCount} phòng chờ • 🔥 {playingCount} đang đấu
             </span>
+            <span
+              className={`home-golden-pill ${goldenHourInfo?.active ? "active" : ""}`}
+              title="Khung giờ Vàng Đêm Huyết Nguyệt 20:00 – 23:00 (Giờ Việt Nam UTC+7) nhân đôi toàn bộ XP!"
+            >
+              {goldenHourInfo?.active
+                ? "🌕 ĐÊM HUYẾT NGUYỆT: ĐANG X2 XP!"
+                : "🌙 Giờ Vàng X2 XP: 20h–23h"}
+            </span>
           </div>
 
           <div className="home-topbar-actions">
@@ -605,8 +637,11 @@ export default function Lobby({
           {/* ==================== CỘT TRÁI: HỒ SƠ + CHƠI NHANH 1 MÌNH + SETUP PHÒNG ==================== */}
           <section className="home-panel-card">
             <div>
-              <div className="home-section-label">
+              <div className="home-section-label" style={{ justifyContent: "space-between", display: "flex", alignItems: "center" }}>
                 <span>👤 Hồ Sơ Của Bạn</span>
+                <span className="nordic-rank-chip" style={{ borderColor: progression.rankBorderHex }}>
+                  {progression.rankBadge} Lv.{progression.level} {progression.rankTitle}
+                </span>
               </div>
               <input
                 className="home-name-input"
@@ -617,6 +652,36 @@ export default function Lobby({
                 placeholder="Nhập tên hiển thị (để trống tự đặt tên ngầu)..."
                 autoFocus
               />
+
+              {/* Thanh Cấp độ Cổ Ngữ + Chuỗi Lửa Trại + 3 Nhiệm vụ ngày gọn 1 dải */}
+              <div className="nordic-xp-card">
+                <div className="nordic-xp-top">
+                  <span>
+                    ✨ {progression.xpInLevel}/{progression.xpForNextLevel} XP
+                    {goldenHourInfo?.active ? " • 🌕 X2 XP" : ""}
+                  </span>
+                  <span>
+                    🔥 Chuỗi {progression.streakDays || 0} ngày • 🏆 {progression.winsCount} thắng
+                  </span>
+                </div>
+                <div className="nordic-xp-bar-track">
+                  <div
+                    className="nordic-xp-bar-fill"
+                    style={{ width: `${progression.progressPct}%` }}
+                  />
+                </div>
+                <div className="nordic-quests-strip">
+                  {progression.quests.map((q) => (
+                    <span
+                      key={q.id}
+                      className={`nordic-quest-pill ${q.completed ? "done" : ""}`}
+                      title={`${q.label} (+${q.rewardXp} XP)`}
+                    >
+                      {q.completed ? "✅" : "▫️"} {q.label.replace(/^[^\s]+\s/, "")}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="citizen-profile-strip">

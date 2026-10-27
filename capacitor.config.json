@@ -1,0 +1,22 @@
+{
+  "appId": "com.hiepd5.masoi3d",
+  "appName": "Ma Sói Online 3D",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "capacitor",
+    "allowNavigation": [
+      "masoi.hiepd5.com",
+      "masoi-server-2eca.onrender.com",
+      "*.livekit.cloud"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#060a14",
+      "showSpinner": false
+    }
+  }
+}

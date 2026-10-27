@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import { getSocketServerUrl } from "../config/runtimeEnv.js";
 
-const SERVER_URL = import.meta.env.PROD
-  ? "https://masoi-server-2eca.onrender.com"
-  : "http://localhost:3001";
+const SERVER_URL = getSocketServerUrl();
 
 // Định danh thiết bị ẩn danh (chống mở 2 tab cày/soi bài trên bàn công khai Production - SEC-07)
 export function getDeviceId() {

@@ -1,6 +1,11 @@
 import { useEffect, useRef } from "react";
+import {
+  startBonfireCrackling,
+  stopBonfireCrackling,
+  resumeSpatialAudioIfNeeded,
+} from "../utils/hapticsAndSound.js";
 
-// Ambient sound system — loop âm thanh theo phase
+// Ambient sound system — loop âm thanh theo phase + tiếng củi nổ lửa trại Bắc Âu 0 KB
 // Files cần: /audio/ambient_night.mp3, /audio/ambient_day.mp3, /audio/ambient_tense.mp3
 // Nếu file không tồn tại -> silent fail (không crash)
 
@@ -10,6 +15,7 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
 
   useEffect(() => {
     if (!enabled) {
+      stopBonfireCrackling();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -17,6 +23,8 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
       currentSrcRef.current = null;
       return;
     }
+
+    startBonfireCrackling();
 
     const src = isTense
       ? "/audio/ambient_tense.mp3"
@@ -60,9 +68,22 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
     };
   }, [isNight, isTense, enabled]);
 
+  // Chốt #12: Tự động nối lại âm thanh nền khi quay lại từ cuộc gọi Zalo / Điện thoại
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && enabled) {
+        resumeSpatialAudioIfNeeded();
+        audioRef.current?.play?.().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [enabled]);
+
   // Stop on unmount
   useEffect(() => {
     return () => {
+      stopBonfireCrackling();
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;

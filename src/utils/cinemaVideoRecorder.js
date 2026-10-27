@@ -491,7 +491,7 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-export function startCinemaStoryRecording({ getOverlayState }) {
+export function startCinemaStoryRecording({ getOverlayState, aspectMode = "16:9" } = {}) {
   const supported = pickSupportedRecorderMime();
   if (!supported) {
     throw new Error("Trình duyệt này không hỗ trợ MediaRecorder để quay video.");
@@ -502,8 +502,9 @@ export function startCinemaStoryRecording({ getOverlayState }) {
     throw new Error("Không tìm thấy khung hình sân khấu 3D để ghi hình.");
   }
 
-  const outWidth = 1280;
-  const outHeight = 720;
+  const isVertical = aspectMode === "9:16";
+  const outWidth = isVertical ? 720 : 1280;
+  const outHeight = isVertical ? 1280 : 720;
   const compCanvas = document.createElement("canvas");
   compCanvas.width = outWidth;
   compCanvas.height = outHeight;
@@ -523,7 +524,7 @@ export function startCinemaStoryRecording({ getOverlayState }) {
     ctx.fillStyle = "#050814";
     ctx.fillRect(0, 0, outWidth, outHeight);
 
-    // 2. Chép khung hình 3D tỷ lệ Cover chuẩn 16:9 sắc nét
+    // 2. Chép khung hình 3D tỷ lệ Cover chuẩn (16:9 Ngang hoặc 9:16 Dọc TikTok/Reels/Shorts)
     const sw = sourceCanvas.width || outWidth;
     const sh = sourceCanvas.height || outHeight;
     if (sw > 0 && sh > 0) {
@@ -531,7 +532,7 @@ export function startCinemaStoryRecording({ getOverlayState }) {
       const dw = sw * scale;
       const dh = sh * scale;
       const dx = (outWidth - dw) * 0.5;
-      const dy = (outHeight - dh) * 0.5;
+      const dy = (outHeight - dh) * (isVertical ? 0.46 : 0.5);
       try {
         ctx.drawImage(sourceCanvas, dx, dy, dw, dh);
       } catch {
@@ -540,63 +541,102 @@ export function startCinemaStoryRecording({ getOverlayState }) {
     }
 
     // 3. Dải Vignette Letterbox Trên & Dưới (Bố cục Phim Điện Ảnh Sạch — Không vẽ bất kỳ nút bấm UI nào!)
-    const topGrad = ctx.createLinearGradient(0, 0, 0, 86);
-    topGrad.addColorStop(0, "rgba(3, 6, 17, 0.78)");
+    const topBarH = isVertical ? 150 : 86;
+    const botBarH = isVertical ? 320 : 175;
+
+    const topGrad = ctx.createLinearGradient(0, 0, 0, topBarH);
+    topGrad.addColorStop(0, "rgba(3, 6, 17, 0.84)");
     topGrad.addColorStop(1, "rgba(3, 6, 17, 0)");
     ctx.fillStyle = topGrad;
-    ctx.fillRect(0, 0, outWidth, 86);
+    ctx.fillRect(0, 0, outWidth, topBarH);
 
-    const botGrad = ctx.createLinearGradient(0, outHeight - 175, 0, outHeight);
+    const botGrad = ctx.createLinearGradient(0, outHeight - botBarH, 0, outHeight);
     botGrad.addColorStop(0, "rgba(3, 6, 17, 0)");
-    botGrad.addColorStop(0.52, "rgba(3, 6, 17, 0.72)");
-    botGrad.addColorStop(1, "rgba(3, 6, 17, 0.94)");
+    botGrad.addColorStop(0.48, "rgba(3, 6, 17, 0.76)");
+    botGrad.addColorStop(1, "rgba(3, 6, 17, 0.96)");
     ctx.fillStyle = botGrad;
-    ctx.fillRect(0, outHeight - 175, outWidth, 175);
+    ctx.fillRect(0, outHeight - botBarH, outWidth, botBarH);
 
     const state = getOverlayState?.() || {};
     const fontStack = "'Segoe UI', Roboto, system-ui, sans-serif";
 
-    // 4. Nhãn Chương góc trên trái & Huy hiệu kết quả góc trên phải
-    if (state.chapterTag) {
-      ctx.font = `700 16px ${fontStack}`;
-      const tagW = ctx.measureText(state.chapterTag).width + 26;
-      ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
-      drawRoundedRect(ctx, 28, 22, tagW, 34, 17);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(251, 191, 36, 0.55)";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-
-      ctx.fillStyle = "#fde68a";
+    // 4. Nhãn Chương & Huy hiệu Kết Quả + Đóng dấu thương hiệu masoi.hiepd5.com
+    if (isVertical) {
+      // Bố cục dọc TikTok 9:16: Thương hiệu ở đỉnh giữa + Nhãn chương xếp gọn không đè UI TikTok bên phải
+      ctx.font = `800 20px ${fontStack}`;
+      ctx.fillStyle = "#fde047";
+      ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.textAlign = "left";
-      ctx.fillText(state.chapterTag, 41, 39);
-    }
+      ctx.fillText("🐺 Ma Sói 3D • masoi.hiepd5.com", outWidth * 0.5, 42);
 
-    if (state.winnerBanner) {
-      ctx.font = `700 15px ${fontStack}`;
-      const winText = state.winnerBanner;
-      const winW = ctx.measureText(winText).width + 26;
-      ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
-      drawRoundedRect(ctx, outWidth - winW - 28, 22, winW, 34, 17);
-      ctx.fill();
-      ctx.fillStyle = "#e2e8f0";
+      if (state.winnerBanner) {
+        ctx.font = `700 17px ${fontStack}`;
+        const winW = Math.min(outWidth - 64, ctx.measureText(state.winnerBanner).width + 30);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
+        drawRoundedRect(ctx, (outWidth - winW) * 0.5, 68, winW, 34, 17);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.5)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(state.winnerBanner, outWidth * 0.5, 85);
+      }
+
+      if (state.chapterTag) {
+        ctx.font = `700 15px ${fontStack}`;
+        ctx.fillStyle = "#93c5fd";
+        ctx.fillText(state.chapterTag, outWidth * 0.5, 122);
+      }
+    } else {
+      if (state.chapterTag) {
+        ctx.font = `700 16px ${fontStack}`;
+        const tagW = ctx.measureText(state.chapterTag).width + 26;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+        drawRoundedRect(ctx, 28, 22, tagW, 34, 17);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(251, 191, 36, 0.55)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        ctx.fillStyle = "#fde68a";
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillText(state.chapterTag, 41, 39);
+      }
+
+      if (state.winnerBanner) {
+        ctx.font = `700 15px ${fontStack}`;
+        const winText = state.winnerBanner;
+        const winW = ctx.measureText(winText).width + 26;
+        ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+        drawRoundedRect(ctx, outWidth - winW - 28, 22, winW, 34, 17);
+        ctx.fill();
+        ctx.fillStyle = "#e2e8f0";
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText(winText, outWidth - 41, 39);
+      }
+
+      // Đóng dấu thương hiệu tinh tế góc dưới phải cho bản ngang 16:9
+      ctx.font = `700 13.5px ${fontStack}`;
+      ctx.fillStyle = "rgba(253, 224, 71, 0.78)";
       ctx.textAlign = "right";
-      ctx.textBaseline = "middle";
-      ctx.fillText(winText, outWidth - 41, 39);
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText("🐺 Ma Sói 3D • masoi.hiepd5.com", outWidth - 24, outHeight - 12);
     }
 
     // 5. Bóng Thoại Mật Đàm Sói / Lời Tranh Biện Nhân Vật (nếu cảnh hiện tại có thoại)
     if (state.dialogueText) {
-      ctx.font = `700 18px ${fontStack}`;
-      const dlgLines = wrapLines(ctx, state.dialogueText, 760);
-      const boxH = dlgLines.length * 24 + 18;
+      ctx.font = `700 ${isVertical ? 19 : 18}px ${fontStack}`;
+      const maxDlgW = isVertical ? outWidth - 96 : 760;
+      const dlgLines = wrapLines(ctx, state.dialogueText, maxDlgW);
+      const boxH = dlgLines.length * 25 + 18;
       const boxW = Math.min(
-        820,
+        isVertical ? outWidth - 64 : 820,
         Math.max(...dlgLines.map((l) => ctx.measureText(l).width), 180) + 38
       );
       const bx = (outWidth - boxW) * 0.5;
-      const by = outHeight - 168 - boxH;
+      const by = outHeight - (isVertical ? 260 : 168) - boxH;
 
       ctx.fillStyle = state.isWolfWhisper
         ? "rgba(127, 29, 29, 0.9)"
@@ -613,7 +653,7 @@ export function startCinemaStoryRecording({ getOverlayState }) {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       dlgLines.forEach((line, idx) => {
-        ctx.fillText(line, outWidth * 0.5, by + 20 + idx * 24);
+        ctx.fillText(line, outWidth * 0.5, by + 20 + idx * 25);
       });
     }
 
@@ -626,17 +666,25 @@ export function startCinemaStoryRecording({ getOverlayState }) {
     ctx.textBaseline = "alphabetic";
 
     if (state.title) {
-      ctx.font = `800 23px ${fontStack}`;
+      ctx.font = `800 ${isVertical ? 24 : 23}px ${fontStack}`;
       ctx.fillStyle = "#fde047";
-      ctx.fillText(state.title, outWidth * 0.5, outHeight - 86);
+      const titleLines = wrapLines(ctx, state.title, outWidth - (isVertical ? 76 : 140)).slice(0, 2);
+      const titleBaseY = isVertical
+        ? outHeight - (titleLines.length > 1 ? 196 : 168)
+        : outHeight - 86;
+      titleLines.forEach((tl, idx) => {
+        ctx.fillText(tl, outWidth * 0.5, titleBaseY + idx * 28);
+      });
     }
 
     if (state.narration) {
-      ctx.font = `600 18.5px ${fontStack}`;
+      ctx.font = `600 ${isVertical ? 19.5 : 18.5}px ${fontStack}`;
       ctx.fillStyle = "#f8fafc";
-      const subLines = wrapLines(ctx, state.narration, outWidth - 150);
-      subLines.slice(0, 2).forEach((line, idx) => {
-        ctx.fillText(line, outWidth * 0.5, outHeight - 54 + idx * 25);
+      const subLines = wrapLines(ctx, state.narration, outWidth - (isVertical ? 84 : 150));
+      const maxSubLines = isVertical ? 3 : 2;
+      const subStartY = isVertical ? outHeight - 122 : outHeight - 54;
+      subLines.slice(0, maxSubLines).forEach((line, idx) => {
+        ctx.fillText(line, outWidth * 0.5, subStartY + idx * 26);
       });
     }
     ctx.restore();
@@ -694,6 +742,7 @@ export function startCinemaStoryRecording({ getOverlayState }) {
       blob,
       mimeType: finalMime,
       ext,
+      aspectMode: isVertical ? "9:16" : "16:9",
       durationSec,
       createdAt: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
     });

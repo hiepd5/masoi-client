@@ -10,6 +10,7 @@ import {
   getPublicCitizenPersona,
 } from "../config/roles.config.js";
 import { getCitizenAvatarMeta } from "../config/citizenAvatars.config.js";
+import { SUSPECT_TAG_META } from "../3d/components/SeatHudBatchOverlay.jsx";
 
 export default function PlayerCircle({
   roomCode = "MASOI",
@@ -36,6 +37,7 @@ export default function PlayerCircle({
   wolfTeammates = [],
   speakingIds = [],
   reactions = [],
+  suspectTags = {},
 }) {
   const numPlayers = players.length;
   const [isMobile, setIsMobile] = React.useState(
@@ -301,6 +303,24 @@ export default function PlayerCircle({
 
               {phase === "day_final_vote" && p.id === defendantId && (
                 <div className="defendant-badge">Bị Phán Xét</div>
+              )}
+
+              {!isMe && !hasWinner && suspectTags?.[p.id] && SUSPECT_TAG_META[suspectTags[p.id]] && (
+                <div
+                  style={{
+                    marginBottom: 2,
+                    padding: "1px 6px",
+                    borderRadius: 999,
+                    fontSize: "9.5px",
+                    fontWeight: 800,
+                    background: SUSPECT_TAG_META[suspectTags[p.id]].bg,
+                    border: `1px solid ${SUSPECT_TAG_META[suspectTags[p.id]].border}`,
+                    color: SUSPECT_TAG_META[suspectTags[p.id]].color,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {SUSPECT_TAG_META[suspectTags[p.id]].short}
+                </div>
               )}
 
               <div

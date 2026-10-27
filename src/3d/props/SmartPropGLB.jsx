@@ -15,7 +15,7 @@ function getSharedGltfLoader() {
   if (!sharedGltfLoader) {
     const loader = new GLTFLoader();
     const draco = new DRACOLoader();
-    draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
+    draco.setDecoderPath("/draco/");
     loader.setDRACOLoader(draco);
     loader.setMeshoptDecoder(MeshoptDecoder);
     sharedGltfLoader = loader;

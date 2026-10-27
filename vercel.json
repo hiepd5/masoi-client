@@ -1,7 +1,25 @@
 {
   "headers": [
     {
-      "source": "/models/(props|characters|hand_props|roles)/(.*)\\.glb",
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/models/(props|characters|hand_props|roles|avatars)/(.*)\\.glb",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/(draco|portraits)/(.*)",
       "headers": [
         {
           "key": "Cache-Control",
@@ -39,7 +57,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!models/|config/|assets/|avatars/|audio/).*)",
+      "source": "/((?!models/|config/|assets/|avatars/|portraits/|draco/|audio/|sw\\.js|manifest\\.json).*)",
       "destination": "/index.html"
     }
   ]

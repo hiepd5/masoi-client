@@ -8,6 +8,7 @@ import {
 } from "@livekit/components-react";
 import { DisconnectReason, RoomEvent, Track } from "livekit-client";
 import "@livekit/components-styles";
+import { isWolfTeamRole } from "../config/roles.config.js";
 import "./VoiceRoom.css";
 
 const VOICE_INPUT_MODE_KEY = "ws_voice_input_mode";
@@ -84,7 +85,7 @@ function canHearRemoteIdentity(identity, { isNight, myRole, isAlive, wolfTeammat
   if (!identity) return false;
   if (volumeMap?.[identity] === 0) return false;
   if (isNight) {
-    return Boolean(myRole === "wolf" && isAlive && wolfTeammates.includes(identity));
+    return Boolean(isWolfTeamRole(myRole) && isAlive && wolfTeammates.includes(identity));
   }
   return true;
 }
@@ -176,7 +177,7 @@ function VoiceParticipantManager({
       return;
     }
 
-    const canSpeak = !isNight || myRole === "wolf";
+    const canSpeak = !isNight || isWolfTeamRole(myRole);
     const wantMicOn = canSpeak && (inputMode === "ptt" ? isPttPressed : userMicPreference);
 
     if (localParticipant.isMicrophoneEnabled !== wantMicOn) {
@@ -203,7 +204,7 @@ function ActiveSpeakersSync({
   const pushSpeakers = useCallback(() => {
     if (!room || !onSpeakingChange) return;
 
-    const canLocalSpeak = Boolean(isAlive && (!isNight || myRole === "wolf"));
+    const canLocalSpeak = Boolean(isAlive && (!isNight || isWolfTeamRole(myRole)));
     const active = Array.isArray(room.activeSpeakers) ? room.activeSpeakers : [];
     const allowedIds = [];
 
@@ -267,7 +268,7 @@ function ActiveSpeakersSync({
   return null;
 }
 
-// Xử lý chặn âm thanh tự phát (Autoplay Policy) của trình duyệt
+// Xử lý chặn âm thanh tự phát (Autoplay Policy) + tự nối lại tiếng sau cuộc gọi Zalo/Điện thoại (Chốt #12)
 function AutoplayBlockNotice() {
   const room = useRoomContext();
   const [blocked, setBlocked] = useState(false);
@@ -277,7 +278,17 @@ function AutoplayBlockNotice() {
     const checkPlayback = () => setBlocked(!room.canPlaybackAudio);
     checkPlayback();
     room.on(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
-    return () => room.off(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        room.startAudio?.().catch(() => {});
+        checkPlayback();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      room.off(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [room]);
 
   if (!blocked) return null;
@@ -340,8 +351,8 @@ function VoicePanel({
     updateOnlyOn: PANEL_TRACK_EVENTS,
   });
 
-  const canSpeak = Boolean(isAlive && (!isNight || myRole === "wolf"));
-  const isNightSilentShield = Boolean(isNight && !(myRole === "wolf" && isAlive));
+  const canSpeak = Boolean(isAlive && (!isNight || isWolfTeamRole(myRole)));
+  const isNightSilentShield = Boolean(isNight && !(isWolfTeamRole(myRole) && isAlive));
 
   function toggleMic() {
     if (!canSpeak) return;
@@ -410,7 +421,7 @@ function VoicePanel({
   if (!isAlive) {
     channelLabel = "💀 Khán Giả (Chỉ nghe)";
   } else if (isNight) {
-    channelLabel = myRole === "wolf" ? "🐺 Kênh Bầy Sói" : "🌙 Đêm Ngủ (0 kbps)";
+    channelLabel = isWolfTeamRole(myRole) ? "🐺 Kênh Bầy Sói" : "🌙 Đêm Ngủ (0 kbps)";
   }
 
   const visibleRemoteTracks = useMemo(() => {
@@ -494,7 +505,7 @@ function VoicePanel({
               title={
                 !isAlive
                   ? "Khán giả chỉ nghe, không mở phần cứng Micro"
-                  : isNight && myRole !== "wolf"
+                  : isNight && !isWolfTeamRole(myRole)
                   ? "Ban đêm dân làng phải ngủ"
                   : userMicPreference
                   ? "Tắt mic của bạn"

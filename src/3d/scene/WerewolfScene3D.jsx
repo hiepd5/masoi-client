@@ -46,6 +46,15 @@ import {
   STUDIO_CHOREO_SCENARIOS,
   resolveGallowsStageSpot,
 } from "../animation/actorChoreography3D.js";
+import {
+  SeatHudBatchOverlay,
+  SeatHudProjector3D,
+} from "../components/SeatHudBatchOverlay.jsx";
+import {
+  getGraphicsQualityPreset,
+  saveGraphicsQualityPresetId,
+  subscribeGraphicsQuality,
+} from "../../config/runtimeEnv.js";
 
 // Tách rời 100% mã nguồn D5 Architect Studio & Studio Hoạt Cảnh 9 Vai khỏi Bundle của người chơi trên Web Production!
 const ArchitectGizmo3D = lazy(() =>
@@ -141,6 +150,7 @@ export default function WerewolfScene3D({
   onLobbyKickPlayer = null,
   speakingIds = [],
   reactions = [],
+  suspectTags = {},
   recapStageState = null,
   liveMicroChoreo = null,
   scenePresetId = null,
@@ -151,6 +161,20 @@ export default function WerewolfScene3D({
 }) {
   const isDevSetup = useMemo(() => isDevArchitectAllowed(), []);
   const isLowPowerDevice = useMemo(() => detectLowPowerDevice(), []);
+  const [gfxPreset, setGfxPreset] = useState(() => getGraphicsQualityPreset());
+  const seatHudDomMapRef = useRef(new Map());
+
+  useEffect(() => {
+    return subscribeGraphicsQuality(() => {
+      setGfxPreset(getGraphicsQualityPreset());
+    });
+  }, []);
+
+  const cycleGraphicsQuality = useCallback(() => {
+    const order = ["high", "balanced", "low"];
+    const nextIdx = (order.indexOf(gfxPreset.id) + 1) % order.length;
+    setGfxPreset(saveGraphicsQualityPresetId(order[nextIdx]));
+  }, [gfxPreset.id]);
   const [adaptiveDpr, setAdaptiveDpr] = useState(() => {
     if (typeof window === "undefined") return 1;
     const raw = window.devicePixelRatio || 1;
@@ -838,7 +862,7 @@ export default function WerewolfScene3D({
       seatIndex: idx,
       alive: true,
       ready: true,
-      avatar: `/avatars/custom/avatar_${String((idx % 10) + 1).padStart(2, "0")}.png`,
+      avatar: "/portraits/badges/villager_cloak.webp",
     }));
   }, [phase, choreoStudioOpen, architectMode, players, lobbyTargetSeatCount, studioSeatCount]);
 
@@ -1148,6 +1172,27 @@ export default function WerewolfScene3D({
             title="Đưa Camera về lại ngay sau vai nhân vật của bạn"
           >
             🎯 Về Ghế Tôi
+          </button>
+
+          <button
+            type="button"
+            onClick={cycleGraphicsQuality}
+            style={{
+              width: "auto",
+              margin: 0,
+              padding: "5px 10px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: 700,
+              background: "rgba(15, 23, 42, 0.76)",
+              color: "#fde68a",
+              border: "1px solid rgba(250, 204, 21, 0.35)",
+              backdropFilter: "blur(8px)",
+              cursor: "pointer",
+            }}
+            title="Chuyển mức Đồ Họa 3D (Cao / Cân bằng / Siêu Mượt 60FPS cho điện thoại)"
+          >
+            🎮 Đồ họa: {gfxPreset.label}
           </button>
 
           {/* NHÓM CÔNG CỤ ĐẶC QUYỀN KIẾN TRÚC SƯ / DEV SETUP (Ẩn 100% ở bản Người Chơi Thật!) */}
@@ -1642,10 +1687,10 @@ export default function WerewolfScene3D({
       )}
 
       <Canvas
-        shadows
-        dpr={architectMode ? [1, 1.5] : adaptiveDpr}
+        shadows={architectMode ? true : gfxPreset.shadows}
+        dpr={architectMode ? [1, 1.5] : Math.min(adaptiveDpr, gfxPreset.dpr[1])}
         gl={{
-          antialias: !isLowPowerDevice,
+          antialias: architectMode ? true : Boolean(gfxPreset.antialias && !isLowPowerDevice),
           preserveDrawingBuffer: true,
           powerPreference: "high-performance",
           toneMapping: THREE.ACESFilmicToneMapping,
@@ -1657,6 +1702,13 @@ export default function WerewolfScene3D({
           architectMode={architectMode}
           isLowPowerDevice={isLowPowerDevice}
           onAdjustDpr={handleAdjustDpr}
+        />
+
+        <SeatHudProjector3D
+          orderedPlayers={orderedPlayers}
+          seatMap={seatMap}
+          domMapRef={seatHudDomMapRef}
+          active={!effectiveEnvironmentMood.hasWinner && !architectMode && !studioSimStage}
         />
 
         {/* Toàn bộ Không Gian Ngôi Làng PBR + Scene Graph D5 + 8-Sector Frustum Culling */}
@@ -1673,7 +1725,7 @@ export default function WerewolfScene3D({
           layoutNodes={layoutNodes}
           frustumCullingEnabled={frustumCullingEnabled && !hasWinner}
           architectMode={architectMode}
-          isLowPowerDevice={isLowPowerDevice}
+          isLowPowerDevice={isLowPowerDevice || gfxPreset.id !== "high"}
           isGizmoDragging={isGizmoDragging}
           lastGizmoDragEndMsRef={lastGizmoDragEndMsRef}
           registerNodeRef={registerNodeRef}
@@ -1859,11 +1911,43 @@ export default function WerewolfScene3D({
               choreoTiming={effectiveChoreoTiming}
               seatMap={seatMap}
               gallowsSpot={gallowsSpot}
+              suppressInlineHtml={!effectiveEnvironmentMood.hasWinner && !architectMode && !studioSimStage}
               onSelect={onSelectPlayer}
             />
           );
         })}
       </Canvas>
+
+      {/* ==================== MOBILE 60FPS SHIELD: LỚP PHỦ NHÃN GHẾ 1-LƯỢT BÊN NGOÀI <Canvas> ==================== */}
+      {!effectiveEnvironmentMood.hasWinner && !architectMode && !studioSimStage && (
+        <SeatHudBatchOverlay
+          domMapRef={seatHudDomMapRef}
+          orderedPlayers={orderedPlayers}
+          me={me}
+          phase={effectiveEnvironmentMood.phase}
+          myRole={myRole}
+          cameraMode={cameraMode}
+          selectedPlayerId={selectedPlayerId}
+          selectedActionMeta={selectedActionMeta}
+          onSelectPlayer={onSelectPlayer}
+          defendantId={defendantId}
+          wolfVictimId={wolfVictimId}
+          wolfTeammates={wolfTeammates}
+          wolfPicksVisible={wolfPicksVisible}
+          wolfChatLog={wolfChatLog}
+          seerLastResult={seerLastResult}
+          nominationVotes={nominationVotes}
+          finalVotes={finalVotes}
+          mayorRevealedId={mayorRevealedId}
+          myLoverPartnerId={myLoverPartnerId}
+          hunterPendingId={hunterPendingId}
+          cupidSelectedIds={cupidSelectedIds}
+          speakingIds={speakingIds}
+          reactions={reactions}
+          suspectTags={suspectTags}
+          onLobbyKickPlayer={onLobbyKickPlayer}
+        />
+      )}
 
       {/* ==================== BẢNG ĐIỀU KHIỂN STUDIO HOẠT CẢNH 9 VAI (CHỈ DEV — 0 KB TRÊN PRODUCTION) ==================== */}
       {isDevSetup && choreoStudioOpen && !architectMode && (

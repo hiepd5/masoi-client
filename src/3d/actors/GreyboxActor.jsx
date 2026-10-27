@@ -156,6 +156,7 @@ export default function GreyboxActor({
   choreoTiming = null,
   seatMap = null,
   gallowsSpot = null,
+  suppressInlineHtml = false,
   onSelect,
 }) {
   const [hovered, setHovered] = useState(false);
@@ -641,6 +642,7 @@ export default function GreyboxActor({
 
       {/* Ghế trống chờ khách ở Sảnh Chờ 3D: chỉ dựng Ghế Gỗ Sồi + Nhãn ghế mờ tinh tế, ai bước vào sẽ hóa Sói ngồi lên ngay! */}
       {isEmptyLobbySeat ? (
+        suppressInlineHtml ? null : (
         <Html position={[0, 1.0, 0]} center zIndexRange={[20, 0]}>
           <div
             style={{
@@ -659,6 +661,7 @@ export default function GreyboxActor({
             🪑 {player.name}
           </div>
         </Html>
+        )
       ) : (
         <>
       {/* ============ 2. VÒNG SÁNG TRẠNG THÁI DƯỚI CHÂN GHẾ ============ */}
@@ -1107,6 +1110,7 @@ export default function GreyboxActor({
       </group>
 
       {/* ============ 4. BẢNG TÊN & BÓNG THOẠI REPLAY KHÔNG GIAN THẬT (<Html>) ============ */}
+      {!suppressInlineHtml && (
       <Html
         position={[0, htmlBadgeY, htmlBadgeZ]}
         center
@@ -1437,6 +1441,7 @@ export default function GreyboxActor({
           )}
         </div>
       </Html>
+      )}
       </group>
         </>
       )}

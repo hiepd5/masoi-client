@@ -9,6 +9,8 @@ import AmbientSound from "./AmbientSound.jsx";
 import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
 import { HudGameClock, HudPhaseCountdown, HudPhaseProgressBar } from "./HudTimer.jsx";
+import { safeHaptic } from "../utils/hapticsAndSound.js";
+import { SUSPECT_TAG_META } from "../3d/components/SeatHudBatchOverlay.jsx";
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS, isWolfTeamRole } from '../config/roles.config.js';
 import VillageBackdrop from './VillageBackdrop.jsx';
@@ -53,6 +55,14 @@ const ACTION_BANNERS = {
   day_final_vote:  { icon:'🪢', color:'#ef4444', text:'Quyết định: Treo Cổ hay Tha? Nhấn nút để bỏ phiếu.' },
   day_no_nomination:{ icon:'😮‍💨', color:'#6b7280', text:'Không ai bị đề cử. Cả làng được sống thêm 1 ngày.' },
 };
+
+const QUICK_DEBATE_CHIPS = [
+  "🛡️ Mình là Dân chuẩn!",
+  "🔮 Chức năng tối qua báo tin đi!",
+  "🐺 Ghế này lập luận mâu thuẫn quá!",
+  "🗳️ Gom phiếu đưa lên ghế nóng thử!",
+  "⏳ Bình tĩnh nghe biện hộ kỹ đã!",
+];
 
 
 export default function PlayingView({
@@ -100,6 +110,16 @@ export default function PlayingView({
   const [liveMicroChoreo, setLiveMicroChoreo] = useState(null);
   const microChoreoTimerRef = useRef(null);
   const [speakingIds, setSpeakingIds] = useState([]);
+  // Thẻ Ghi Chú Suy Luận Cá Nhân 1-Chạm (100% Local State — Zero-Leak) & Tắt tiếng / Báo cáo văn minh
+  const [suspectTags, setSuspectTags] = useState({});
+  const [mutedSenderIds, setMutedSenderIds] = useState({});
+  const [didActOrVoteInMatch, setDidActOrVoteInMatch] = useState(false);
+  const quickChipLastSentRef = useRef(0);
+
+  useEffect(() => {
+    setSuspectTags({});
+    setDidActOrVoteInMatch(false);
+  }, [g.gameStartedAt]);
 
   // Kích hoạt hoạt cảnh ngắn 3D + VFX ngay trên màn hình người thực hiện (100% Zero-Leak — không phát sang máy người khác!)
   const triggerMyMicroChoreo = useCallback(
@@ -291,6 +311,18 @@ export default function PlayingView({
     (g.nightDayPhase === "night_witch" && me?.role === "witch") ||
     (g.nightDayPhase === "night_seer" && me?.role === "seer") ||
     isMyHunterRevenge;
+
+  // Chốt #7: Rung xúc giác 100% Zero-Leak — tuyệt đối CẤM rung khi bị cắn/độc đêm, chỉ rung khi tới lượt mình hoặc đồng loạt toàn bàn!
+  useEffect(() => {
+    if (isSpectator || g.winner) return;
+    if (isMyTurn && (me?.alive || isMyHunterRevenge)) {
+      safeHaptic("my_turn");
+    } else if (g.nightDayPhase === "day_reveal") {
+      safeHaptic("dawn_reveal");
+    } else if (g.nightDayPhase === "day_final_vote" || g.nightDayPhase === "hunter_revenge") {
+      safeHaptic("tribunal");
+    }
+  }, [g.nightDayPhase, isMyTurn, isSpectator, g.winner, me?.alive, isMyHunterRevenge]);
 
   // Hiệu ứng chuyển ngày/đêm: mặt trăng đi xuống (đêm) / mặt trời đi lên (ngày)
   useEffect(() => {
@@ -507,6 +539,7 @@ export default function PlayingView({
   function handleAction() {
     if (!selectedId && g.nightDayPhase !== "night_witch") return;
     const targetNow = selectedId;
+    setDidActOrVoteInMatch(true);
 
     if (g.nightDayPhase === "night_guard") {
       SFX.vote();
@@ -595,6 +628,71 @@ export default function PlayingView({
         return next;
       });
     }, 4000); // clear after 4s
+  }
+
+  function handleQuickDebateChip(phrase) {
+    if (!phrase || !me?.id || !me?.alive || isNight || isSpectator) return;
+    const now = Date.now();
+    if (now - quickChipLastSentRef.current < 1800) {
+      setVillageChatInput(phrase);
+      return;
+    }
+    quickChipLastSentRef.current = now;
+    socketRef.current.emit("action:villageChat", { message: phrase });
+    setLocalBubbleChatLog((prev) => ({ ...prev, [me.id]: phrase }));
+    setTimeout(() => {
+      setLocalBubbleChatLog((prev) => {
+        const next = { ...prev };
+        delete next[me.id];
+        return next;
+      });
+    }, 4000);
+  }
+
+  function handleToggleSuspectTag(targetPlayerId, tagKey) {
+    if (!targetPlayerId || targetPlayerId === me?.id) return;
+    safeHaptic("ui_tap");
+    setSuspectTags((prev) => {
+      const next = { ...prev };
+      if (!tagKey || next[targetPlayerId] === tagKey) {
+        delete next[targetPlayerId];
+      } else {
+        next[targetPlayerId] = tagKey;
+      }
+      return next;
+    });
+  }
+
+  function handleToggleMuteSender(senderId, senderName) {
+    if (!senderId || senderId === me?.id) return;
+    setMutedSenderIds((prev) => {
+      const next = { ...prev };
+      const willMute = !next[senderId];
+      if (willMute) next[senderId] = true;
+      else delete next[senderId];
+      flashActionFeedback(
+        willMute
+          ? `🔇 Đã ẩn tin nhắn của ${senderName || "người chơi"} trong ván này.`
+          : `🔊 Đã bật lại tin nhắn của ${senderName || "người chơi"}.`
+      );
+      return next;
+    });
+  }
+
+  function handleReportPlayer(targetId, targetName) {
+    if (!targetId || targetId === me?.id) return;
+    socketRef.current.emit(
+      "player:report",
+      { targetId, targetName, reason: "Ngôn từ thiếu văn minh trong ván đấu" },
+      (res) => {
+        if (res?.ok) {
+          setMutedSenderIds((prev) => ({ ...prev, [targetId]: true }));
+          flashActionFeedback(`🚩 Đã ghi nhận báo cáo & tự động ẩn chat của ${targetName || "người chơi"}.`);
+        } else {
+          flashActionFeedback(`⚠️ ${res?.error || "Không thể gửi báo cáo lúc này."}`);
+        }
+      }
+    );
   }
 
   function handleVillageChat(e) {
@@ -1078,6 +1176,7 @@ export default function PlayingView({
                     cupidSelectedIds={cupidTargets}
                     speakingIds={speakingIds}
                     reactions={reactions}
+                    suspectTags={suspectTags}
                     recapStageState={recapStageState}
                     liveMicroChoreo={liveMicroChoreo}
                     scenePresetId={room.scenePresetId}
@@ -1117,8 +1216,35 @@ export default function PlayingView({
                 alphaWolfId={g.alphaWolfInfo?.alphaWolfId || null}
                 speakingIds={speakingIds}
                 reactions={reactions}
+                suspectTags={suspectTags}
               />
             </>
+          )}
+
+          {/* Spotlight Tarot 3D Mở Màn (Pha role_reveal 6s): Kính mờ gọn trên đỉnh sân khấu, không che khuất nhân vật 3D bên dưới! */}
+          {g.nightDayPhase === "role_reveal" && !isSpectator && me?.role && !g.winner && (
+            <div className="role-reveal-spotlight-card">
+              <RolePortrait roleKey={me.role} mode="card" size={64} glow />
+              <div className="role-reveal-spotlight-body">
+                <div className="role-reveal-spotlight-kicker">
+                  <span>🎭 LÁ BÀI ĐỊNH MỆNH CỦA BẠN</span>
+                  <span className={`role-reveal-faction-pill ${isWolfTeamRole(me.role) ? "wolf" : me.role === "tanner" ? "neutral" : "village"}`}>
+                    {isWolfTeamRole(me.role) ? "🐺 Phe Sói" : me.role === "tanner" ? "💀 Độc Lập" : "🛡️ Phe Dân Làng"}
+                  </span>
+                </div>
+                <div className="role-reveal-spotlight-title">{ROLE_LABELS[me.role]}</div>
+                <div className="role-reveal-spotlight-desc">{ROLE_DESCRIPTIONS[me.role]}</div>
+              </div>
+              {!(hasActed || g.roleRevealReadyIds?.[me.id]) && (
+                <button
+                  type="button"
+                  className="role-reveal-ready-cta"
+                  onClick={handleRoleRevealReady}
+                >
+                  ⚡ Sẵn Sàng
+                </button>
+              )}
+            </div>
           )}
 
           {/* Nút tròn thả cảm xúc 😊 thu gọn ở góc dưới bên phải sân khấu */}
@@ -1536,6 +1662,41 @@ export default function PlayingView({
                   )}
                 </div>
               )}
+
+              {/* Dải Thẻ Suy Luận Cá Nhân 1-Chạm (100% Local Zero-Leak — hiện ngay khi chọn bất kỳ ghế người khác) */}
+              {selectedPlayer && selectedPlayer.id !== me?.id && !g.winner && g.nightDayPhase !== "role_reveal" && (
+                <div className="suspect-tags-dock-strip">
+                  <span className="suspect-tags-label">🔍 Ghi chú {selectedPlayer.name}:</span>
+                  {Object.values(SUSPECT_TAG_META).map((tag) => {
+                    const active = suspectTags[selectedPlayer.id] === tag.id;
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        className={`suspect-tag-chip ${active ? "active" : ""}`}
+                        style={
+                          active
+                            ? { background: tag.bg, borderColor: tag.border, color: tag.color }
+                            : undefined
+                        }
+                        onClick={() => handleToggleSuspectTag(selectedPlayer.id, tag.id)}
+                      >
+                        {tag.short}
+                      </button>
+                    );
+                  })}
+                  {suspectTags[selectedPlayer.id] && (
+                    <button
+                      type="button"
+                      className="suspect-tag-chip clear"
+                      onClick={() => handleToggleSuspectTag(selectedPlayer.id, null)}
+                      title="Xóa ghi chú ghế này"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1622,7 +1783,9 @@ export default function PlayingView({
                   👻 Chào mừng đến <strong>Cõi Âm</strong>! Chỉ những người đã ngã xuống mới đọc & trò chuyện được tại đây.
                 </div>
               )}
-              {(chatChannel === "ghost" && !isSpectator && me && !me.alive ? ghostChatLog : chatLog).map((msg, i) => (
+              {(chatChannel === "ghost" && !isSpectator && me && !me.alive ? ghostChatLog : chatLog)
+                .filter((msg) => msg.type === "mc" || !msg.senderId || !mutedSenderIds[msg.senderId])
+                .map((msg, i) => (
                 <div key={i} className={`chat-msg chat-msg-${msg.type} ${msg.senderId === me?.id ? 'chat-msg-mine' : ''}`}>
 
                   {/* MC announcement */}
@@ -1666,6 +1829,26 @@ export default function PlayingView({
                               {msg.type === 'ghost' && <span className="wolf-tag">👻</span>}
                               <span className="chat-sender-name">{msg.senderName}</span>
                               <span className="chat-time">{msg.time}</span>
+                              {!isSpectator && msg.senderId && !senderPlayer?.isBot && (
+                                <span className="chat-mod-actions">
+                                  <button
+                                    type="button"
+                                    className="chat-mod-btn"
+                                    onClick={() => handleToggleMuteSender(msg.senderId, msg.senderName)}
+                                    title="Ẩn tin nhắn người chơi này"
+                                  >
+                                    🔇
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="chat-mod-btn report"
+                                    onClick={() => handleReportPlayer(msg.senderId, msg.senderName)}
+                                    title="Báo cáo ngôn từ thiếu văn minh"
+                                  >
+                                    🚩
+                                  </button>
+                                </span>
+                              )}
                             </div>
                           )}
                           {/* Bubble */}
@@ -1718,6 +1901,20 @@ export default function PlayingView({
                   <button type="submit" className="btn-send wolf-send">➤</button>
                 </form>
               )}
+              {!isSpectator && !isNight && me?.alive && !g.winner && (
+                <div className="quick-debate-strip">
+                  {QUICK_DEBATE_CHIPS.map((phrase) => (
+                    <button
+                      key={phrase}
+                      type="button"
+                      className="quick-debate-chip"
+                      onClick={() => handleQuickDebateChip(phrase)}
+                    >
+                      {phrase}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!isSpectator && !isNight && me?.alive && (
                 <form onSubmit={handleVillageChat} className="chat-input-form village-input">
                   <input 
@@ -1750,6 +1947,11 @@ export default function PlayingView({
       {/* EndGame Replay Không Gian Thật 100vw: Phát lại băng ghi hình tương tác thật bằng Nhân vật thật + Khung Ngắm Máy Quay */}
       {g.winner && g.history && (
         <EndGameRecap 
+          roomCode={room.code}
+          gameStartedAt={g.gameStartedAt}
+          myPlayerId={me?.id || null}
+          serverGoldenHour={room.serverGoldenHour || null}
+          didActOrVote={didActOrVoteInMatch || Boolean(hasActed)}
           history={g.history || EMPTY_ARRAY} 
           replayTimeline={g.replayTimeline || EMPTY_ARRAY}
           awards={g.awards || EMPTY_ARRAY}
@@ -1793,8 +1995,8 @@ export default function PlayingView({
         />
       )}
       
-      {/* Tutorial 3 bước — overlay khi game bắt đầu (tự ẩn khi ván kết thúc) */}
-      {tutorialStep > 0 && me?.role && !g.winner && (
+      {/* Tutorial 3 bước — overlay khi game bắt đầu (tự ẩn ở pha role_reveal 6s & khi ván kết thúc) */}
+      {tutorialStep > 0 && me?.role && !g.winner && g.nightDayPhase !== "role_reveal" && (
         <div className="role-tutorial-overlay">
           <div className="role-tutorial-card tutorial-3step">
 

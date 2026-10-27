@@ -664,3 +664,352 @@ body {
   letter-spacing: 0.8px;
   color: #fde68a;
 }
+
+/* =========================================================================
+   9. V4.1 FLAGSHIP — ĐÊM HUYẾT NGUYỆT, CẤP ĐỘ CỔ NGỮ, LẬT BÀI 3D & LÁ CHẮN VĂN MINH
+   (Bảo toàn 100% khung xương 2 cột thiêng liêng: 400px | 1fr & 1fr | 380px)
+   ========================================================================= */
+
+.home-golden-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  white-space: nowrap;
+}
+
+.home-golden-pill.active {
+  color: #fef08a;
+  background: linear-gradient(135deg, rgba(153, 27, 27, 0.78), rgba(180, 83, 9, 0.75));
+  border-color: rgba(251, 191, 36, 0.65);
+  box-shadow: 0 0 16px rgba(239, 68, 68, 0.35), inset 0 0 8px rgba(251, 191, 36, 0.18);
+  animation: arcanePulseGlow 2.6s ease-in-out infinite;
+}
+
+@keyframes arcanePulseGlow {
+  0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.52); }
+}
+
+.nordic-rank-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #fde68a;
+  background: rgba(9, 13, 26, 0.85);
+  border: 1px solid rgba(217, 164, 65, 0.45);
+}
+
+.nordic-xp-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(8, 12, 24, 0.74);
+  border: 1px solid rgba(217, 164, 65, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nordic-xp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.nordic-xp-bar-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.88);
+  overflow: hidden;
+}
+
+.nordic-xp-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #b45309, #f59e0b, #fde047);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+  transition: width 0.35s ease;
+}
+
+.nordic-quests-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nordic-quest-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #94a3b8;
+}
+
+.nordic-quest-pill.done {
+  background: rgba(6, 78, 59, 0.48);
+  border-color: rgba(52, 211, 153, 0.48);
+  color: #a7f3d0;
+}
+
+/* Pha Mở Màn 3D: Thẻ Spotlight Lá Bài Định Mệnh lơ lửng thoáng đãng (không che sân khấu 3D) */
+.role-reveal-spotlight-card {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(92%, 520px);
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(8, 12, 24, 0.88), rgba(15, 23, 42, 0.82));
+  border: 1px solid rgba(245, 194, 92, 0.48);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.62), 0 0 22px rgba(217, 164, 65, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: spotlightCardDrop 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes spotlightCardDrop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.role-reveal-spotlight-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.role-reveal-spotlight-kicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #fde68a;
+}
+
+.role-reveal-faction-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.role-reveal-faction-pill.village {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  color: #6ee7b7;
+}
+
+.role-reveal-faction-pill.wolf {
+  background: rgba(220, 38, 38, 0.24);
+  border: 1px solid rgba(248, 113, 113, 0.52);
+  color: #fca5a5;
+}
+
+.role-reveal-faction-pill.neutral {
+  background: rgba(168, 85, 247, 0.22);
+  border: 1px solid rgba(192, 132, 252, 0.48);
+  color: #d8b4fe;
+}
+
+.role-reveal-spotlight-title {
+  font-family: var(--font-arcane-display);
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fffbeb;
+}
+
+.role-reveal-spotlight-desc {
+  font-size: 0.74rem;
+  color: #cbd5e1;
+  line-height: 1.32;
+}
+
+.role-reveal-ready-cta {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(253, 224, 71, 0.65);
+  background: linear-gradient(135deg, #f59e0b, #b45309);
+  color: #090d16;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+}
+
+/* Dải Thẻ Suy Luận Cá Nhân 1-Chạm (100% Local Zero-Leak) */
+.suspect-tags-dock-strip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.suspect-tags-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  margin-right: 2px;
+}
+
+.suspect-tag-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease;
+}
+
+.suspect-tag-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(245, 194, 92, 0.5);
+}
+
+.suspect-tag-chip.active {
+  font-weight: 800;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.38);
+}
+
+.suspect-tag-chip.clear {
+  padding: 3px 7px;
+  color: #94a3b8;
+}
+
+/* Thanh 6 Chip Phát Ngôn Nhanh 1-Chạm trên khung Chat Ban Ngày */
+.quick-debate-strip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  padding: 5px 8px 3px;
+  scrollbar-width: none;
+}
+
+.quick-debate-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.quick-debate-chip {
+  flex-shrink: 0;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(217, 164, 65, 0.3);
+  color: #fde68a;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, transform 0.12s ease;
+}
+
+.quick-debate-chip:hover {
+  background: rgba(217, 164, 65, 0.2);
+  transform: translateY(-1px);
+}
+
+/* Nút Ẩn (Mute) & Báo Cáo (Report) nhỏ gọn trên tiêu đề bong bóng Chat */
+.chat-mod-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0.42;
+  transition: opacity 0.15s ease;
+}
+
+.chat-player-bubble:hover .chat-mod-actions {
+  opacity: 0.95;
+}
+
+.chat-mod-btn {
+  background: transparent;
+  border: none;
+  padding: 0 3px;
+  font-size: 0.68rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.chat-mod-btn:hover {
+  background: rgba(148, 163, 184, 0.2);
+}
+
+/* =========================================================================
+   10. SAFE-AREA TAI THỎ / DYNAMIC ISLAND CHO PWA & CAPACITOR APP STORE
+   ========================================================================= */
+@supports (padding: max(0px)) {
+  .home-hub-shell {
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+  }
+
+  .replay-viewfinder-topbar {
+    padding-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .cinema-bottom-stack {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  @media (max-width: 900px) {
+    .playing-root {
+      padding-top: env(safe-area-inset-top);
+    }
+
+    .compact-floating-dock {
+      margin-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+
+    .role-reveal-spotlight-card {
+      top: max(8px, env(safe-area-inset-top));
+      padding: 8px 10px;
+      gap: 9px;
+    }
+  }
+}
