@@ -40,15 +40,68 @@ export function getCinemaAudioEngine() {
     voiceRecordGain.connect(recordDest);
 
     let isSpeakerMuted = false;
+    let currentVoiceRate = 1.5;
     let activeVoiceSource = null;
+    let activeVoiceAudio = null;
+    let activeVoiceUrl = null;
+    let activeVoiceMediaNode = null;
     let activeFallbackAudio = null;
     let activeFallbackUrl = null;
     let lastPlayBlockedByGesture = false;
-    const decodedVoiceCache = new WeakMap();
+
+    const normalizeVoiceRate = (rate) => {
+      const n = Number(rate);
+      return Math.min(3.0, Math.max(0.75, Number.isFinite(n) && n > 0 ? n : currentVoiceRate || 1.5));
+    };
+
+    const applyPitchPreservedRate = (audio, rate) => {
+      if (!audio) return;
+      try {
+        if ("preservesPitch" in audio) audio.preservesPitch = true;
+        if ("mozPreservesPitch" in audio) audio.mozPreservesPitch = true;
+        if ("webkitPreservesPitch" in audio) audio.webkitPreservesPitch = true;
+        audio.defaultPlaybackRate = rate;
+        audio.playbackRate = rate;
+      } catch {
+        // ignore browser-specific rate quirks
+      }
+    };
+
+    const cleanupMediaVoiceAudio = () => {
+      if (activeVoiceAudio) {
+        try {
+          activeVoiceAudio.onplaying = null;
+          activeVoiceAudio.onended = null;
+          activeVoiceAudio.onerror = null;
+          activeVoiceAudio.pause();
+          activeVoiceAudio.removeAttribute("src");
+        } catch {
+          // ignore
+        }
+        activeVoiceAudio = null;
+      }
+      if (activeVoiceMediaNode) {
+        try {
+          activeVoiceMediaNode.disconnect();
+        } catch {
+          // ignore
+        }
+        activeVoiceMediaNode = null;
+      }
+      if (activeVoiceUrl) {
+        try {
+          URL.revokeObjectURL(activeVoiceUrl);
+        } catch {
+          // ignore
+        }
+        activeVoiceUrl = null;
+      }
+    };
 
     const cleanupFallbackAudio = () => {
       if (activeFallbackAudio) {
         try {
+          activeFallbackAudio.onplaying = null;
           activeFallbackAudio.onended = null;
           activeFallbackAudio.onerror = null;
           activeFallbackAudio.pause();
@@ -79,7 +132,14 @@ export function getCinemaAudioEngine() {
         }
         activeVoiceSource = null;
       }
+      cleanupMediaVoiceAudio();
       cleanupFallbackAudio();
+    };
+
+    const setPlaybackRate = (nextRate) => {
+      currentVoiceRate = normalizeVoiceRate(nextRate);
+      applyPitchPreservedRate(activeVoiceAudio, currentVoiceRate);
+      applyPitchPreservedRate(activeFallbackAudio, currentVoiceRate);
     };
 
     const playFallbackHtmlAudio = (arrayBuffer, safeRate) =>
@@ -89,7 +149,7 @@ export function getCinemaAudioEngine() {
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
           audio.preload = "auto";
-          audio.playbackRate = safeRate;
+          applyPitchPreservedRate(audio, safeRate);
           audio.volume = isSpeakerMuted ? 0 : 0.95;
           activeFallbackAudio = audio;
           activeFallbackUrl = url;
@@ -129,10 +189,11 @@ export function getCinemaAudioEngine() {
         }
       });
 
-    const playVoiceArrayBuffer = async (arrayBuffer, playbackRate = 1) => {
+    const playVoiceArrayBuffer = async (arrayBuffer, playbackRate = currentVoiceRate) => {
       if (!arrayBuffer || arrayBuffer.byteLength < 500) return false;
       stopVoice();
-      const safeRate = Math.min(1.5, Math.max(0.7, Number(playbackRate) || 1));
+      const safeRate = normalizeVoiceRate(playbackRate);
+      currentVoiceRate = safeRate;
 
       try {
         if (ctx.state !== "running") {
@@ -142,33 +203,82 @@ export function getCinemaAudioEngine() {
           ]);
         }
 
-        if (ctx.state === "running") {
+        if (ctx.state === "running" && typeof ctx.createMediaElementSource === "function") {
           lastPlayBlockedByGesture = false;
-          let audioBuffer = decodedVoiceCache.get(arrayBuffer);
-          if (!audioBuffer) {
-            audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
-            decodedVoiceCache.set(arrayBuffer, audioBuffer);
-          }
           return await new Promise((resolve) => {
-            const src = ctx.createBufferSource();
-            src.buffer = audioBuffer;
-            src.playbackRate.value = safeRate;
-            src.connect(voiceGain);
-            activeVoiceSource = src;
-            src.onended = () => {
-              if (activeVoiceSource === src) activeVoiceSource = null;
+            let url = null;
+            let mediaNode = null;
+            try {
+              const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
+              url = URL.createObjectURL(blob);
+              const audio = new Audio(url);
+              audio.preload = "auto";
+              audio.volume = 1.0;
+              applyPitchPreservedRate(audio, safeRate);
+
+              mediaNode = ctx.createMediaElementSource(audio);
+              mediaNode.connect(voiceGain);
+
+              activeVoiceAudio = audio;
+              activeVoiceUrl = url;
+              activeVoiceMediaNode = mediaNode;
+
+              let settled = false;
+              const finish = (ok) => {
+                if (settled) return;
+                settled = true;
+                if (activeVoiceAudio === audio) {
+                  cleanupMediaVoiceAudio();
+                } else {
+                  try {
+                    mediaNode?.disconnect();
+                  } catch {
+                    // ignore
+                  }
+                  if (url) {
+                    try {
+                      URL.revokeObjectURL(url);
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }
+                resolve(ok);
+              };
+
+              audio.onplaying = () => {
+                lastPlayBlockedByGesture = false;
+              };
+              audio.onended = () => finish(true);
+              audio.onerror = () => finish(false);
+              const playPromise = audio.play();
+              if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch((err) => {
+                  if (err?.name === "NotAllowedError") {
+                    lastPlayBlockedByGesture = true;
+                  }
+                  finish(false);
+                });
+              }
+            } catch {
               try {
-                src.disconnect();
+                mediaNode?.disconnect();
               } catch {
                 // ignore
               }
-              resolve(true);
-            };
-            src.start(0);
+              if (url) {
+                try {
+                  URL.revokeObjectURL(url);
+                } catch {
+                  // ignore
+                }
+              }
+              resolve(false);
+            }
           });
         }
       } catch {
-        // Fallback sang HTMLAudioElement bên dưới nếu WebAudio bị khóa hoặc lỗi decode
+        // Fallback sang HTMLAudioElement bên dưới nếu WebAudio bị khóa hoặc lỗi khởi tạo
       }
 
       return await playFallbackHtmlAudio(arrayBuffer, safeRate);
@@ -293,6 +403,7 @@ export function getCinemaAudioEngine() {
       triggerBeatSound,
       playVoiceArrayBuffer,
       stopVoice,
+      setPlaybackRate,
       wasBlockedByAutoplay: () => lastPlayBlockedByGesture,
       clearAutoplayBlockFlag: () => {
         lastPlayBlockedByGesture = false;

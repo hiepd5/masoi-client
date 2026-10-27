@@ -62,6 +62,7 @@ export default function PlayingView({
   mcVoiceEnabled,
   setMcVoiceEnabled,
   onLeave = null,
+  onExitRecapToLobby = null,
   voicePregening = false,
   voicePregenProgress = { done: 0, total: 0 },
   vsServerOffline = false,
@@ -78,9 +79,9 @@ export default function PlayingView({
     ? null
     : room.players.find((p) => p.id === myPlayerId) ||
       room.players.find((p) => p.sessionToken);
-  const liveSessionToken = isSpectator
-    ? room.spectatorSessionToken || ""
-    : me?.sessionToken || "";
+  const liveSessionToken =
+    room.freshSessionToken ||
+    (isSpectator ? room.spectatorSessionToken || "" : me?.sessionToken || "");
   
   const [selectedId, setSelectedId] = useState(null);
   const [cupidTargets, setCupidTargets] = useState([]);
@@ -1759,8 +1760,21 @@ export default function PlayingView({
           rematchRequiredCount={g.rematchRequiredCount || 1}
           myRematchReady={Boolean(g.myRematchReady)}
           ghostBetBonusXp={g.ghostBetBonusXp || 0}
-          onRematchReady={() => socketRef.current.emit("room:rematchReady")}
-          onRestart={() => socketRef.current.emit("room:restart")}
+          onRematchReady={() => {
+            if (onExitRecapToLobby) {
+              onExitRecapToLobby();
+            } else {
+              socketRef.current.emit("room:rematchReady");
+            }
+          }}
+          onRestart={() => {
+            if (onExitRecapToLobby) {
+              onExitRecapToLobby();
+            } else {
+              socketRef.current.emit("room:restart");
+            }
+          }}
+          onExitToLobby={onExitRecapToLobby}
           onAnimate={setRecapAnimation}
           onStageChange={setRecapStageState}
           viewMode={viewMode}

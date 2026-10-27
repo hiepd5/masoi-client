@@ -1,22 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { saveSession, getDeviceId } from "../hooks/useSocket.js";
 import RolePortrait from "./RolePortrait.jsx";
+import CitizenAvatarVaultModal from "./CitizenAvatarVaultModal.jsx";
+import {
+  BUILTIN_VILLAGER_AVATARS,
+  getCitizenAvatarMeta,
+  getStoredCitizenModelId,
+  loadCitizenAvatarCatalog,
+  saveStoredCitizenModelId,
+  subscribeCitizenAvatarCatalog,
+} from "../config/citizenAvatars.config.js";
 import "./Lobby.css";
 
 const RANDOM_NAMES = [
   "Rồng Lửa", "Bóng Đêm", "Sói Xám", "Ánh Sao", "Hổ Phách",
   "Mây Trắng", "Cáo Vàng", "Bão Tố", "Ngọc Bích", "Sấm Sét",
 ];
-
-const DICEBEAR_SEEDS = [
-  "wolf", "fox", "bear", "dragon", "witch", "guard", "seer", "farmer",
-  "ninja", "ghost", "knight", "wizard", "hunter", "monk", "sage",
-  "rogue", "bard", "paladin", "ranger", "druid",
-];
-
-const CUSTOM_AVATARS = Array.from({ length: 10 }, (_, i) =>
-  `/avatars/custom/avatar_${String(i + 1).padStart(2, "0")}.png`
-);
 
 const ROLE_RULES = [
   { key: "wolf", name: "Sói", desc: "Mỗi đêm bí mật chọn 1 nạn nhân. Ban ngày che giấu danh tính!" },
@@ -85,11 +84,22 @@ export default function Lobby({
   const [unlockingRoomCode, setUnlockingRoomCode] = useState(null);
   const [unlockRoomPwd, setUnlockRoomPwd] = useState("");
 
-  // Avatar
-  const [avatarTab, setAvatarTab] = useState("custom");
-  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState(
-    () => sessionStorage.getItem("ws_avatar_url") || CUSTOM_AVATARS[0]
-  );
+  // Nhân vật Dân Làng 3D & Kho Avatar 3D Người Thật Cá Nhân Hóa (0% Dicebear, sẵn sàng đồng bộ DB User)
+  const [citizenModelId, setCitizenModelId] = useState(() => getStoredCitizenModelId());
+  const [showAvatarVault, setShowAvatarVault] = useState(false);
+  const [, setCatalogTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribeCitizenAvatarCatalog(() => setCatalogTick((t) => t + 1));
+    loadCitizenAvatarCatalog().then(() => {
+      setCitizenModelId(getStoredCitizenModelId());
+    });
+    return unsub;
+  }, []);
+
+  const selectedCitizenMeta = getCitizenAvatarMeta(citizenModelId);
+  const selectedAvatarUrl =
+    selectedCitizenMeta.portraitBadge || "/portraits/badges/villager_cloak.webp";
 
   // Rules modal
   const [showRules, setShowRules] = useState(false);
@@ -123,6 +133,7 @@ export default function Lobby({
         {
           roomCode: invitedCode,
           name: finalName,
+          citizenModelId: selectedCitizenMeta.id,
           avatarUrl: selectedAvatarUrl,
           password: "",
           deviceId: getDeviceId(),
@@ -140,6 +151,7 @@ export default function Lobby({
               {
                 roomCode: invitedCode,
                 name: finalName,
+                citizenModelId: selectedCitizenMeta.id,
                 avatarUrl: selectedAvatarUrl,
                 password: "",
                 deviceId: getDeviceId(),
@@ -164,7 +176,7 @@ export default function Lobby({
     } catch {
       // ignore malformed URL
     }
-  }, [socketRef, selectedAvatarUrl]);
+  }, [socketRef, selectedCitizenMeta.id, selectedAvatarUrl]);
 
   // Nạp ngầm trước Đợt 1 (Ghế, Bếp lửa, Sân đá, Đài treo cổ) để vào phòng 3D mượt tức thì
   useEffect(() => {
@@ -212,9 +224,9 @@ export default function Lobby({
     sessionStorage.setItem("ws_name", n);
   }
 
-  function persistAvatar(url) {
-    sessionStorage.setItem("ws_avatar_url", url);
-    setSelectedAvatarUrl(url);
+  function handleSelectCitizen(nextId) {
+    const meta = saveStoredCitizenModelId(nextId);
+    setCitizenModelId(meta.id);
   }
 
   function finalizeJoinSuccess(res, finalName) {
@@ -246,6 +258,7 @@ export default function Lobby({
       "room:create",
       {
         name: finalName,
+        citizenModelId: selectedCitizenMeta.id,
         avatarUrl: selectedAvatarUrl,
         roomTitle: roomTitle.trim(),
         accessMode: effectiveMode,
@@ -282,6 +295,7 @@ export default function Lobby({
       {
         roomCode: cleanCode,
         name: finalName,
+        citizenModelId: selectedCitizenMeta.id,
         avatarUrl: selectedAvatarUrl,
         password: codePassword.trim(),
         deviceId: getDeviceId(),
@@ -294,6 +308,7 @@ export default function Lobby({
             {
               roomCode: cleanCode,
               name: finalName,
+              citizenModelId: selectedCitizenMeta.id,
               avatarUrl: selectedAvatarUrl,
               password: codePassword.trim(),
               deviceId: getDeviceId(),
@@ -333,6 +348,7 @@ export default function Lobby({
       "room:quickMatch",
       {
         name: finalName,
+        citizenModelId: selectedCitizenMeta.id,
         avatarUrl: selectedAvatarUrl,
         preferTurbo: createTurbo,
         deviceId: getDeviceId(),
@@ -364,6 +380,7 @@ export default function Lobby({
       {
         roomCode: roomItem.code,
         name: finalName,
+        citizenModelId: selectedCitizenMeta.id,
         avatarUrl: selectedAvatarUrl,
         password: providedPassword.trim(),
         deviceId: getDeviceId(),
@@ -398,6 +415,7 @@ export default function Lobby({
       {
         roomCode: roomItem.code,
         name: finalName,
+        citizenModelId: selectedCitizenMeta.id,
         avatarUrl: selectedAvatarUrl,
         password: providedPassword.trim(),
         deviceId: getDeviceId(),
@@ -415,9 +433,6 @@ export default function Lobby({
       }
     );
   }
-
-  const dicebearUrl = (seed) =>
-    `https://api.dicebear.com/7.x/adventurer/svg?seed=${seed}&backgroundColor=b6e3f4,c0aede,d1d4f9`;
 
   const waitingCount = roomsList.filter((r) => r.phase === "lobby").length;
   const playingCount = roomsList.filter((r) => r.phase !== "lobby").length;
@@ -440,6 +455,13 @@ export default function Lobby({
       <div className="home-arcane-backdrop" aria-hidden="true">
         <div className="home-arcane-rune-halo" />
       </div>
+
+      <CitizenAvatarVaultModal
+        open={showAvatarVault}
+        onClose={() => setShowAvatarVault(false)}
+        selectedId={selectedCitizenMeta.id}
+        onSelect={handleSelectCitizen}
+      />
 
       {/* Rules Modal */}
       {showRules && (
@@ -597,50 +619,53 @@ export default function Lobby({
               />
             </div>
 
-            <div>
-              <div className="home-avatar-tabs">
-                {[
-                  { id: "custom", label: "🎨 Ảnh thật" },
-                  { id: "dice", label: "🤖 Nhân vật" },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    className={`home-avatar-tab ${avatarTab === tab.id ? "active" : ""}`}
-                    onClick={() => setAvatarTab(tab.id)}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            <div className="citizen-profile-strip">
+              <div className="citizen-strip-header">
+                <span className="citizen-strip-label">🎭 Nhân vật Dân Làng 3D ngồi ghế:</span>
+                <button
+                  type="button"
+                  className="btn-open-avatar-vault"
+                  onClick={() => setShowAvatarVault(true)}
+                  title="Mở Kho Nhân Vật 3D & Ô Chờ Avatar 3D Người Thật Cá Nhân Hóa"
+                >
+                  🧍 Kho Avatar 3D (+)
+                </button>
               </div>
 
-              <div className="home-avatar-grid">
-                {avatarTab === "custom"
-                  ? CUSTOM_AVATARS.map((url) => (
+              <div className="citizen-strip-row">
+                {BUILTIN_VILLAGER_AVATARS.map((item) => {
+                  const isSelected = selectedCitizenMeta.id === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`citizen-mini-card ${isSelected ? "selected" : ""}`}
+                      onClick={() => handleSelectCitizen(item.id)}
+                      title={`${item.label} — ${item.desc}`}
+                    >
                       <img
-                        key={url}
-                        src={url}
-                        alt="avatar"
-                        className={`home-avatar-item ${selectedAvatarUrl === url ? "selected" : ""}`}
-                        onClick={() => persistAvatar(url)}
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                        }}
+                        src={item.portraitBadge}
+                        alt={item.label}
+                        className="citizen-mini-thumb"
                       />
-                    ))
-                  : DICEBEAR_SEEDS.map((seed) => {
-                      const url = dicebearUrl(seed);
-                      return (
-                        <img
-                          key={seed}
-                          src={url}
-                          alt={seed}
-                          className={`home-avatar-item ${selectedAvatarUrl === url ? "selected" : ""}`}
-                          onClick={() => persistAvatar(url)}
-                        />
-                      );
-                    })}
+                      <span className="citizen-mini-name">{item.shortLabel}</span>
+                    </button>
+                  );
+                })}
               </div>
+
+              {selectedCitizenMeta.source === "custom_3d_human" && (
+                <div className="citizen-active-custom-banner">
+                  <span>✨ Đang dùng Avatar 3D Người Thật: <strong>{selectedCitizenMeta.label}</strong></span>
+                  <button
+                    type="button"
+                    className="btn-open-avatar-vault"
+                    onClick={() => setShowAvatarVault(true)}
+                  >
+                    Đổi
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* NÚT VÀNG CHỦ LỰC V4.1: GHÉP BÀN NHANH 1-CHẠM + TRƯNG BÀY DÀN NHÂN VẬT 3D STUDIO */}

@@ -9,8 +9,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CLIENT_ROOT = path.resolve(__dirname, "..");
 const GAME_ROOT = path.resolve(CLIENT_ROOT, "..");
+const IS_MAIN_MODULE =
+  Boolean(process.argv[1]) && path.resolve(process.argv[1]) === path.resolve(__filename);
 
-const cliCustomDir = process.argv.slice(2).find((a) => !a.startsWith("--"));
+const cliCustomDir = IS_MAIN_MODULE
+  ? process.argv.slice(2).find((a) => !a.startsWith("--"))
+  : null;
 const CANDIDATE_READY_DIRS = [
   cliCustomDir ? path.resolve(cliCustomDir) : null,
   path.resolve(GAME_ROOT, "masoi_banana_models", "events", "noel", "glb_ready"),
@@ -18,14 +22,16 @@ const CANDIDATE_READY_DIRS = [
   "C:\\CLAUDE CODE\\HIEPD5 Prompt\\masoi_banana_models\\events\\noel\\glb_ready",
 ].filter(Boolean);
 
-const READY_DIR = CANDIDATE_READY_DIRS.find((p) => fs.existsSync(p));
-if (!READY_DIR) {
+const READY_DIR = CANDIDATE_READY_DIRS.find((p) => fs.existsSync(p)) || null;
+if (IS_MAIN_MODULE && !READY_DIR) {
   console.error("[LOI] Khong tim thay thu muc glb_ready!");
   process.exit(1);
 }
 
-const STATIC_BACKUP_DIR = path.resolve(READY_DIR, "..", "glb_static_backup");
-fs.mkdirSync(STATIC_BACKUP_DIR, { recursive: true });
+const STATIC_BACKUP_DIR = READY_DIR ? path.resolve(READY_DIR, "..", "glb_static_backup") : null;
+if (IS_MAIN_MODULE && STATIC_BACKUP_DIR) {
+  fs.mkdirSync(STATIC_BACKUP_DIR, { recursive: true });
+}
 
 await MeshoptDecoder.ready;
 const io = new NodeIO()
@@ -1008,7 +1014,9 @@ function buildSkinnedDocumentFromStatic(staticDoc, profile) {
   return { outDoc, bounds, skel, totalVertices, maxWeightSumError };
 }
 
-const isSelfTest6New = process.argv.includes("--self-test-6-new");
+export { buildSkinnedDocumentFromStatic };
+
+const isSelfTest6New = IS_MAIN_MODULE && process.argv.includes("--self-test-6-new");
 
 if (isSelfTest6New) {
   console.log("===============================================================================");
@@ -1075,67 +1083,69 @@ if (isSelfTest6New) {
   process.exit(0);
 }
 
-console.log("===============================================================================");
-console.log("  MA SOI 3D V4.1 - DONG CO AUTO-SKINNING 15 NHAN VAT (18-20 BONES + WING/SKIRT)");
-console.log("===============================================================================");
-console.log(`  [+] Thu muc glb_ready:        ${READY_DIR}`);
-console.log(`  [+] Backup Smart Mesh tinh:   ${STATIC_BACKUP_DIR}`);
+if (IS_MAIN_MODULE) {
+  console.log("===============================================================================");
+  console.log("  MA SOI 3D V4.1 - DONG CO AUTO-SKINNING 15 NHAN VAT (18-20 BONES + WING/SKIRT)");
+  console.log("===============================================================================");
+  console.log(`  [+] Thu muc glb_ready:        ${READY_DIR}`);
+  console.log(`  [+] Backup Smart Mesh tinh:   ${STATIC_BACKUP_DIR}`);
 
-let riggedCount = 0;
-let nativeTripoPreserved = 0;
-let waitingNewCount = 0;
+  let riggedCount = 0;
+  let nativeTripoPreserved = 0;
+  let waitingNewCount = 0;
 
-for (const profile of CHARACTER_RIG_PROFILES) {
-  const candidateNames = [profile.fileName, ...(profile.altFiles || [])];
-  const resolvedFileName = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
-  if (!resolvedFileName) {
-    waitingNewCount++;
-    console.log(`  [SAN SANG HOT-PLUG] Cong #${profile.id.padEnd(16)} (${profile.fileName}) dang cho file .glb tu Tripo`);
-    continue;
-  }
-  const readyPath = path.join(READY_DIR, resolvedFileName);
+  for (const profile of CHARACTER_RIG_PROFILES) {
+    const candidateNames = [profile.fileName, ...(profile.altFiles || [])];
+    const resolvedFileName = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
+    if (!resolvedFileName) {
+      waitingNewCount++;
+      console.log(`  [SAN SANG HOT-PLUG] Cong #${profile.id.padEnd(16)} (${profile.fileName}) dang cho file .glb tu Tripo`);
+      continue;
+    }
+    const readyPath = path.join(READY_DIR, resolvedFileName);
 
-  const backupPath = path.join(STATIC_BACKUP_DIR, resolvedFileName);
-  const currentDoc = await io.read(readyPath);
-  const existingSkins = currentDoc.getRoot().listSkins();
+    const backupPath = path.join(STATIC_BACKUP_DIR, resolvedFileName);
+    const currentDoc = await io.read(readyPath);
+    const existingSkins = currentDoc.getRoot().listSkins();
 
-  // Nếu người dùng đã thả file Auto-Rig gốc từ Tripo Studio Web (không phải MasoiAutoRigArmature): bảo toàn 100%!
-  if (
-    existingSkins.length > 0 &&
-    existingSkins.every((sk) => sk.getName() !== "MasoiAutoRigArmature")
-  ) {
-    const boneCount = existingSkins[0].listJoints().length;
-    console.log(
-      `  [GIU NGUYEN TRIPO RIG] ${resolvedFileName.padEnd(26)} | Da co san Skin ngoai (${boneCount} bones)`
+    // Nếu người dùng đã thả file Auto-Rig gốc từ Tripo Studio Web (không phải MasoiAutoRigArmature): bảo toàn 100%!
+    if (
+      existingSkins.length > 0 &&
+      existingSkins.every((sk) => sk.getName() !== "MasoiAutoRigArmature")
+    ) {
+      const boneCount = existingSkins[0].listJoints().length;
+      console.log(
+        `  [GIU NGUYEN TRIPO RIG] ${resolvedFileName.padEnd(26)} | Da co san Skin ngoai (${boneCount} bones)`
+      );
+      nativeTripoPreserved++;
+      continue;
+    }
+
+    // Nếu readyPath là Smart Mesh tĩnh mới xuất từ sync_glb_pipeline.py (0 skin), luôn làm mới backup để không đọc nhầm bản cũ!
+    if (existingSkins.length === 0) {
+      fs.copyFileSync(readyPath, backupPath);
+    }
+
+    const cleanSourcePath = fs.existsSync(backupPath) ? backupPath : readyPath;
+    const staticDoc = await io.read(cleanSourcePath);
+    const { outDoc, bounds, skel, totalVertices } = buildSkinnedDocumentFromStatic(
+      staticDoc,
+      profile
     );
-    nativeTripoPreserved++;
-    continue;
+
+    await io.write(readyPath, outDoc);
+    const outKB = (fs.statSync(readyPath).size / 1024).toFixed(1);
+
+    console.log(
+      `  [RIGGED] ${resolvedFileName.padEnd(28)} | H=${bounds.sizeY.toFixed(2)}m | ` +
+        `${skel.joints.length} bones | ${totalVertices} verts | ${outKB} KB`
+    );
+    riggedCount++;
   }
 
-  // Nếu readyPath là Smart Mesh tĩnh mới xuất từ sync_glb_pipeline.py (0 skin), luôn làm mới backup để không đọc nhầm bản cũ!
-  if (existingSkins.length === 0) {
-    fs.copyFileSync(readyPath, backupPath);
-  }
-
-  const cleanSourcePath = fs.existsSync(backupPath) ? backupPath : readyPath;
-  const staticDoc = await io.read(cleanSourcePath);
-  const { outDoc, bounds, skel, totalVertices } = buildSkinnedDocumentFromStatic(
-    staticDoc,
-    profile
-  );
-
-  await io.write(readyPath, outDoc);
-  const outKB = (fs.statSync(readyPath).size / 1024).toFixed(1);
-
+  console.log("-------------------------------------------------------------------------------");
   console.log(
-    `  [RIGGED] ${resolvedFileName.padEnd(28)} | H=${bounds.sizeY.toFixed(2)}m | ` +
-      `${skel.joints.length} bones | ${totalVertices} verts | ${outKB} KB`
+    `  HOAN TAT AUTO-SKINNING: ${riggedCount} model da gan xuong | ${nativeTripoPreserved} Tripo Rig bao toan | ${waitingNewCount} cong cho Hot-Plug!`
   );
-  riggedCount++;
+  console.log("===============================================================================");
 }
-
-console.log("-------------------------------------------------------------------------------");
-console.log(
-  `  HOAN TAT AUTO-SKINNING: ${riggedCount} model da gan xuong | ${nativeTripoPreserved} Tripo Rig bao toan | ${waitingNewCount} cong cho Hot-Plug!`
-);
-console.log("===============================================================================");

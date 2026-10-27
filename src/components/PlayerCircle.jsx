@@ -9,6 +9,7 @@ import {
   ROLE_PORTRAIT_BADGES,
   getPublicCitizenPersona,
 } from "../config/roles.config.js";
+import { getCitizenAvatarMeta } from "../config/citizenAvatars.config.js";
 
 export default function PlayerCircle({
   roomCode = "MASOI",
@@ -89,18 +90,23 @@ export default function PlayerCircle({
           const isLover = Boolean(myLoverPartnerId && myLoverPartnerId === p.id);
           const isHunterLastBreath = Boolean(hunterPendingId && hunterPendingId === p.id && phase === "hunter_revenge");
 
-          // Zero-Leak Studio 3D Portrait Resolution (khớp 100% ma trận GreyboxActor 3D & Chốt #10)
+          // Zero-Leak Studio 3D Portrait Resolution (khớp 100% Avatar 3D Dân Làng / Người Thật của từng ghế!)
           const persona = getPublicCitizenPersona(roomCode, seatIdx);
-          let visiblePortraitKey = persona.slotKey;
+          const citizenMeta = p.citizenModelId ? getCitizenAvatarMeta(p.citizenModelId) : null;
+          let visiblePortraitKey = null;
           let visibleRoleLabel = null;
 
           if ((hasWinner || isDead) && p.role) {
-            visiblePortraitKey =
-              p.role === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : p.role;
+            if (p.role !== "villager") {
+              visiblePortraitKey =
+                p.role === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : p.role;
+            }
             visibleRoleLabel = ROLE_LABELS[p.role] || p.role;
           } else if (isMe && myRole) {
-            visiblePortraitKey =
-              myRole === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : myRole;
+            if (myRole !== "villager") {
+              visiblePortraitKey =
+                myRole === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : myRole;
+            }
             visibleRoleLabel = ROLE_LABELS[myRole] || myRole;
           } else if (isMayorPublic) {
             visiblePortraitKey = "mayor";
@@ -115,8 +121,9 @@ export default function PlayerCircle({
             visibleRoleLabel = ROLE_LABELS[mateRole];
           }
 
-          const portraitSrc =
-            ROLE_PORTRAIT_BADGES[visiblePortraitKey] || persona.portraitBadge;
+          const portraitSrc = visiblePortraitKey
+            ? ROLE_PORTRAIT_BADGES[visiblePortraitKey] || persona.portraitBadge
+            : citizenMeta?.portraitBadge || p.avatar || persona.portraitBadge;
 
           let seerResultClass = "";
           if (seerLastResult && seerLastResult.targetId === p.id && phase === "night_seer") {

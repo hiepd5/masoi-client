@@ -231,9 +231,10 @@ export default function GreyboxActor({
   }, [isEmptyLobbySeat, isLobbyPhase, metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
 
   // Vai trò thực tế được phép gắn Phụ kiện 3D lên nhân vật trên màn hình của người đang xem:
+  // - Ở Sảnh chờ (`isLobbyPhase`) & Trong trận (mắt người khác nhìn vào): trả về `null` để ngồi đúng Avatar 3D Dân Làng / Người Thật (`player.citizenModelId`)!
   const visibleCostumeRole = useMemo(() => {
     if (isEmptyLobbySeat) return null;
-    if (isLobbyPhase && !hasWinner) return "wolf";
+    if (isLobbyPhase && !hasWinner) return null;
     if (metamorphWolfActive && hasWinner) return "wolf";
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return null;
@@ -270,11 +271,12 @@ export default function GreyboxActor({
       resolveActiveCharacterSlot({
         hasWinner,
         visibleCostumeRole,
+        citizenModelId: player?.citizenModelId || null,
         seatIndex: seatTransform?.seatIdx ?? 0,
         roomCode,
         preferAltWolf: Boolean(metamorphWolfActive),
       }),
-    [hasWinner, visibleCostumeRole, seatTransform?.seatIdx, roomCode, metamorphWolfActive]
+    [hasWinner, visibleCostumeRole, player?.citizenModelId, seatTransform?.seatIdx, roomCode, metamorphWolfActive]
   );
   const characterGlbEntry = useOptionalCharacterGlb(activeCharSlot);
   const isStandingSmartMesh = Boolean(

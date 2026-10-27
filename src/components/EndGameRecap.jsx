@@ -1850,6 +1850,7 @@ export default function EndGameRecap({
   ghostBetBonusXp = 0,
   onRematchReady = null,
   onRestart,
+  onExitToLobby = null,
   onAnimate,
   onStageChange,
   viewMode = "3d",
@@ -1866,27 +1867,20 @@ export default function EndGameRecap({
   onRecheckVoice = null,
   voiceRecheckTick = 0,
 }) {
-  const [rematchSecLeft, setRematchSecLeft] = useState(() =>
-    rematchEndsAt ? Math.max(0, Math.ceil((rematchEndsAt - Date.now()) / 1000)) : 0
-  );
-  useEffect(() => {
-    if (!rematchEndsAt) {
-      setRematchSecLeft(0);
-      return;
-    }
-    const tick = () => {
-      setRematchSecLeft(Math.max(0, Math.ceil((rematchEndsAt - Date.now()) / 1000)));
-    };
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [rematchEndsAt]);
-
+  const RECAP_SPEED_OPTIONS = [1, 1.5, 2, 3];
   const [beatIndex, setBeatIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  // Tốc độ kể chuyện chuyên nghiệp: 0.75 (Chậm sâu) | 1 (Chuẩn điện ảnh) | 1.5 (Nhanh)
-  const [recapSpeed, setRecapSpeed] = useState(1);
+  // Tốc độ kể chuyện mặc định 1.5x (nhanh gọn vừa tai), cho phép chỉnh tự do 1x | 1.5x | 2x | 3x giữ nguyên giọng tự nhiên
+  const [recapSpeed, setRecapSpeed] = useState(1.5);
+  const recapSpeedRef = useRef(recapSpeed);
+  recapSpeedRef.current = recapSpeed;
+  // Chốt mở khóa nút chính '🏰 Về Sảnh Chờ' ngay khi đã kể trọn vẹn câu chuyện 1 lần (hoặc tua tới cảnh MVP cuối)
+  const [hasCompletedStoryOnce, setHasCompletedStoryOnce] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(() => mcVoiceEnabled !== false);
+
+  useEffect(() => {
+    getCinemaAudioEngine()?.setPlaybackRate?.(recapSpeed);
+  }, [recapSpeed]);
   const storyAudioBuffersRef = useRef(new Map());
   // Khởi tạo true ngay ở Render #1 khi bật loa để Cảnh 0 (Mở Màn) luôn chờ đợt quét Cache đầu tiên, tuyệt đối không trôi sớm!
   const [storyVoiceLoading, setStoryVoiceLoading] = useState(() => mcVoiceEnabled !== false);
@@ -1979,19 +1973,40 @@ export default function EndGameRecap({
     };
   }, [currentBeat, winConfig, safeBeatIdx, storyBeats.length]);
 
-  // Đánh thức thanh điều khiển khi người xem chạm chuột / bàn phím, và tự ẩn sau 2.4s khi đang chiếu phim!
+  // Đánh thức thanh điều khiển khi người xem chạm chuột / bàn phím, và tự ẩn sau 2.4s khi đang chiếu phim (giữ sáng hẳn sau khi hết truyện!)
   const wakeUpHud = useCallback(() => {
     setHudVisible(true);
     if (idleHudTimerRef.current) {
       clearTimeout(idleHudTimerRef.current);
       idleHudTimerRef.current = null;
     }
-    if (isPlaying && !drawerTab && !showVideoPlayerModal && !isAtFinale && viewMode === "3d") {
+    if (
+      isPlaying &&
+      !drawerTab &&
+      !showVideoPlayerModal &&
+      !isAtFinale &&
+      !hasCompletedStoryOnce &&
+      viewMode === "3d"
+    ) {
       idleHudTimerRef.current = setTimeout(() => {
         setHudVisible(false);
       }, 2400);
     }
-  }, [isPlaying, drawerTab, showVideoPlayerModal, isAtFinale, viewMode]);
+  }, [isPlaying, drawerTab, showVideoPlayerModal, isAtFinale, hasCompletedStoryOnce, viewMode]);
+
+  const jumpToBeat = useCallback(
+    (nextIdx, shouldPlay = false) => {
+      const maxIdx = Math.max(0, storyBeats.length - 1);
+      const clamped = Math.max(0, Math.min(maxIdx, nextIdx));
+      setBeatIndex(clamped);
+      setIsPlaying(shouldPlay);
+      if (!activeRecorderRef.current && clamped >= maxIdx) {
+        setHasCompletedStoryOnce(true);
+        setHudVisible(true);
+      }
+    },
+    [storyBeats.length]
+  );
 
   useEffect(() => {
     wakeUpHud();
@@ -2005,8 +2020,7 @@ export default function EndGameRecap({
         e.preventDefault();
         setIsPlaying((p) => !p);
       } else if (e.code === "ArrowRight") {
-        setIsPlaying(false);
-        setBeatIndex((i) => Math.min(storyBeats.length - 1, i + 1));
+        jumpToBeat(beatIndexRef.current + 1, false);
       } else if (e.code === "ArrowLeft") {
         setIsPlaying(false);
         setBeatIndex((i) => Math.max(0, i - 1));
@@ -2092,7 +2106,7 @@ export default function EndGameRecap({
       if (count >= players.length) {
         clearInterval(timer);
       }
-    }, 280);
+    }, Math.max(120, Math.round(280 / (recapSpeedRef.current || 1.5))));
     return () => clearInterval(timer);
   }, [players]);
 
@@ -2101,7 +2115,7 @@ export default function EndGameRecap({
   // NHỊP 1 -> NHỊP 2: Chờ máy quay lướt êm về sau vai nhân vật (act1SetupMs) rồi mới kích hoạt tung chiêu VFX, Hoạt cảnh Không gian & Âm thanh!
   useEffect(() => {
     if (!currentBeat) return undefined;
-    const setupDelay = Math.max(220, (currentBeat.act1SetupMs ?? 900) / recapSpeed);
+    const setupDelay = Math.max(150, Math.round((currentBeat.act1SetupMs ?? 900) / recapSpeed));
     setAct2Armed(false);
     const armTimer = setTimeout(() => {
       act2StartPerfRef.current = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -2140,8 +2154,8 @@ export default function EndGameRecap({
     }
 
     const choreoInfo = deriveBeatActorChoreography(currentBeat, players);
-    const setupDelayMs = Math.max(220, (currentBeat.act1SetupMs ?? 900) / recapSpeed);
-    const choreoDurationMs = Math.max(1600, (choreoInfo.baseChoreoMs || 3900) / recapSpeed);
+    const setupDelayMs = Math.max(150, Math.round((currentBeat.act1SetupMs ?? 900) / recapSpeed));
+    const choreoDurationMs = Math.max(950, Math.round((choreoInfo.baseChoreoMs || 3900) / recapSpeed));
     const syncedShakeDelayMs =
       choreoInfo.impactFraction !== null
         ? Math.round(setupDelayMs + choreoInfo.impactFraction * choreoDurationMs)
@@ -2503,9 +2517,10 @@ export default function EndGameRecap({
       setSpeechCompletedForBeatId(beatId);
     };
 
-    const estReadMs = Math.max(5500, currentBeat.narration.length * 105) / recapSpeed;
-    const safetyTimer = setTimeout(markDone, estReadMs + 2500);
+    const estReadMs = Math.max(6000, currentBeat.narration.length * 110);
+    const safetyTimer = setTimeout(markDone, estReadMs + 3500);
 
+    const startSpeakDelayMs = Math.max(110, Math.round(280 / (recapSpeedRef.current || 1.5)));
     const startSpeakTimer = setTimeout(async () => {
       if (cancelled) return;
       if (!audioEngine?.playVoiceArrayBuffer) {
@@ -2513,12 +2528,16 @@ export default function EndGameRecap({
         return;
       }
       audioEngine.setSpeakerMuted(!speechEnabled);
-      const playedOk = await audioEngine.playVoiceArrayBuffer(readyBuffer, recapSpeed);
+      const playedOk = await audioEngine.playVoiceArrayBuffer(
+        readyBuffer,
+        recapSpeedRef.current || 1.5
+      );
       if (cancelled) return;
       if (playedOk) {
         setVoiceBlockedByGesture(false);
-        // Đệm lắng đọng cảm xúc 850ms sau khi MC vừa dứt lời!
-        settlePauseTimer = setTimeout(markDone, 850);
+        // Đệm lắng đọng cảm xúc tự co giãn mượt theo tốc độ xem sau khi MC vừa dứt lời!
+        const settleMs = Math.max(240, Math.round(850 / (recapSpeedRef.current || 1.5)));
+        settlePauseTimer = setTimeout(markDone, settleMs);
       } else if (audioEngine.wasBlockedByAutoplay?.()) {
         // Trình duyệt tạm khóa Autoplay (ví dụ F5 thẳng vào màn kết game): hiện nhắc chạm chuột và giữ cảnh chờ tới 8s để phát lại ngay khi chạm!
         setVoiceBlockedByGesture(true);
@@ -2526,7 +2545,7 @@ export default function EndGameRecap({
       } else {
         markDone();
       }
-    }, 280);
+    }, startSpeakDelayMs);
 
     return () => {
       cancelled = true;
@@ -2543,7 +2562,6 @@ export default function EndGameRecap({
     hasCurrentBeatAudio,
     shouldWaitCurrentBeatAudio,
     speechEnabled,
-    recapSpeed,
     unlockReplayTick,
   ]);
 
@@ -2576,6 +2594,7 @@ export default function EndGameRecap({
     if (!rec) return;
     activeRecorderRef.current = null;
     setIsRecordingVideo(false);
+    setHasCompletedStoryOnce(true);
     try {
       const result = await rec.stop();
       if (result?.url) {
@@ -2591,13 +2610,13 @@ export default function EndGameRecap({
     }
   }, []);
 
-  // Điều phối chuyển cảnh: CHỈ chuyển khi ĐÃ đủ thời lượng cảnh tối thiểu VÀ Giọng đọc MC đã dứt câu (+0.85s lắng đọng)!
+  // Điều phối chuyển cảnh: CHỈ chuyển khi ĐÃ đủ thời lượng cảnh tối thiểu VÀ Giọng đọc MC đã dứt câu (+lắng đọng)!
   const [minDurationPassedForBeatId, setMinDurationPassedForBeatId] = useState(null);
 
   useEffect(() => {
     if (!isPlaying || !currentBeat) return undefined;
     setMinDurationPassedForBeatId(null);
-    const minWaitMs = Math.max(3600, (currentBeat.durationMs || 5400) / recapSpeed);
+    const minWaitMs = Math.max(1500, Math.round((currentBeat.durationMs || 5400) / recapSpeed));
     const timer = setTimeout(() => {
       setMinDurationPassedForBeatId(currentBeat.id);
     }, minWaitMs);
@@ -2622,6 +2641,7 @@ export default function EndGameRecap({
         }, 1100);
         return () => clearTimeout(endRecTimer);
       }
+      setHasCompletedStoryOnce(true);
     }
     return undefined;
   }, [
@@ -2651,7 +2671,6 @@ export default function EndGameRecap({
       setShowVideoPlayerModal(false);
       setFollowDirector(true);
       setRelockToken((t) => t + 1);
-      setRecapSpeed(1);
       setBeatIndex(0);
       setIsPlaying(true);
       setIsRecordingVideo(true);
@@ -2662,8 +2681,26 @@ export default function EndGameRecap({
   }, [viewMode, onToggleViewMode]);
 
   function cycleSpeed() {
-    setRecapSpeed((s) => (s === 1 ? 0.75 : s === 0.75 ? 1.5 : 1));
+    setRecapSpeed((s) => {
+      const idx = RECAP_SPEED_OPTIONS.indexOf(s);
+      return RECAP_SPEED_OPTIONS[(idx + 1) % RECAP_SPEED_OPTIONS.length] || 1.5;
+    });
   }
+
+  const handleExitToLobbyClick = useCallback(() => {
+    const audioEngine = getCinemaAudioEngine();
+    audioEngine?.stopVoice();
+    audioEngine?.setAmbientActive(false);
+    if (onExitToLobby) {
+      onExitToLobby();
+      return;
+    }
+    if (isHost) {
+      onRestart?.();
+    } else {
+      onRematchReady?.();
+    }
+  }, [onExitToLobby, isHost, onRestart, onRematchReady]);
 
   function toggleDrawer(tab) {
     setDrawerTab((prev) => (prev === tab ? null : tab));
@@ -3139,8 +3176,7 @@ export default function EndGameRecap({
               step={1}
               value={safeBeatIdx}
               onChange={(e) => {
-                setIsPlaying(false);
-                setBeatIndex(Number(e.target.value));
+                jumpToBeat(Number(e.target.value), false);
               }}
               aria-label="Thanh tua phim kể chuyện 3D"
             />
@@ -3160,8 +3196,7 @@ export default function EndGameRecap({
                     key={ch.key}
                     className={`director-chip ${isCurrent ? "active" : ""}`}
                     onClick={() => {
-                      setBeatIndex(ch.beatIdx);
-                      setIsPlaying(true);
+                      jumpToBeat(ch.beatIdx, true);
                     }}
                   >
                     {ch.label}
@@ -3202,21 +3237,29 @@ export default function EndGameRecap({
                 className="director-btn"
                 disabled={isAtFinale}
                 onClick={() => {
-                  setIsPlaying(false);
-                  setBeatIndex((i) => Math.min(storyBeats.length - 1, i + 1));
+                  jumpToBeat(safeBeatIdx + 1, false);
                 }}
                 title="Tiến 1 pha (Phím →)"
               >
                 ⏭
               </button>
-              <button
-                type="button"
-                className="director-btn"
-                onClick={cycleSpeed}
-                title="Đổi nhịp độ kể chuyện (0.75x Chậm sâu • 1x Chuẩn phim • 1.5x Nhanh)"
+              <div
+                className="director-speed-group"
+                role="group"
+                aria-label="Tốc độ xem phim kể chuyện"
+                title="Chọn tốc độ kể chuyện: 1x Chuẩn chậm • 1.5x Mặc định • 2x Nhanh • 3x Siêu tốc (giữ nguyên âm sắc giọng đọc)"
               >
-                🎞️ {recapSpeed}x
-              </button>
+                {RECAP_SPEED_OPTIONS.map((spd) => (
+                  <button
+                    type="button"
+                    key={spd}
+                    className={`director-speed-pill ${recapSpeed === spd ? "active" : ""}`}
+                    onClick={() => setRecapSpeed(spd)}
+                  >
+                    {spd}x
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 className="director-btn"
@@ -3269,28 +3312,26 @@ export default function EndGameRecap({
                 </span>
               )}
 
-              {isHost ? (
-                <button type="button" className="btn-director-restart" onClick={onRestart}>
-                  🔄 Mở Sảnh Ván Mới{rematchSecLeft > 0 ? ` (${rematchSecLeft}s)` : ""}
-                </button>
-              ) : isSpectator ? (
-                <span className="director-wait-host" style={{ color: "#bae6fd" }}>
-                  👀 Tự vào ghế sau {rematchSecLeft || 45}s...
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  className="btn-director-restart"
-                  onClick={() => onRematchReady?.()}
-                  disabled={myRematchReady}
-                  style={myRematchReady ? { opacity: 0.85, cursor: "default" } : undefined}
-                >
-                  {myRematchReady
-                    ? `✅ Đã Sẵn Sàng (${rematchReadyCount}/${rematchRequiredCount})`
-                    : `🙋 Ván Mới (${rematchReadyCount}/${rematchRequiredCount})`}
-                  {rematchSecLeft > 0 ? ` • ${rematchSecLeft}s` : ""}
-                </button>
-              )}
+              {!isRecordingVideo &&
+                (hasCompletedStoryOnce ? (
+                  <button
+                    type="button"
+                    className="btn-director-restart btn-lobby-primary-ready"
+                    onClick={handleExitToLobbyClick}
+                    title="Câu chuyện đã khép lại trọn vẹn — Bấm để trở về Sảnh Chờ chuẩn bị ván mới!"
+                  >
+                    🏰 Về Sảnh Chờ
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-lobby-early-exit"
+                    onClick={handleExitToLobbyClick}
+                    title="Rời rạp chiếu cá nhân để về Sảnh Chờ sớm (không làm gián đoạn người khác đang xem phim)"
+                  >
+                    ⏭️ Về sảnh chờ sớm
+                  </button>
+                ))}
             </div>
           </div>
         </section>

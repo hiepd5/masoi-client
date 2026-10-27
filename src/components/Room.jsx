@@ -1,7 +1,15 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
 import RolePortrait from "./RolePortrait.jsx";
+import CitizenAvatarVaultModal from "./CitizenAvatarVaultModal.jsx";
 import Scene3DErrorBoundary from "../3d/components/Scene3DErrorBoundary.jsx";
+import {
+  getCitizenAvatarMeta,
+  getStoredCitizenModelId,
+  loadCitizenAvatarCatalog,
+  saveStoredCitizenModelId,
+  subscribeCitizenAvatarCatalog,
+} from "../config/citizenAvatars.config.js";
 import {
   PLAYABLE_ROLE_KEYS,
   ROLES_CONFIG,
@@ -31,6 +39,14 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [copiedLink, setCopiedLink] = useState(false);
   const [showPwdEditor, setShowPwdEditor] = useState(false);
   const [pwdDraft, setPwdDraft] = useState("");
+  const [showAvatarVault, setShowAvatarVault] = useState(false);
+  const [, setAvatarCatalogTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = subscribeCitizenAvatarCatalog(() => setAvatarCatalogTick((t) => t + 1));
+    loadCitizenAvatarCatalog();
+    return unsub;
+  }, []);
 
   // Drawer tabs bên phải Sảnh 3D: 'roles' | 'chat' + nút thu gọn để ngắm 3D 100% màn hình
   const [mobileTab, setMobileTab] = useState("roles");
@@ -70,7 +86,37 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [scenePresets, setScenePresets] = useState([]);
   const syncedDefaultPresetRef = useRef(false);
 
+  // Rạp Chiếu Cá Nhân Không Bị Ngắt Ngang (Personal Non-Disruptive Cinema):
+  // Giữ bản chụp trận vừa kết thúc cho từng máy cá nhân để ai chưa xem hết câu chuyện vẫn thưởng thức trọn vẹn,
+  // còn ai bấm Về Sảnh Chờ sẽ vào thẳng Sảnh 3D ngay (0ms) mà không đá người khác ra giữa chừng!
+  const [frozenRecapSnapshot, setFrozenRecapSnapshot] = useState(null);
+  const [dismissedRecapKey, setDismissedRecapKey] = useState(null);
+
   const myId = sessionStorage.getItem("ws_playerId") || socketRef.current?.id;
+
+  const liveEndedKey =
+    room?.phase === "ended" && room?.game?.winner && Array.isArray(room?.game?.history)
+      ? `${room.code}_${room.game.gameStartedAt || "ended"}`
+      : null;
+
+  useEffect(() => {
+    if (liveEndedKey && room) {
+      setFrozenRecapSnapshot({ key: liveEndedKey, room });
+      return;
+    }
+    if (room?.phase === "playing" && !room?.game?.winner) {
+      setFrozenRecapSnapshot(null);
+      setDismissedRecapKey(null);
+    }
+  }, [liveEndedKey, room]);
+
+  const activeRecapKey = liveEndedKey || frozenRecapSnapshot?.key || null;
+  const isWatchingPersonalRecap = Boolean(
+    activeRecapKey &&
+      dismissedRecapKey !== activeRecapKey &&
+      room?.phase !== "playing" &&
+      (room?.phase === "ended" || frozenRecapSnapshot?.room)
+  );
 
   useEffect(() => {
     if (room?.phase && room.phase !== "lobby") return;
@@ -544,8 +590,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   useEffect(() => {
     if (!mcVoiceEnabled) return;
     if (mcLog.length === 0) return;
-    // Khi đã kết thúc ván đấu (chuyển sang Phim Kể Chuyện EndGameRecap), tắt ngay luồng đọc chat thông báo của Room để nhường 100% Loa & GPU cho Bộ Phim!
-    if (room?.phase === 'ended' || Boolean(room?.game?.winner)) {
+    // Khi đã kết thúc ván đấu (hoặc đang xem tiếp Phim Kể Chuyện cá nhân), tắt ngay luồng đọc chat thông báo của Room để nhường 100% Loa & GPU cho Bộ Phim!
+    if (room?.phase === 'ended' || Boolean(room?.game?.winner) || isWatchingPersonalRecap) {
       if (currentAudioRef.current) {
         try {
           currentAudioRef.current.pause();
@@ -641,9 +687,28 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   }
 
   function handleLeave() {
+    setFrozenRecapSnapshot(null);
+    setDismissedRecapKey(null);
     socketRef.current.emit("room:leave");
     onLeave();
   }
+
+  const handleExitRecapToLobby = useCallback(() => {
+    const targetKey =
+      liveEndedKey ||
+      frozenRecapSnapshot?.key ||
+      (room?.game?.winner ? `${room.code}_${room.game.gameStartedAt || "ended"}` : "ended");
+    setDismissedRecapKey(targetKey);
+    setError("");
+    if (room?.phase === "ended") {
+      const meNow = room.players?.find((p) => p.id === myId);
+      if (meNow?.isHost) {
+        socketRef.current?.emit("room:restart");
+      } else if (meNow && !room.isSpectator) {
+        socketRef.current?.emit("room:rematchReady");
+      }
+    }
+  }, [liveEndedKey, frozenRecapSnapshot?.key, room, myId, socketRef]);
 
   function handleRename() {
     setError("");
@@ -653,6 +718,16 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         return;
       }
       setEditingName(false);
+    });
+  }
+
+  function handleSelectRoomCitizen(nextId) {
+    const meta = saveStoredCitizenModelId(nextId);
+    setError("");
+    socketRef.current?.emit("room:setCitizenModel", { citizenModelId: meta.id }, (res) => {
+      if (res && !res.ok) {
+        setError(res.error || "Không thể đổi nhân vật 3D.");
+      }
     });
   }
 
@@ -812,16 +887,31 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     );
   }
 
-  // Chuyen sang man hinh choi game khi van bat dau
-  if (room.phase === "playing" || room.phase === "ended") {
+  // Chuyển sang màn hình chơi game hoặc giữ Rạp Chiếu Cá Nhân cho tới khi người xem xem hết truyện / bấm Về Sảnh Chờ
+  if (room.phase === "playing" || isWatchingPersonalRecap) {
+    const liveMeInRoom = room.players?.find((p) => p.id === myId);
+    const liveFreshToken =
+      liveMeInRoom?.sessionToken ||
+      room.spectatorSessionToken ||
+      getSession()?.sessionToken ||
+      "";
+    const baseRecapRoom =
+      room.phase === "playing" || room.phase === "ended"
+        ? room
+        : frozenRecapSnapshot?.room || room;
+    const effectivePlayingRoom = liveFreshToken
+      ? { ...baseRecapRoom, freshSessionToken: liveFreshToken }
+      : baseRecapRoom;
+
     return (
       <PlayingView 
-        room={room} 
+        room={effectivePlayingRoom} 
         socketRef={socketRef} 
         mcLog={mcLog}
         mcVoiceEnabled={mcVoiceEnabled}
         setMcVoiceEnabled={setMcVoiceEnabled}
         onLeave={handleLeave}
+        onExitRecapToLobby={handleExitRecapToLobby}
         voicePregening={voicePregening}
         voicePregenProgress={voicePregenProgress}
         vsServerOffline={vsServerOffline}
@@ -871,7 +961,14 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   return (
     <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
-      {/* ==================== 1. SÂN KHẤU LÀNG 3D TỔNG QUAN (AI VÀO PHÒNG NGỒI GHẾ HÓA SÓI NGAY!) ==================== */}
+      <CitizenAvatarVaultModal
+        open={showAvatarVault}
+        onClose={() => setShowAvatarVault(false)}
+        selectedId={me?.citizenModelId || getStoredCitizenModelId()}
+        onSelect={handleSelectRoomCitizen}
+      />
+
+      {/* ==================== 1. SÂN KHẤU LÀNG 3D TỔNG QUAN (AI VÀO PHÒNG NGỒI GHẾ DÂN LÀNG / AVATAR 3D CÁ NHÂN HÓA!) ==================== */}
       <div className="lobby-3d-stage-bg">
         {lobbyView3D ? (
           <Scene3DErrorBoundary
@@ -883,7 +980,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <Suspense
               fallback={
                 <div className="lobby-3d-loading">
-                  🐺 Đang dựng vòng ghế Sói 3D quanh lửa trại...
+                  🏡 Đang dựng vòng ghế Dân Làng 3D quanh lửa trại...
                 </div>
               }
             >
@@ -893,7 +990,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 me={me}
                 phase="lobby"
                 isNight={true}
-                myRole="wolf"
+                myRole={null}
                 hasWinner={false}
                 lobbyTargetSeatCount={seatRingTarget}
                 onLobbyKickPlayer={handleKickPlayer}
@@ -908,10 +1005,25 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <div className="lobby-2d-seats">
               {Array.from({ length: seatRingTarget }, (_, idx) => {
                 const p = room.players[idx];
+                const citizenMeta = p ? getCitizenAvatarMeta(p.citizenModelId) : null;
                 return (
                   <div key={p?.id || `empty-${idx}`} className={`lobby-2d-seat-card ${p ? "occupied" : "empty"}`}>
                     <div className="seat-wolf-icon">
-                      {p ? <RolePortrait roleKey="wolf" size={38} glow /> : "🪑"}
+                      {p ? (
+                        <img
+                          src={citizenMeta?.portraitBadge || "/portraits/badges/villager_cloak.webp"}
+                          alt={p.name}
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            border: "1.5px solid rgba(251, 191, 36, 0.65)",
+                          }}
+                        />
+                      ) : (
+                        "🪑"
+                      )}
                     </div>
                     <div className="seat-wolf-name">{p ? p.name : `Ghế #${idx + 1}`}</div>
                     {p && (
@@ -1022,6 +1134,21 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 : vsStatusReady
                   ? "🟢 Voice Clone Sẵn Sàng"
                   : "🟡 Đang kết nối Voice..."}
+          </button>
+
+          <button
+            type="button"
+            className="btn-lobby-pill"
+            onClick={() => setShowAvatarVault(true)}
+            title="Đổi nhân vật Dân Làng 3D ngồi ghế hoặc mở Kho Avatar 3D Người Thật Cá Nhân Hóa"
+            style={{
+              borderColor: "rgba(245, 194, 92, 0.58)",
+              background: "rgba(120, 53, 15, 0.36)",
+              color: "#fef08a",
+              fontWeight: 700,
+            }}
+          >
+            🎭 Đổi Nhân Vật
           </button>
 
           <button
@@ -1460,7 +1587,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
               <div className="lobby-chat-messages">
                 {lobbyMessages.length === 0 ? (
                   <div style={{ textAlign: "center", color: "#94a3b8", margin: "auto", fontSize: "0.82rem" }}>
-                    💬 Nhắn tin tại đây sẽ hiện bong bóng thoại ngay trên đầu Sói 3D của bạn quanh lửa trại!
+                    💬 Nhắn tin tại đây sẽ hiện bong bóng thoại ngay trên đầu Nhân vật 3D của bạn quanh lửa trại!
                   </div>
                 ) : (
                   lobbyMessages.map((msg) => {
@@ -1486,7 +1613,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 <input
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Nhắn tin lên đầu Sói 3D..."
+                  placeholder="Nhắn tin lên đầu Nhân vật 3D..."
                   maxLength={100}
                 />
                 <button type="submit">Gửi</button>
@@ -1517,7 +1644,33 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           </div>
         )}
 
-        {me?.isHost ? (
+        {room.phase === "ended" ? (
+          me?.isHost ? (
+            <button
+              className="btn-start-game-master"
+              onClick={() => socketRef.current?.emit("room:restart")}
+              title="Mở khóa bàn sảnh chờ cho ván đấu tiếp theo"
+            >
+              🏰 MỞ SẢNH VÁN MỚI NGAY
+            </button>
+          ) : room.isSpectator ? (
+            <button
+              className="btn-ready-toggle is-ready"
+              disabled
+              style={{ maxWidth: 420, cursor: "default", opacity: 0.95 }}
+            >
+              🪑 Đã vào Sảnh Chờ — Tự nhận ghế ngay khi ván trước khép màn
+            </button>
+          ) : (
+            <button
+              className="btn-ready-toggle is-ready"
+              disabled
+              style={{ maxWidth: 420, cursor: "default", opacity: 0.95 }}
+            >
+              ✅ Đã vào Sảnh Chờ — Đang đợi người chơi khác xem nốt phim...
+            </button>
+          )
+        ) : me?.isHost ? (
           <button
             className="btn-start-game-master"
             onClick={handleStartGame}

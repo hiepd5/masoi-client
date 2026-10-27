@@ -4,6 +4,7 @@ import {
 } from "./seasonalEventRegistry.js";
 import { ASSET_SYNC_VERSION } from "./propManifest.js";
 import { getPublicCitizenPersona } from "../../config/roles.config.js";
+import { loadCitizenAvatarCatalog } from "../../config/citizenAvatars.config.js";
 
 function withAssetVersion(url) {
   if (!url) return null;
@@ -250,11 +251,35 @@ export async function ensureCharacterManifestLoaded({ force = false } = {}) {
       if (staticRes.ok) {
         const doc = await staticRes.json();
         if (doc && typeof doc.characters === "object") {
-          availableCharacterModels = doc.characters;
+          availableCharacterModels = { ...doc.characters };
         }
       }
     } catch {
       availableCharacterModels = {};
+    }
+
+    // Đồng bộ Kho Avatar 3D Người Thật (tintableCloak=false để giữ nguyên 100% màu da & trang phục ngoài đời!)
+    try {
+      const avatarCat = await loadCitizenAvatarCatalog({ force });
+      if (Array.isArray(avatarCat?.customHumanAvatars)) {
+        avatarCat.customHumanAvatars.forEach((item) => {
+          if (item?.id && item.status === "ready" && item.glbUrl) {
+            CHARACTER_SLOTS[item.id] = {
+              key: item.id,
+              fileName: item.glbUrl.split("/").pop() || `${item.id}.glb`,
+              label: item.label || item.id,
+              standingHeight: Number(item.standingHeight) || 1.75,
+              seatHipOffsetY: 0.04,
+              seatForwardOffsetZ: 0.05,
+              staticStandZ: 0.12,
+              tintableCloak: false,
+            };
+            availableCharacterModels[item.id] = item.glbUrl;
+          }
+        });
+      }
+    } catch {
+      // ignore optional custom avatar catalog error
     }
 
     loadedOnce = true;
@@ -315,26 +340,32 @@ export function subscribeCharacterManifest(fn) {
 export function resolveActiveCharacterSlot({
   hasWinner,
   visibleCostumeRole,
+  citizenModelId = null,
   seatIndex = 0,
   roomCode = "MASOI",
   preferAltWolf = false,
 }) {
   const persona = getPublicCitizenPersona(roomCode, seatIndex);
-  const resolveCitizenSlot = (fallbackTrueVillager = false) => {
-    if (persona.slotKey === "villager_female" && availableCharacterModels.villager_female) {
+  const resolveCitizenSlot = () => {
+    if (citizenModelId) {
+      if (availableCharacterModels[citizenModelId] || CHARACTER_SLOTS[citizenModelId]) {
+        return citizenModelId;
+      }
+    }
+    if (persona.slotKey === "villager_female" && CHARACTER_SLOTS.villager_female) {
       return "villager_female";
     }
-    if (persona.slotKey === "villager_elder" && availableCharacterModels.villager_elder) {
+    if (persona.slotKey === "villager_elder" && CHARACTER_SLOTS.villager_elder) {
       return "villager_elder";
     }
-    return fallbackTrueVillager ? "villager_true" : "villager_cloak";
+    return "villager_cloak";
   };
 
   if (!visibleCostumeRole) {
-    return resolveCitizenSlot(false);
+    return resolveCitizenSlot();
   }
   if (visibleCostumeRole === "villager") {
-    return resolveCitizenSlot(Boolean(hasWinner));
+    return resolveCitizenSlot();
   }
   if (visibleCostumeRole === "wolf") {
     const useAlt = Boolean(preferAltWolf || Math.abs(Number(seatIndex) || 0) % 2 === 1);
@@ -346,5 +377,5 @@ export function resolveActiveCharacterSlot({
   if (CHARACTER_SLOTS[visibleCostumeRole]) {
     return visibleCostumeRole;
   }
-  return "villager_cloak";
+  return resolveCitizenSlot();
 }

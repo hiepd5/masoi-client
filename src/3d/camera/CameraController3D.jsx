@@ -378,8 +378,10 @@ export default function CameraController3D({
         recapShot.shotType === "high_tribunal" ||
         recapShot.shotType === "high_pack_hunt"
       ) {
-        // Quỹ đạo Crane trên cao xoay cực chậm, sang trọng như phim điện ảnh
-        const orbitSpeed = recapShot.shotType === "orbit_reveal" ? 0.16 : 0.075;
+        // Quỹ đạo Crane trên cao xoay cực chậm, sang trọng như phim điện ảnh (tự co giãn mượt theo tốc độ xem)
+        const speedScale = Math.min(3, Math.max(0.75, Number(recapShot.dollySpeedScale) || 1));
+        const orbitSpeed =
+          (recapShot.shotType === "orbit_reveal" ? 0.16 : 0.075) * Math.sqrt(speedScale);
         const angle = Math.atan2(camera.position.x, camera.position.z) + delta * orbitSpeed;
         const orbitR = Math.hypot(camera.position.x, camera.position.z) || circleRadius + 2.9;
         camera.position.x = Math.sin(angle) * orbitR;

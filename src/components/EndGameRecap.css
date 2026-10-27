@@ -671,6 +671,42 @@
   color: #fde68a;
 }
 
+.director-speed-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.director-speed-pill {
+  width: auto;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  background: transparent;
+  color: #cbd5e1;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.director-speed-pill:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.director-speed-pill.active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.42);
+}
+
 .btn-director-restart {
   width: auto;
   margin: 0;
@@ -684,6 +720,50 @@
   box-shadow: 0 3px 12px rgba(16, 185, 129, 0.4);
   cursor: pointer;
   white-space: nowrap;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.btn-director-restart:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.07);
+}
+
+.btn-lobby-primary-ready {
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  border-color: rgba(167, 243, 208, 0.72);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35), 0 6px 20px rgba(16, 185, 129, 0.52);
+  animation: lobby-ready-glow 1.9s ease-in-out infinite alternate;
+}
+
+@keyframes lobby-ready-glow {
+  from {
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 4px 14px rgba(16, 185, 129, 0.42);
+  }
+  to {
+    box-shadow: 0 0 0 2px rgba(110, 231, 183, 0.65), 0 6px 24px rgba(16, 185, 129, 0.72);
+  }
+}
+
+.btn-lobby-early-exit {
+  width: auto;
+  margin: 0;
+  padding: 5px 11px;
+  border-radius: 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.16s ease;
+}
+
+.btn-lobby-early-exit:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(226, 232, 240, 0.55);
 }
 
 .director-wait-host {
