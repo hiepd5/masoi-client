@@ -60,6 +60,10 @@ export default function PlayingView({
   voicePregening = false,
   voicePregenProgress = { done: 0, total: 0 },
   vsServerOffline = false,
+  vsStatusReady = false,
+  vsStatusChecking = false,
+  onRecheckVoice = null,
+  voiceRecheckTick = 0,
 }) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
@@ -791,21 +795,37 @@ export default function PlayingView({
               🎙️ {voicePregenProgress.done}/{voicePregenProgress.total}
             </span>
           )}
-          {!voicePregening && mcVoiceEnabled && vsServerOffline && (
-            <span
-              title="Máy chủ giọng đọc cá nhân (VoiceStudio) đang tắt — tự động dùng bộ MP3 tĩnh & nhạc nền, 0% giọng tiếng Anh"
+          {!voicePregening && mcVoiceEnabled && (
+            <button
+              type="button"
+              onClick={() => onRecheckVoice?.()}
+              title={
+                vsServerOffline
+                  ? 'Máy chủ giọng đọc cá nhân (VoiceStudio) đang tắt — tự động dùng bộ MP3 tĩnh & nhạc nền, 0% giọng tiếng Anh. Bấm để kiểm tra lại ngay!'
+                  : 'Máy chủ Voice Clone cá nhân (RTX 3090) đang trực tuyến sẵn sàng — Bấm để làm mới trạng thái'
+              }
               style={{
                 fontSize: '0.68rem',
-                color: '#fca5a5',
-                background: 'rgba(127, 29, 29, 0.38)',
-                border: '1px solid rgba(248, 113, 113, 0.4)',
+                fontWeight: 700,
+                cursor: 'pointer',
+                color: vsServerOffline ? '#fecaca' : '#a7f3d0',
+                background: vsServerOffline ? 'rgba(127, 29, 29, 0.42)' : 'rgba(6, 78, 59, 0.38)',
+                border: vsServerOffline
+                  ? '1px solid rgba(248, 113, 113, 0.5)'
+                  : '1px solid rgba(52, 211, 153, 0.5)',
                 borderRadius: '999px',
-                padding: '2px 7px',
+                padding: '2px 8px',
                 whiteSpace: 'nowrap',
               }}
             >
-              ● Voice Offline
-            </span>
+              {vsStatusChecking
+                ? '⏳ Kiểm tra Voice...'
+                : vsServerOffline
+                  ? '🔴 Voice Offline (Bấm thử lại)'
+                  : vsStatusReady
+                    ? '🟢 Voice Clone Sẵn Sàng'
+                    : '🟡 Đang kết nối Voice...'}
+            </button>
           )}
           <FullscreenButton />
           {onLeave && (
@@ -1514,6 +1534,10 @@ export default function PlayingView({
           winner={g.winner}
           loversPublic={g.loversPublic || []}
           mcVoiceEnabled={mcVoiceEnabled}
+          vsServerOffline={vsServerOffline}
+          vsStatusChecking={vsStatusChecking}
+          onRecheckVoice={onRecheckVoice}
+          voiceRecheckTick={voiceRecheckTick}
         />
       )}
       

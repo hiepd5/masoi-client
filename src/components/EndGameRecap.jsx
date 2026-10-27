@@ -1850,6 +1850,10 @@ export default function EndGameRecap({
   winner = "village",
   loversPublic = [],
   mcVoiceEnabled = true,
+  vsServerOffline = false,
+  vsStatusChecking = false,
+  onRecheckVoice = null,
+  voiceRecheckTick = 0,
 }) {
   const [beatIndex, setBeatIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -2104,6 +2108,13 @@ export default function EndGameRecap({
     onAnimate,
   ]);
 
+  // Khi trạng thái Voice trên Room vừa hồi phục (Online), tự xóa cờ Offline cũ để nạp ngay gói giọng kể chuyện
+  useEffect(() => {
+    if (!vsServerOffline) {
+      setStoryVoiceOffline(false);
+    }
+  }, [vsServerOffline, voiceRecheckTick]);
+
   // Đồng bộ toàn bộ gói giọng kể chuyện đã tạo cuốn chiếu trên RAM Server về RAM Client (bỏ qua các cảnh chat tự do của người chơi)
   useEffect(() => {
     if (!speechEnabled || !Array.isArray(storyBeats) || storyBeats.length === 0) return undefined;
@@ -2130,50 +2141,68 @@ export default function EndGameRecap({
     (async () => {
       setStoryVoiceLoading(true);
       let loadedAny = false;
-      const CHUNK = 12;
+      const CHUNK = 8;
       try {
-        for (let idx = 0; idx < narratablePhrases.length; idx += CHUNK) {
+        let queue = [...narratablePhrases];
+        for (let pass = 0; pass < 3 && queue.length > 0; pass += 1) {
           if (ctrl.signal.aborted) break;
-          const chunk = narratablePhrases.slice(idx, idx + CHUNK);
-          const resp = await fetch(batchUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              phrases: chunk,
-              voice: vsProfileId,
-              speed: 0.82,
-              urgent: idx === 0,
-            }),
-            signal: ctrl.signal,
-          });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const data = await resp.json();
-          if (data?.vsOnline === false && Object.values(data?.results || {}).every((v) => !v)) {
-            setStoryVoiceOffline(true);
-            break;
+          if (pass > 0) {
+            await new Promise((r) => setTimeout(r, 3200));
+            if (ctrl.signal.aborted) break;
           }
-          const results = data?.results || {};
-          let chunkLoaded = 0;
-          for (const raw of chunk) {
-            const b64 = results[raw.trim()];
-            if (b64) {
-              const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-              const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-              storyAudioBuffersRef.current.set(getTtsCacheKey(raw), ab);
-              chunkLoaded += 1;
-              loadedAny = true;
+          const nextPending = [];
+          for (let idx = 0; idx < queue.length; idx += CHUNK) {
+            if (ctrl.signal.aborted) break;
+            const chunk = queue
+              .slice(idx, idx + CHUNK)
+              .filter((raw) => !storyAudioBuffersRef.current.has(getTtsCacheKey(raw)));
+            if (chunk.length === 0) continue;
+
+            const resp = await fetch(batchUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                phrases: chunk,
+                voice: vsProfileId,
+                speed: 0.82,
+                urgent: pass === 0 && idx === 0,
+              }),
+              signal: ctrl.signal,
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            if (data?.vsOnline === false && Object.values(data?.results || {}).every((v) => !v)) {
+              setStoryVoiceOffline(true);
+              return;
+            }
+            const results = data?.results || {};
+            const pendingSet = new Set(Array.isArray(data?.pending) ? data.pending : []);
+            let chunkLoaded = 0;
+            for (const raw of chunk) {
+              const trimmed = raw.trim();
+              const b64 = results[trimmed];
+              if (b64) {
+                const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+                const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+                storyAudioBuffersRef.current.set(getTtsCacheKey(raw), ab);
+                chunkLoaded += 1;
+                loadedAny = true;
+              } else if (pendingSet.has(trimmed)) {
+                nextPending.push(raw);
+              }
+            }
+            if (chunkLoaded > 0 || data?.vsOnline === true) {
+              setStoryVoiceOffline(false);
+              if (chunkLoaded > 0) setStoryVoiceReadyTick((t) => t + 1);
             }
           }
-          if (chunkLoaded > 0) {
-            setStoryVoiceOffline(false);
-            setStoryVoiceReadyTick((t) => t + 1);
-          }
+          queue = nextPending;
         }
-        if (!loadedAny && !ctrl.signal.aborted && storyAudioBuffersRef.current.size === 0) {
+        if (!loadedAny && !ctrl.signal.aborted && storyAudioBuffersRef.current.size === 0 && vsServerOffline) {
           setStoryVoiceOffline(true);
         }
       } catch (err) {
-        if (err?.name !== "AbortError") {
+        if (err?.name !== "AbortError" && storyAudioBuffersRef.current.size === 0) {
           setStoryVoiceOffline(true);
         }
       } finally {
@@ -2182,7 +2211,7 @@ export default function EndGameRecap({
     })();
 
     return () => ctrl.abort();
-  }, [storyBeats, speechEnabled]);
+  }, [storyBeats, speechEnabled, voiceRecheckTick]);
 
   const currentBeatCacheKey =
     currentBeat?.narration && !currentBeat?.dialogueText
@@ -2478,14 +2507,43 @@ export default function EndGameRecap({
             <span className="vf-rec-text">PHIM KỂ CHUYỆN</span>
             <span className="vf-timecode">{timecodeLabel}</span>
           </div>
-          {speechEnabled && storyVoiceOffline && (
-            <div
+          {speechEnabled && (
+            <button
+              type="button"
               className="vf-rec-pill"
-              title="Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh"
-              style={{ borderColor: "rgba(248, 113, 113, 0.45)", color: "#fca5a5" }}
+              onClick={() => {
+                setStoryVoiceOffline(false);
+                onRecheckVoice?.();
+              }}
+              title={
+                (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                  ? "Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh. Bấm để kiểm tra & nạp lại ngay!"
+                  : "Giọng đọc kể chuyện Voice Clone cá nhân (RTX 3090) đang sẵn sàng — Bấm để làm mới trạng thái"
+              }
+              style={{
+                cursor: "pointer",
+                borderColor:
+                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                    ? "rgba(248, 113, 113, 0.55)"
+                    : "rgba(52, 211, 153, 0.55)",
+                background:
+                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                    ? "rgba(127, 29, 29, 0.42)"
+                    : "rgba(6, 78, 59, 0.38)",
+                color:
+                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                    ? "#fecaca"
+                    : "#a7f3d0",
+              }}
             >
-              <span>● Voice Offline</span>
-            </div>
+              <span>
+                {vsStatusChecking || storyVoiceLoading
+                  ? "⏳ Đang đồng bộ Voice..."
+                  : (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                    ? "🔴 Voice Offline (Bấm thử lại)"
+                    : "🟢 Voice Clone Sẵn Sàng"}
+              </span>
+            </button>
           )}
         </div>
 
