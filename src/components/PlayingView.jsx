@@ -59,6 +59,7 @@ export default function PlayingView({
   onLeave = null,
   voicePregening = false,
   voicePregenProgress = { done: 0, total: 0 },
+  vsServerOffline = false,
 }) {
   const g = room.game;
   // Dùng playerId ổn định (không thay đổi khi reconnect)
@@ -790,6 +791,22 @@ export default function PlayingView({
               🎙️ {voicePregenProgress.done}/{voicePregenProgress.total}
             </span>
           )}
+          {!voicePregening && mcVoiceEnabled && vsServerOffline && (
+            <span
+              title="Máy chủ giọng đọc cá nhân (VoiceStudio) đang tắt — tự động dùng bộ MP3 tĩnh & nhạc nền, 0% giọng tiếng Anh"
+              style={{
+                fontSize: '0.68rem',
+                color: '#fca5a5',
+                background: 'rgba(127, 29, 29, 0.38)',
+                border: '1px solid rgba(248, 113, 113, 0.4)',
+                borderRadius: '999px',
+                padding: '2px 7px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ● Voice Offline
+            </span>
+          )}
           <FullscreenButton />
           {onLeave && (
             <button
@@ -1496,6 +1513,7 @@ export default function PlayingView({
           players={room.players}
           winner={g.winner}
           loversPublic={g.loversPublic || []}
+          mcVoiceEnabled={mcVoiceEnabled}
         />
       )}
       

@@ -4,6 +4,7 @@ import {
   getCinemaAudioEngine,
   startCinemaStoryRecording,
 } from "../utils/cinemaVideoRecorder.js";
+import { getTtsCacheKey } from "../utils/ttsTextUtils.js";
 import "./EndGameRecap.css";
 
 const WINNER_CONFIG = {
@@ -1848,12 +1849,17 @@ export default function EndGameRecap({
   players = [],
   winner = "village",
   loversPublic = [],
+  mcVoiceEnabled = true,
 }) {
   const [beatIndex, setBeatIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   // Tốc độ kể chuyện chuyên nghiệp: 0.75 (Chậm sâu) | 1 (Chuẩn điện ảnh) | 1.5 (Nhanh)
   const [recapSpeed, setRecapSpeed] = useState(1);
-  const [speechEnabled, setSpeechEnabled] = useState(true);
+  const [speechEnabled, setSpeechEnabled] = useState(() => mcVoiceEnabled !== false);
+  const storyAudioBuffersRef = useRef(new Map());
+  const [storyVoiceLoading, setStoryVoiceLoading] = useState(false);
+  const [storyVoiceOffline, setStoryVoiceOffline] = useState(false);
+  const [storyVoiceReadyTick, setStoryVoiceReadyTick] = useState(0);
   const [followDirector, setFollowDirector] = useState(true);
   const [relockToken, setRelockToken] = useState(0);
   const [drawerTab, setDrawerTab] = useState(() => (viewMode === "2d" ? "cards" : null));
@@ -2098,66 +2104,181 @@ export default function EndGameRecap({
     onAnimate,
   ]);
 
-  // NHỊP 3: Lồng tiếng Giọng Đọc Kể Chuyện MC & Báo hiệu chính xác thời điểm đọc xong câu (không bao giờ cắt ngang chữ!)
+  // Đồng bộ toàn bộ gói giọng kể chuyện đã tạo cuốn chiếu trên RAM Server về RAM Client (bỏ qua các cảnh chat tự do của người chơi)
+  useEffect(() => {
+    if (!speechEnabled || !Array.isArray(storyBeats) || storyBeats.length === 0) return undefined;
+
+    const narratablePhrases = [];
+    const seenKeys = new Set();
+    for (const beat of storyBeats) {
+      // Theo đặc tả v3: Không đọc các cảnh chat của người chơi (wolf_chat / village_chat có dialogueText)
+      if (!beat?.narration || beat.dialogueText) continue;
+      const k = getTtsCacheKey(beat.narration);
+      if (k && !seenKeys.has(k) && !storyAudioBuffersRef.current.has(k)) {
+        seenKeys.add(k);
+        narratablePhrases.push(beat.narration);
+      }
+    }
+    if (narratablePhrases.length === 0) return undefined;
+
+    const ctrl = new AbortController();
+    const vsProfileId = localStorage.getItem("mc_voice_profile_id") || "b5d182f3";
+    const batchUrl = import.meta.env.PROD
+      ? "https://masoi-server-2eca.onrender.com/api/tts-batch"
+      : "http://localhost:3001/api/tts-batch";
+
+    (async () => {
+      setStoryVoiceLoading(true);
+      let loadedAny = false;
+      const CHUNK = 12;
+      try {
+        for (let idx = 0; idx < narratablePhrases.length; idx += CHUNK) {
+          if (ctrl.signal.aborted) break;
+          const chunk = narratablePhrases.slice(idx, idx + CHUNK);
+          const resp = await fetch(batchUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phrases: chunk,
+              voice: vsProfileId,
+              speed: 0.82,
+              urgent: idx === 0,
+            }),
+            signal: ctrl.signal,
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+          if (data?.vsOnline === false && Object.values(data?.results || {}).every((v) => !v)) {
+            setStoryVoiceOffline(true);
+            break;
+          }
+          const results = data?.results || {};
+          let chunkLoaded = 0;
+          for (const raw of chunk) {
+            const b64 = results[raw.trim()];
+            if (b64) {
+              const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+              const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+              storyAudioBuffersRef.current.set(getTtsCacheKey(raw), ab);
+              chunkLoaded += 1;
+              loadedAny = true;
+            }
+          }
+          if (chunkLoaded > 0) {
+            setStoryVoiceOffline(false);
+            setStoryVoiceReadyTick((t) => t + 1);
+          }
+        }
+        if (!loadedAny && !ctrl.signal.aborted && storyAudioBuffersRef.current.size === 0) {
+          setStoryVoiceOffline(true);
+        }
+      } catch (err) {
+        if (err?.name !== "AbortError") {
+          setStoryVoiceOffline(true);
+        }
+      } finally {
+        if (!ctrl.signal.aborted) setStoryVoiceLoading(false);
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [storyBeats, speechEnabled]);
+
+  const currentBeatCacheKey =
+    currentBeat?.narration && !currentBeat?.dialogueText
+      ? getTtsCacheKey(currentBeat.narration)
+      : "";
+  const hasCurrentBeatAudio = Boolean(
+    currentBeatCacheKey &&
+      (storyVoiceReadyTick >= 0) &&
+      storyAudioBuffersRef.current.has(currentBeatCacheKey)
+  );
+  const shouldWaitCurrentBeatAudio =
+    !hasCurrentBeatAudio && storyVoiceLoading && !storyVoiceOffline;
+
+  // NHỊP 3: Lồng tiếng Giọng Đọc Kể Chuyện MC Clone (b5d182f3) qua WebAudio (thu trọn vào cả Loa & Video MP4/WebM — Tuyệt đối 0% speechSynthesis!)
   useEffect(() => {
     if (!currentBeat) return undefined;
     const beatId = currentBeat.id;
+    const audioEngine = getCinemaAudioEngine();
+    audioEngine?.stopVoice();
 
-    if (!speechEnabled || !window.speechSynthesis || !currentBeat.narration) {
+    // Bỏ qua giọng đọc nếu tắt loa, không có lời dẫn, hoặc là cảnh chat người chơi (wolf_chat / village_chat)
+    if (!speechEnabled || !currentBeat.narration || currentBeat.dialogueText) {
       setSpeechCompletedForBeatId(beatId);
       return undefined;
     }
 
+    const readyBuffer = hasCurrentBeatAudio
+      ? storyAudioBuffersRef.current.get(currentBeatCacheKey)
+      : null;
+
+    if (!readyBuffer) {
+      if (!shouldWaitCurrentBeatAudio) {
+        setSpeechCompletedForBeatId(beatId);
+        return undefined;
+      }
+      // Nếu gói chunk đầu đang tải về từ RAM Server (~50-300ms), đợi tối đa 1.8s; nếu quá hạn tự nhường nhịp để phim không bao giờ khựng
+      setSpeechCompletedForBeatId(null);
+      const waitTimer = setTimeout(() => {
+        setSpeechCompletedForBeatId(beatId);
+      }, 1800);
+      return () => clearTimeout(waitTimer);
+    }
+
     setSpeechCompletedForBeatId(null);
-    let settled = false;
+    let cancelled = false;
+    let settlePauseTimer = null;
     const markDone = () => {
-      if (settled) return;
-      settled = true;
+      if (cancelled) return;
+      cancelled = true;
       setSpeechCompletedForBeatId(beatId);
     };
 
-    // Bộ hẹn giờ bảo hiểm phòng trường hợp voice hệ điều hành treo không bắn sự kiện onend
-    const estReadMs = Math.max(4200, currentBeat.narration.length * 88) / recapSpeed;
-    const safetyTimer = setTimeout(markDone, estReadMs + 1400);
+    const estReadMs = Math.max(5500, currentBeat.narration.length * 105) / recapSpeed;
+    const safetyTimer = setTimeout(markDone, estReadMs + 2500);
 
-    const startSpeakTimer = setTimeout(() => {
-      try {
-        window.speechSynthesis.cancel();
-        const utter = new SpeechSynthesisUtterance(currentBeat.narration);
-        utter.lang = "vi-VN";
-        utter.rate = Math.min(1.25, Math.max(0.78, 0.88 * recapSpeed));
-        utter.pitch = 0.95;
-        utter.volume = 0.92;
-        const voices = window.speechSynthesis.getVoices?.() || [];
-        const viVoice = voices.find((v) => v.lang?.toLowerCase().startsWith("vi"));
-        if (viVoice) utter.voice = viVoice;
-        utter.onend = () => {
-          // Đệm lắng đọng cảm xúc 850ms sau khi MC vừa dứt lời!
-          setTimeout(markDone, 850);
-        };
-        utter.onerror = markDone;
-        window.speechSynthesis.speak(utter);
-      } catch {
+    const startSpeakTimer = setTimeout(async () => {
+      if (cancelled) return;
+      if (!audioEngine?.playVoiceArrayBuffer) {
+        markDone();
+        return;
+      }
+      audioEngine.setSpeakerMuted(!speechEnabled);
+      const playedOk = await audioEngine.playVoiceArrayBuffer(readyBuffer, recapSpeed);
+      if (cancelled) return;
+      if (playedOk) {
+        // Đệm lắng đọng cảm xúc 850ms sau khi MC vừa dứt lời!
+        settlePauseTimer = setTimeout(markDone, 850);
+      } else {
         markDone();
       }
-    }, 320);
+    }, 280);
 
     return () => {
+      cancelled = true;
       clearTimeout(safetyTimer);
       clearTimeout(startSpeakTimer);
+      if (settlePauseTimer) clearTimeout(settlePauseTimer);
+      audioEngine?.stopVoice();
     };
-  }, [currentBeat?.id, currentBeat?.narration, speechEnabled, recapSpeed]);
+  }, [
+    currentBeat?.id,
+    currentBeat?.narration,
+    currentBeat?.dialogueText,
+    currentBeatCacheKey,
+    hasCurrentBeatAudio,
+    shouldWaitCurrentBeatAudio,
+    speechEnabled,
+    recapSpeed,
+  ]);
 
   // Dọn dẹp tài nguyên khi rời màn hình Recap
   useEffect(() => {
     const audioEngine = getCinemaAudioEngine();
     audioEngine?.setAmbientActive(true);
     return () => {
-      try {
-        window.speechSynthesis?.cancel();
-      } catch {
-        // ignore
-      }
+      audioEngine?.stopVoice();
       audioEngine?.setAmbientActive(false);
       if (activeRecorderRef.current) {
         activeRecorderRef.current.stop();
@@ -2357,6 +2478,15 @@ export default function EndGameRecap({
             <span className="vf-rec-text">PHIM KỂ CHUYỆN</span>
             <span className="vf-timecode">{timecodeLabel}</span>
           </div>
+          {speechEnabled && storyVoiceOffline && (
+            <div
+              className="vf-rec-pill"
+              title="Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh"
+              style={{ borderColor: "rgba(248, 113, 113, 0.45)", color: "#fca5a5" }}
+            >
+              <span>● Voice Offline</span>
+            </div>
+          )}
         </div>
 
         <div className="vf-right-cluster">
@@ -2759,7 +2889,7 @@ export default function EndGameRecap({
                 className="director-btn"
                 onClick={() => {
                   setSpeechEnabled((prev) => {
-                    if (prev) window.speechSynthesis?.cancel();
+                    if (prev) getCinemaAudioEngine()?.stopVoice();
                     return !prev;
                   });
                 }}

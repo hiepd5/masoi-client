@@ -11,6 +11,7 @@ import {
   DEFAULT_SCENE_PRESET_ID,
   loadScenePresetsIndex,
 } from "../3d/editor/defaultVillageLayout.js";
+import { getTtsCacheKey, normalizeTtsText } from "../utils/ttsTextUtils.js";
 import "./Room.css";
 
 const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
@@ -44,10 +45,12 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const lastSpokenRef = useRef(-1);
   const currentAudioRef = useRef(null);
 
-  // Pre-gen voice cache: Map<phrase, blobURL>
+  // Pre-gen voice cache: Map<normalizedKey, blobURL>
   const voiceCacheRef = useRef(new Map());
+  const pregenRosterKeyRef = useRef("");
   const [voicePregening, setVoicePregening] = useState(false);
   const [voicePregenProgress, setVoicePregenProgress] = useState({ done: 0, total: 0 });
+  const [vsServerOffline, setVsServerOffline] = useState(false);
 
   // Danh sách Bối cảnh 3D (Scene Presets) cho Chủ Phòng chọn ở sảnh chờ
   const [scenePresets, setScenePresets] = useState([]);
@@ -193,65 +196,127 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   const vsProfileId = localStorage.getItem('mc_voice_profile_id') || 'b5d182f3';
 
-  // Build danh sach tat ca cau dynamic co ten nguoi choi
-  function buildDynamicPhrases(players) {
-    const names = players.map(p => p.name).filter(Boolean);
-    const phrases = new Set();
-    for (const name of names) {
-      phrases.add(`${name} đã không qua khỏi đêm qua.`);
-      phrases.add(`Làng đã quyết định! ${name} sẽ rời khỏi ván đấu. Xin hãy giữ im lặng tuyệt đối.`);
-      phrases.add(`Mời ${name} lên biện hộ.`);
-      phrases.add(`Làng đã tha ${name}! Không ai bị xử tử hôm nay.`);
-    }
-    // Cac cap tinh nhan (combination 2 nguoi)
-    for (let i = 0; i < names.length; i++) {
-      for (let j = i + 1; j < names.length; j++) {
-        phrases.add(`💔 Tình đoạn tuyệt đoạn! Tình Nhân ${names[i]} và ${names[j]} không chịu nổi nỗi đau đã gục ngã theo!`);
-      }
-    }
-    // Cau co nhieu nguoi chet
-    for (let i = 0; i < names.length; i++) {
-      for (let j = i + 1; j < names.length; j++) {
-        phrases.add(`${names[i]} và ${names[j]} đã không qua khỏi đêm qua.`);
-      }
-    }
-    return [...phrases];
+  function setCachedVoiceBlobUrl(rawText, blob) {
+    const key = getTtsCacheKey(rawText);
+    if (!key || !blob || blob.size < 500) return null;
+    const prevUrl = voiceCacheRef.current.get(key);
+    if (prevUrl) return prevUrl;
+    const url = URL.createObjectURL(blob);
+    voiceCacheRef.current.set(key, url);
+    return url;
   }
 
-  // Pre-gen tat ca phrase -> cache vao RAM Map
-  async function pregenVoice(players) {
+  // Xây dựng bộ câu thông báo động khớp 1:1 với gameController.js (sau khi đã bù đủ AI Bot, không nổ tổ hợp O(N^2))
+  function buildDynamicPhrases(players) {
+    const validPlayers = (players || []).filter((p) => p && p.name);
+    const phrases = [];
+    const seen = new Set();
+    const addUnique = (s) => {
+      const k = getTtsCacheKey(s);
+      if (k && !seen.has(k)) {
+        seen.add(k);
+        phrases.push(s);
+      }
+    };
+
+    for (const p of validPlayers) {
+      const name = p.name;
+      const defenseSec = p.isBot ? 8 : 60;
+      addUnique(`Trời đã sáng. Đêm qua ${name} đã không qua khỏi.`);
+      addUnique(`${name} bị đề cử nhiều nhất. Mời lần lượt lên biện hộ.`);
+      addUnique(`🎤 Mời ${name} lên biện hộ. (${defenseSec} giây)`);
+      addUnique(`⚖️ Mời cả làng vote cho ${name}: Treo cổ hay Tha.`);
+      addUnique(`Làng đã quyết định! ${name} sẽ rời khỏi ván đấu. Xin hãy giữ im lặng tuyệt đối.`);
+      addUnique(`Làng đã tha ${name}! Không ai bị xử tử hôm nay.`);
+    }
+    return phrases;
+  }
+
+  // Chia nhỏ theo từng cụm 18 câu để cập nhật thanh tiến độ mượt, không chạm trần 160 câu hay timeout Render
+  async function pregenVoice(players, abortSignal) {
     if (!mcVoiceEnabled) return;
-    const phrases = buildDynamicPhrases(players);
-    if (phrases.length === 0) return;
+    const allPhrases = buildDynamicPhrases(players).filter(
+      (p) => !voiceCacheRef.current.has(getTtsCacheKey(p))
+    );
+    if (allPhrases.length === 0) return;
+
+    const CHUNK_SIZE = 18;
+    const serverBatchUrl = import.meta.env.PROD
+      ? 'https://masoi-server-2eca.onrender.com/api/tts-batch'
+      : 'http://localhost:3001/api/tts-batch';
+
     setVoicePregening(true);
-    setVoicePregenProgress({ done: 0, total: phrases.length });
+    let done = 0;
+    let successCount = 0;
+    setVoicePregenProgress({ done: 0, total: allPhrases.length });
+
     try {
-      const serverUrl = import.meta.env.PROD
-        ? 'https://masoi-server-2eca.onrender.com/api/tts-batch'
-        : 'http://localhost:3001/api/tts-batch';
-      const resp = await fetch(serverUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phrases, speed: 0.82 }),
-      });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const { results } = await resp.json();
-      let done = 0;
-      for (const [text, b64] of Object.entries(results)) {
-        if (b64) {
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          const blob = new Blob([bytes], { type: 'audio/mpeg' });
-          voiceCacheRef.current.set(text, URL.createObjectURL(blob));
+      for (let idx = 0; idx < allPhrases.length; idx += CHUNK_SIZE) {
+        if (abortSignal?.aborted) break;
+        const chunk = allPhrases.slice(idx, idx + CHUNK_SIZE);
+        const resp = await fetch(serverBatchUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phrases: chunk, voice: vsProfileId, speed: 0.82 }),
+          signal: abortSignal,
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (data?.vsOnline === false) {
+          setVsServerOffline(true);
+          break;
         }
-        done++;
-        setVoicePregenProgress({ done, total: phrases.length });
+        const results = data?.results || {};
+        for (const phrase of chunk) {
+          const b64 = results[phrase.trim()];
+          if (b64) {
+            const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+            const blob = new Blob([bytes], { type: 'audio/mpeg' });
+            setCachedVoiceBlobUrl(phrase, blob);
+            successCount += 1;
+          }
+          done += 1;
+        }
+        if (successCount > 0) setVsServerOffline(false);
+        setVoicePregenProgress({ done, total: allPhrases.length });
+      }
+      if (successCount === 0 && done > 0) {
+        setVsServerOffline(true);
       }
     } catch (e) {
-      console.warn('[VoicePregen] failed:', e.message);
+      if (e?.name !== 'AbortError') {
+        console.warn('[VoicePregen] failed:', e.message);
+        setVsServerOffline(true);
+      }
     } finally {
       setVoicePregening(false);
     }
   }
+
+  // Giải phóng Blob URL cũ khi quay lại Sảnh Chờ; tự động kích hoạt Pre-gen cho TẤT CẢ người chơi khi vào ván (đã có đủ AI Bot)
+  useEffect(() => {
+    if (!room?.phase || room.phase === 'lobby') {
+      pregenRosterKeyRef.current = '';
+      if (voiceCacheRef.current.size > 0) {
+        for (const blobUrl of voiceCacheRef.current.values()) {
+          try { URL.revokeObjectURL(blobUrl); } catch {}
+        }
+        voiceCacheRef.current.clear();
+      }
+      setVoicePregening(false);
+      return undefined;
+    }
+
+    if (room.phase === 'playing' && mcVoiceEnabled && Array.isArray(room.players) && room.players.length > 0) {
+      const rosterSig = `${room.code}_${room.players.map((p) => p.name).join('|')}`;
+      if (pregenRosterKeyRef.current === rosterSig) return undefined;
+      pregenRosterKeyRef.current = rosterSig;
+      const ctrl = new AbortController();
+      pregenVoice(room.players, ctrl.signal);
+      return () => ctrl.abort();
+    }
+    return undefined;
+  }, [room?.phase, room?.code, room?.players?.length, mcVoiceEnabled]);
 
   // Kiểm tra VoiceStudio có sẵn không (cache 30s để không spam; Circuit Breaker 60s cho Render Proxy)
   const vsAvailableRef = useRef(null); // null = unknown, true/false
@@ -279,9 +344,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     return vsAvailableRef.current;
   }
 
-  // Gọi VoiceStudio OpenAI-compat /v1/audio/speech → trả blob URL → play
+  // Gọi VoiceStudio OpenAI-compat /v1/audio/speech → lưu Cache RAM → play
   async function speakVoiceStudio(text) {
     if (!VOICESTUDIO_URL) return false; // production HTTPS → skip
+    const cached = voiceCacheRef.current.get(getTtsCacheKey(text));
+    if (cached) return await playMp3(cached);
+    const cleanInput = normalizeTtsText(text);
+    if (!cleanInput) return false;
     try {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), 14000);
@@ -295,7 +364,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         body: JSON.stringify({
           model: 'omnivoice',
           voice: vsProfileId || 'b5d182f3',
-          input: text,
+          input: cleanInput,
           response_format: 'mp3',
           speed: 0.82,
         }),
@@ -305,23 +374,27 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const ctype = (resp.headers.get('content-type') || '').toLowerCase();
       if (!resp.ok || (!ctype.includes('audio') && !ctype.includes('octet-stream'))) {
         vsAvailableRef.current = false;
+        setVsServerOffline(true);
         return false;
       }
       const blob = await resp.blob();
       if (blob.size < 500) return false;
-      return await playMp3(URL.createObjectURL(blob));
+      setVsServerOffline(false);
+      const blobUrl = setCachedVoiceBlobUrl(text, blob);
+      return blobUrl ? await playMp3(blobUrl) : false;
     } catch {
       vsAvailableRef.current = false;
+      setVsServerOffline(true);
       return false;
     }
   }
 
-  // Gọi /api/tts trên server Render (HTTPS-safe, không bị CORS) kèm Circuit Breaker 60s
+  // Gọi /api/tts trên server Render (tra LRU RAM Cache ~5ms hoặc qua ngrok) kèm Circuit Breaker 10s
   async function speakViaServerProxy(text) {
-    if (Date.now() < proxyCooldownUntilRef.current) return false;
-    // Uu tien cache RAM truoc
-    const cached = voiceCacheRef.current.get(text.trim());
+    // Ưu tiên 1: Cache RAM ở Client (0ms)
+    const cached = voiceCacheRef.current.get(getTtsCacheKey(text));
     if (cached) return await playMp3(cached);
+    if (Date.now() < proxyCooldownUntilRef.current) return false;
     try {
       const ctrl = new AbortController();
       const tid = setTimeout(() => ctrl.abort(), 13000);
@@ -335,16 +408,21 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const ctype = (resp.headers.get('content-type') || '').toLowerCase();
       if (!resp.ok || !ctype.includes('audio')) {
         proxyCooldownUntilRef.current = Date.now() + 10000;
+        setVsServerOffline(true);
         return false;
       }
       const blob = await resp.blob();
       if (blob.size < 500) {
         proxyCooldownUntilRef.current = Date.now() + 10000;
+        setVsServerOffline(true);
         return false;
       }
-      return await playMp3(URL.createObjectURL(blob));
+      setVsServerOffline(false);
+      const blobUrl = setCachedVoiceBlobUrl(text, blob);
+      return blobUrl ? await playMp3(blobUrl) : false;
     } catch {
       proxyCooldownUntilRef.current = Date.now() + 10000;
+      setVsServerOffline(true);
       return false;
     }
   }
@@ -356,15 +434,15 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     return null;
   }
 
-  function playMp3(src) {
+  // Giữ nguyên Blob URL nằm trong voiceCacheRef xuyên suốt ván đấu (chỉ dọn khi về Lobby để phát lại không bao giờ lỗi 404)
+  function playMp3(src, { revokeOnEnd = false } = {}) {
     return new Promise((resolve) => {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
-      const isBlob = typeof src === 'string' && src.startsWith('blob:');
       const cleanup = (ok) => {
-        if (isBlob) {
+        if (revokeOnEnd && typeof src === 'string' && src.startsWith('blob:')) {
           try { URL.revokeObjectURL(src); } catch {}
         }
         resolve(ok);
@@ -378,39 +456,6 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     });
   }
 
-  // Browser TTS fallback cuối cùng
-  function speakTTS(text, voice) {
-    return new Promise((resolve) => {
-      if (!window.speechSynthesis) { resolve(); return; }
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'vi-VN';
-      utter.rate = 0.82;
-      utter.pitch = 0.95;
-      utter.volume = 0.9;
-      if (voice) utter.voice = voice;
-      utter.onend = resolve;
-      utter.onerror = resolve;
-      window.speechSynthesis.speak(utter);
-    });
-  }
-
-  function pickBestViVoice() {
-    const voices = window.speechSynthesis?.getVoices() || [];
-    const vi = voices.filter(v => v.lang === 'vi-VN' || v.lang === 'vi');
-    const preferred = [
-      'Microsoft HoaiMy Online (Natural)',
-      'Microsoft NamMinh Online (Natural)',
-      'Microsoft HoaiMy', 'Microsoft NamMinh',
-      'Google Tiếng Việt', 'Google Vietnamese',
-    ];
-    for (const name of preferred) {
-      const found = vi.find(v => v.name.includes(name));
-      if (found) return found;
-    }
-    return vi.find(v => v.name.toLowerCase().includes('online')) || vi[0] || null;
-  }
-
   useEffect(() => {
     if (!mcVoiceEnabled) return;
     if (mcLog.length === 0) return;
@@ -418,34 +463,53 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
 
     async function playAll() {
-      const voice = null; // speechSynthesis disabled
-      // Kiểm tra VoiceStudio 1 lần cho cả batch
       const vsOnline = await checkVoiceStudio();
+      const playerNames = (room?.players || []).map((p) => p?.name).filter(Boolean);
 
       for (const msg of newMessages) {
         const text = msg.text || msg;
+        if (!text) continue;
 
-        // Ưu tiên 1: MP3 file pre-generated (nếu file chưa kịp tạo / 404 sẽ trả false để rơi mượt xuống TTS!)
-        const audioSrc = findAudioFile(text);
-        if (audioSrc) {
-          const mp3Played = await playMp3(audioSrc);
-          if (mp3Played) continue;
+        // Ưu tiên 1: Nếu câu đã có sẵn bản Voice Clone cá nhân hóa trong Cache RAM -> Phát ngay 0ms!
+        const cachedBlobUrl = voiceCacheRef.current.get(getTtsCacheKey(text));
+        if (cachedBlobUrl) {
+          const cachedOk = await playMp3(cachedBlobUrl);
+          if (cachedOk) continue;
         }
 
-        // Ưu tiên 2: Nếu có URL trực tiếp (Local HTTP localhost:3900 hoặc mc_vs_url override) → gọi thẳng 0 độ trễ
+        const isPersonalized =
+          text.includes('AI Bot') || playerNames.some((n) => text.includes(n));
+
+        // Ưu tiên 2A (Câu chuyển pha chung không chứa tên riêng): Phát ngay 27 file MP3 tĩnh trên Vercel (0ms)
+        if (!isPersonalized) {
+          const staticSrc = findAudioFile(text);
+          if (staticSrc) {
+            const mp3Played = await playMp3(staticSrc);
+            if (mp3Played) continue;
+          }
+        }
+
+        // Ưu tiên 2B (Câu có tên người chơi hoặc chưa có MP3 tĩnh): Gọi VoiceStudio / Server RAM Cache (~5ms nếu Server đã tạo trước!)
+        let dynamicPlayed = false;
         if (VOICESTUDIO_URL) {
           if (vsOnline) {
-            const ok = await speakVoiceStudio(text);
-            if (ok) continue;
+            dynamicPlayed = await speakVoiceStudio(text);
+          } else {
+            dynamicPlayed = await speakViaServerProxy(text);
           }
         } else {
-          // Ưu tiên 2B (Production HTTPS): Gọi /api/tts trên Render → Ngrok static tunnel (kèm Circuit Breaker 60s)
-          const proxyOk = await speakViaServerProxy(text);
-          if (proxyOk) continue;
+          dynamicPlayed = await speakViaServerProxy(text);
         }
+        if (dynamicPlayed) continue;
 
-        // Ưu tiên 3: Bỏ qua — không dùng speechSynthesis (tránh giọng tiếng Anh)
-        // Nếu MP3 + server proxy đều fail → im lặng, không đọc sai giọng
+        // Ưu tiên 3 (Khi PC cá nhân tắt / Offline): Nếu câu trùng mẫu MP3 tĩnh chung (begin_vote, hang_announce, spare_announce) thì phát MP3 tiếng Việt
+        if (isPersonalized) {
+          const fallbackStaticSrc = findAudioFile(text);
+          if (fallbackStaticSrc) {
+            await playMp3(fallbackStaticSrc);
+          }
+        }
+        // Tuyệt đối 0% window.speechSynthesis — giữ im lặng sạch sẽ thay vì đọc giọng Tiếng Anh!
       }
     }
 
@@ -612,9 +676,6 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     socketRef.current.emit("game:start", {}, (res) => {
       if (!res?.ok) {
         setError(res?.error || "Không thể bắt đầu game.");
-      } else {
-        // Pre-gen voice ngay khi server xac nhan game bat dau
-        pregenVoice(room.players || []);
       }
     });
   }
@@ -639,6 +700,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         onLeave={handleLeave}
         voicePregening={voicePregening}
         voicePregenProgress={voicePregenProgress}
+        vsServerOffline={vsServerOffline}
       />
     );
   }

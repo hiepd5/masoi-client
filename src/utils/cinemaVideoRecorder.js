@@ -27,6 +27,68 @@ export function getCinemaAudioEngine() {
     speakerGain.connect(ctx.destination);
     masterGain.connect(recordDest);
 
+    // Kênh giọng đọc MC Clone riêng biệt: vừa phát ra loa cực nét (0.95) vừa trộn thẳng vào luồng thu Video MP4/WebM!
+    const voiceGain = ctx.createGain();
+    voiceGain.gain.value = 1.0;
+    const voiceSpeakerGain = ctx.createGain();
+    voiceSpeakerGain.gain.value = 0.95;
+    const voiceRecordGain = ctx.createGain();
+    voiceRecordGain.gain.value = 0.95;
+    voiceGain.connect(voiceSpeakerGain);
+    voiceSpeakerGain.connect(ctx.destination);
+    voiceGain.connect(voiceRecordGain);
+    voiceRecordGain.connect(recordDest);
+
+    let activeVoiceSource = null;
+    const decodedVoiceCache = new WeakMap();
+
+    const stopVoice = () => {
+      if (activeVoiceSource) {
+        try {
+          activeVoiceSource.onended = null;
+          activeVoiceSource.stop();
+          activeVoiceSource.disconnect();
+        } catch {
+          // ignore already stopped
+        }
+        activeVoiceSource = null;
+      }
+    };
+
+    const playVoiceArrayBuffer = async (arrayBuffer, playbackRate = 1) => {
+      if (!arrayBuffer || arrayBuffer.byteLength < 500) return false;
+      stopVoice();
+      try {
+        if (ctx.state === "suspended") {
+          await ctx.resume().catch(() => {});
+        }
+        let audioBuffer = decodedVoiceCache.get(arrayBuffer);
+        if (!audioBuffer) {
+          audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+          decodedVoiceCache.set(arrayBuffer, audioBuffer);
+        }
+        return await new Promise((resolve) => {
+          const src = ctx.createBufferSource();
+          src.buffer = audioBuffer;
+          src.playbackRate.value = Math.min(1.5, Math.max(0.7, Number(playbackRate) || 1));
+          src.connect(voiceGain);
+          activeVoiceSource = src;
+          src.onended = () => {
+            if (activeVoiceSource === src) activeVoiceSource = null;
+            try {
+              src.disconnect();
+            } catch {
+              // ignore
+            }
+            resolve(true);
+          };
+          src.start(0);
+        });
+      } catch {
+        return false;
+      }
+    };
+
     // Đệm âm trầm Bắc Âu rất nhẹ (giữ luồng AudioTrack của MediaRecorder luôn thông suốt không bị ngắt frame câm)
     const droneOsc = ctx.createOscillator();
     const droneFilter = ctx.createBiquadFilter();
@@ -50,6 +112,7 @@ export function getCinemaAudioEngine() {
 
     const setSpeakerMuted = (muted) => {
       speakerGain.gain.value = muted ? 0 : 0.48;
+      voiceSpeakerGain.gain.value = muted ? 0 : 0.95;
     };
 
     const playTone = (freqStart, freqEnd, durationSec, type = "sine", peakGain = 0.16, delaySec = 0) => {
@@ -139,6 +202,8 @@ export function getCinemaAudioEngine() {
       setAmbientActive,
       setSpeakerMuted,
       triggerBeatSound,
+      playVoiceArrayBuffer,
+      stopVoice,
     };
     return sharedAudioEngine;
   } catch {
