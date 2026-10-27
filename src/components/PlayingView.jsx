@@ -16,6 +16,8 @@ import { isDevArchitectAllowed } from '../3d/editor/defaultVillageLayout.js';
 
 const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
 
+const EMPTY_ARRAY = Object.freeze([]);
+
 
 const PHASE_LABELS = {
   role_reveal: '🎭 Nhận Vai Định Mệnh',
@@ -68,9 +70,12 @@ export default function PlayingView({
   voiceRecheckTick = 0,
 }) {
   const g = room.game;
-  // Dùng playerId ổn định (không thay đổi khi reconnect)
+  // Dùng playerId ổn định (không thay đổi khi reconnect), kèm fallback sessionToken sống từ room.players
   const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
-  const me = room.players.find((p) => p.id === myPlayerId);
+  const me =
+    room.players.find((p) => p.id === myPlayerId) ||
+    room.players.find((p) => p.sessionToken);
+  const liveSessionToken = me?.sessionToken || "";
   
   const [selectedId, setSelectedId] = useState(null);
   const [cupidTargets, setCupidTargets] = useState([]);
@@ -1595,9 +1600,9 @@ export default function PlayingView({
       {/* EndGame Replay Không Gian Thật 100vw: Phát lại băng ghi hình tương tác thật bằng Nhân vật thật + Khung Ngắm Máy Quay */}
       {g.winner && g.history && (
         <EndGameRecap 
-          history={g.history} 
-          replayTimeline={g.replayTimeline || []}
-          awards={g.awards || []}
+          history={g.history || EMPTY_ARRAY} 
+          replayTimeline={g.replayTimeline || EMPTY_ARRAY}
+          awards={g.awards || EMPTY_ARRAY}
           isHost={me?.isHost} 
           onRestart={() => socketRef.current.emit("room:restart")}
           onAnimate={setRecapAnimation}
@@ -1606,9 +1611,10 @@ export default function PlayingView({
           onToggleViewMode={toggleViewMode}
           showPostGameChat={showPostGameChat}
           onTogglePostGameChat={() => setShowPostGameChat((v) => !v)}
-          players={room.players}
+          players={room.players || EMPTY_ARRAY}
           winner={g.winner}
-          loversPublic={g.loversPublic || []}
+          loversPublic={g.loversPublic || EMPTY_ARRAY}
+          sessionToken={liveSessionToken}
           mcVoiceEnabled={mcVoiceEnabled}
           vsServerOffline={vsServerOffline}
           vsStatusChecking={vsStatusChecking}

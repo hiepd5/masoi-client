@@ -1851,6 +1851,7 @@ export default function EndGameRecap({
   players = [],
   winner = "village",
   loversPublic = [],
+  sessionToken = "",
   mcVoiceEnabled = true,
   vsServerOffline = false,
   vsStatusChecking = false,
@@ -1863,12 +1864,23 @@ export default function EndGameRecap({
   const [recapSpeed, setRecapSpeed] = useState(1);
   const [speechEnabled, setSpeechEnabled] = useState(() => mcVoiceEnabled !== false);
   const storyAudioBuffersRef = useRef(new Map());
-  const [storyVoiceLoading, setStoryVoiceLoading] = useState(false);
+  // Khởi tạo true ngay ở Render #1 khi bật loa để Cảnh 0 (Mở Màn) luôn chờ đợt quét Cache đầu tiên, tuyệt đối không trôi sớm!
+  const [storyVoiceLoading, setStoryVoiceLoading] = useState(() => mcVoiceEnabled !== false);
   const [storyVoiceOffline, setStoryVoiceOffline] = useState(false);
+  const [voiceHttpErrorCode, setVoiceHttpErrorCode] = useState(null);
+  const [voiceBlockedByGesture, setVoiceBlockedByGesture] = useState(false);
+  const [unlockReplayTick, setUnlockReplayTick] = useState(0);
+  const [autoRetryTick, setAutoRetryTick] = useState(0);
   const [storyVoiceReadyTick, setStoryVoiceReadyTick] = useState(0);
   const [storyVoiceLoadedCount, setStoryVoiceLoadedCount] = useState(0);
   const [storyVoiceTotalCount, setStoryVoiceTotalCount] = useState(0);
   const beatIndexRef = useRef(0);
+  const voiceBlockedRef = useRef(false);
+  voiceBlockedRef.current = voiceBlockedByGesture;
+  const sessionTokenRef = useRef(sessionToken);
+  sessionTokenRef.current = sessionToken || getSession()?.sessionToken || "";
+  const vsServerOfflineRef = useRef(vsServerOffline);
+  vsServerOfflineRef.current = vsServerOffline;
   const [followDirector, setFollowDirector] = useState(true);
   const [relockToken, setRelockToken] = useState(0);
   const [drawerTab, setDrawerTab] = useState(() => (viewMode === "2d" ? "cards" : null));
@@ -1897,6 +1909,33 @@ export default function EndGameRecap({
     () => buildTrueSpaceReplayBeats(replayTimeline, history, players, awards, winner, loversPublic),
     [replayTimeline, history, players, awards, winner, loversPublic]
   );
+
+  // Chữ ký kịch bản lời dẫn bất biến (storyVoicePlanKey): giúp useEffect tải Voice KHÔNG BAO GIỜ bị ctrl.abort() khi sân khấu 3D re-render mỗi 280ms!
+  const orderedVoicePlan = useMemo(() => {
+    const orderedItems = [];
+    const itemByKey = new Map();
+    storyBeats.forEach((beat, idx) => {
+      // Theo đặc tả v3: Không đọc các cảnh chat của người chơi (wolf_chat / village_chat có dialogueText)
+      if (!beat?.narration || beat.dialogueText) return;
+      const k = getTtsCacheKey(beat.narration);
+      if (!k) return;
+      let entry = itemByKey.get(k);
+      if (!entry) {
+        entry = { key: k, raw: beat.narration, beatIndices: [idx] };
+        itemByKey.set(k, entry);
+        orderedItems.push(entry);
+      } else {
+        entry.beatIndices.push(idx);
+      }
+    });
+    const planKey = orderedItems.map((it) => it.key).join("\n");
+    return { orderedItems, itemByKey, planKey, totalUnique: orderedItems.length };
+  }, [storyBeats]);
+
+  const voicePlanRef = useRef(orderedVoicePlan);
+  voicePlanRef.current = orderedVoicePlan;
+  const storyBeatsRef = useRef(storyBeats);
+  storyBeatsRef.current = storyBeats;
 
   const safeBeatIdx = Math.min(beatIndex, Math.max(0, storyBeats.length - 1));
   beatIndexRef.current = safeBeatIdx;
@@ -1954,6 +1993,11 @@ export default function EndGameRecap({
     window.addEventListener("keydown", handleKeyDown);
     const handleUnlockGesture = () => {
       unlockCinemaAudioEngine();
+      if (voiceBlockedRef.current) {
+        voiceBlockedRef.current = false;
+        setVoiceBlockedByGesture(false);
+        setUnlockReplayTick((t) => t + 1);
+      }
     };
     window.addEventListener("pointerdown", handleUnlockGesture, { passive: true });
     window.addEventListener("touchstart", handleUnlockGesture, { passive: true });
@@ -2123,77 +2167,119 @@ export default function EndGameRecap({
     onAnimate,
   ]);
 
-  // Khi trạng thái Voice trên Room vừa hồi phục (Online), tự xóa cờ Offline cũ để nạp ngay gói giọng kể chuyện
+  // Khi trạng thái Voice trên Room vừa hồi phục (Online) hoặc vừa nhận được sessionToken mới sau lỗi 401, tự động nạp lại không cắt ngang luồng đang chạy!
   useEffect(() => {
-    if (!vsServerOffline) {
+    if (!vsServerOffline && storyVoiceOffline) {
       setStoryVoiceOffline(false);
-    }
-  }, [vsServerOffline, voiceRecheckTick]);
-
-  // Đồng bộ gói giọng kể chuyện 2 giai đoạn:
-  // - Giai đoạn 1 (cacheOnly: true, <80ms): Hút tức thì toàn bộ câu đã tạo cuốn chiếu trên RAM Server để Cảnh 0 cất tiếng ngay ở 0.28s!
-  // - Giai đoạn 2 (Streaming từng cảnh CHUNK=1 theo con trỏ beatIndexRef): Nạp ưu tiên đúng cảnh đang xem/sắp tới, không bao giờ nghẽn cả cụm 8 câu!
-  useEffect(() => {
-    if (!speechEnabled || !Array.isArray(storyBeats) || storyBeats.length === 0) return undefined;
-
-    const orderedItems = [];
-    const itemByKey = new Map();
-    storyBeats.forEach((beat, idx) => {
-      // Theo đặc tả v3: Không đọc các cảnh chat của người chơi (wolf_chat / village_chat có dialogueText)
-      if (!beat?.narration || beat.dialogueText) return;
-      const k = getTtsCacheKey(beat.narration);
-      if (!k) return;
-      let entry = itemByKey.get(k);
-      if (!entry) {
-        entry = { key: k, raw: beat.narration, beatIndices: [idx] };
-        itemByKey.set(k, entry);
-        orderedItems.push(entry);
-      } else {
-        entry.beatIndices.push(idx);
+      if (!storyVoiceLoading) {
+        setAutoRetryTick((t) => t + 1);
       }
-    });
+    }
+  }, [vsServerOffline, storyVoiceOffline, storyVoiceLoading]);
 
+  useEffect(() => {
+    if (sessionToken && voiceHttpErrorCode === 401 && !storyVoiceLoading) {
+      setVoiceHttpErrorCode(null);
+      setAutoRetryTick((t) => t + 1);
+    }
+  }, [sessionToken, voiceHttpErrorCode, storyVoiceLoading]);
+
+  // Đồng bộ gói giọng kể chuyện 2 giai đoạn bất biến (0% Self-Abort):
+  // - Giai đoạn 1 (cacheOnly: true): Hút tức thì toàn bộ câu đã tạo cuốn chiếu trên RAM Server để Cảnh 0 cất tiếng ngay!
+  // - Giai đoạn 2 (Adaptive Urgent Batch): Ưu tiên 1 câu cảnh đang xem để phát ngay, sau đó gom tối đa 3 câu kế tiếp/lượt lấp đầy 21/21 siêu tốc!
+  useEffect(() => {
+    const plan = voicePlanRef.current;
+    const orderedItems = plan?.orderedItems || [];
     const totalUnique = orderedItems.length;
     setStoryVoiceTotalCount(totalUnique);
 
     const syncLoadedCount = () => {
+      const latestItems = voicePlanRef.current?.orderedItems || orderedItems;
       let ready = 0;
-      for (const it of orderedItems) {
+      for (const it of latestItems) {
         if (storyAudioBuffersRef.current.has(it.key)) ready += 1;
       }
       setStoryVoiceLoadedCount(ready);
       return ready;
     };
 
-    if (totalUnique === 0 || syncLoadedCount() >= totalUnique) {
+    if (!speechEnabled || totalUnique === 0 || syncLoadedCount() >= totalUnique) {
       setStoryVoiceLoading(false);
       return undefined;
     }
 
     const storeBase64Audio = (cacheKey, b64) => {
+      if (!cacheKey || !b64 || typeof b64 !== "string") return false;
       const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      if (bytes.byteLength < 500) return false;
       const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       storyAudioBuffersRef.current.set(cacheKey, ab);
+      return true;
     };
 
-    const pickNextMissingItem = (attemptsByKey, maxAttempts) => {
-      const curIdx = beatIndexRef.current || 0;
-      const totalBeats = storyBeats.length;
-      for (let offset = 0; offset < totalBeats; offset += 1) {
+    // Tra cứu kép (raw.trim + chuẩn hóa getTtsCacheKey) chống trượt khóa Unicode NFC/NFD 100%
+    const ingestBatchResults = (resultsObj, requestedRaws = []) => {
+      if (!resultsObj || typeof resultsObj !== "object") return 0;
+      let added = 0;
+      for (const raw of requestedRaws) {
+        const directB64 = resultsObj[raw] || resultsObj[raw.trim()];
+        const k = getTtsCacheKey(raw);
+        if (directB64 && k && !storyAudioBuffersRef.current.has(k)) {
+          if (storeBase64Audio(k, directB64)) added += 1;
+        }
+      }
+      for (const [resKey, b64] of Object.entries(resultsObj)) {
+        if (!b64 || typeof b64 !== "string") continue;
+        const normKey = getTtsCacheKey(resKey);
+        if (normKey && !storyAudioBuffersRef.current.has(normKey)) {
+          if (storeBase64Audio(normKey, b64)) added += 1;
+        }
+      }
+      return added;
+    };
+
+    const pickNextMissingBatch = (attemptsByKey, maxAttempts) => {
+      const latestBeats = storyBeatsRef.current || [];
+      const latestItemByKey = voicePlanRef.current?.itemByKey || plan.itemByKey;
+      const totalBeats = latestBeats.length;
+      if (totalBeats === 0) return [];
+
+      const curIdx = Math.min(Math.max(0, beatIndexRef.current || 0), totalBeats - 1);
+
+      // 1. Nếu chính cảnh đang chiếu chưa có MP3 -> nạp đơn lẻ [1 câu] ưu tiên tuyệt đối để phát tiếng ngay lập tức!
+      const curBeat = latestBeats[curIdx];
+      if (curBeat?.narration && !curBeat.dialogueText) {
+        const curKey = getTtsCacheKey(curBeat.narration);
+        const curItem = curKey ? latestItemByKey.get(curKey) : null;
+        if (
+          curItem &&
+          !storyAudioBuffersRef.current.has(curItem.key) &&
+          (attemptsByKey.get(curItem.key) || 0) < maxAttempts
+        ) {
+          return [curItem];
+        }
+      }
+
+      // 2. Khi cảnh hiện tại đã có tiếng (đang phát 5-6s), gom tối đa 3 cảnh kế tiếp trong 1 chuyến HTTP để nạp cuốn chiếu mượt 0ms chờ!
+      const batch = [];
+      const pickedKeys = new Set();
+      for (let offset = 1; offset <= totalBeats && batch.length < 3; offset += 1) {
         const bIdx = (curIdx + offset) % totalBeats;
-        const beat = storyBeats[bIdx];
+        const beat = latestBeats[bIdx];
         if (!beat?.narration || beat.dialogueText) continue;
         const k = getTtsCacheKey(beat.narration);
-        const item = k ? itemByKey.get(k) : null;
+        const item = k ? latestItemByKey.get(k) : null;
         if (
           item &&
+          !pickedKeys.has(item.key) &&
           !storyAudioBuffersRef.current.has(item.key) &&
           (attemptsByKey.get(item.key) || 0) < maxAttempts
         ) {
-          return item;
+          pickedKeys.add(item.key);
+          batch.push(item);
         }
       }
-      return null;
+      return batch;
     };
 
     const ctrl = new AbortController();
@@ -2203,14 +2289,15 @@ export default function EndGameRecap({
       : "http://localhost:3001/api/tts-batch";
     const buildBatchHeaders = () => ({
       "Content-Type": "application/json",
-      "x-game-session": getSession()?.sessionToken || "",
+      "x-game-session": sessionTokenRef.current || getSession()?.sessionToken || "",
     });
 
     (async () => {
       setStoryVoiceLoading(true);
+      setVoiceHttpErrorCode(null);
       let loadedAny = false;
       try {
-        // GIAI ĐOẠN 1 (<80ms): Quét nhanh 100% câu đã có sẵn trong LRU RAM Cache trên Server
+        // GIAI ĐOẠN 1 (<350ms): Quét nhanh 100% câu đã có sẵn trong LRU RAM Cache trên Server
         const initialMissingRaws = orderedItems
           .filter((it) => !storyAudioBuffersRef.current.has(it.key))
           .map((it) => it.raw);
@@ -2230,80 +2317,93 @@ export default function EndGameRecap({
             });
             if (fastResp.ok) {
               const fastData = await fastResp.json();
-              const fastResults = fastData?.results || {};
-              let fastHits = 0;
-              for (const raw of initialMissingRaws) {
-                const b64 = fastResults[raw.trim()];
-                if (b64) {
-                  storeBase64Audio(getTtsCacheKey(raw), b64);
-                  fastHits += 1;
-                  loadedAny = true;
-                }
-              }
+              const fastHits = ingestBatchResults(fastData?.results, initialMissingRaws);
               if (fastHits > 0) {
+                loadedAny = true;
                 setStoryVoiceOffline(false);
+                setVoiceHttpErrorCode(null);
                 syncLoadedCount();
                 setStoryVoiceReadyTick((t) => t + 1);
               }
+            } else if (fastResp.status === 401 || fastResp.status === 429) {
+              setVoiceHttpErrorCode(fastResp.status);
             }
           } catch (fastErr) {
             if (fastErr?.name === "AbortError") return;
           }
         }
 
-        // GIAI ĐOẠN 2 (CHUNK = 1, Urgent Streaming): Nạp từng cảnh còn thiếu bám sát cảnh người chơi đang xem!
+        // GIAI ĐOẠN 2 (Urgent Adaptive Streaming): Nạp từng chùm 1-3 cảnh còn thiếu bám sát con trỏ người xem!
         const attemptsByKey = new Map();
         const MAX_ATTEMPTS_PER_BEAT = 4;
 
         while (!ctrl.signal.aborted) {
-          const targetItem = pickNextMissingItem(attemptsByKey, MAX_ATTEMPTS_PER_BEAT);
-          if (!targetItem) break;
+          const targetBatch = pickNextMissingBatch(attemptsByKey, MAX_ATTEMPTS_PER_BEAT);
+          if (targetBatch.length === 0) break;
 
-          const prevTries = attemptsByKey.get(targetItem.key) || 0;
-          attemptsByKey.set(targetItem.key, prevTries + 1);
+          for (const it of targetBatch) {
+            attemptsByKey.set(it.key, (attemptsByKey.get(it.key) || 0) + 1);
+          }
+          const reqPhrases = targetBatch.map((it) => it.raw);
 
           const resp = await fetch(batchUrl, {
             method: "POST",
             headers: buildBatchHeaders(),
             body: JSON.stringify({
-              phrases: [targetItem.raw],
+              phrases: reqPhrases,
               voice: vsProfileId,
               speed: 0.82,
               urgent: true,
             }),
             signal: ctrl.signal,
           });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          if (!resp.ok) {
+            setVoiceHttpErrorCode(resp.status);
+            throw new Error(`HTTP ${resp.status}`);
+          }
           const data = await resp.json();
+          const batchHits = ingestBatchResults(data?.results, reqPhrases);
 
-          const trimmed = targetItem.raw.trim();
-          const b64 = data?.results?.[trimmed];
-          if (data?.vsOnline === false && !b64) {
+          if (batchHits > 0) {
+            loadedAny = true;
+            setStoryVoiceOffline(false);
+            setVoiceHttpErrorCode(null);
+            syncLoadedCount();
+            setStoryVoiceReadyTick((t) => t + 1);
+          }
+
+          if (data?.vsOnline === false && batchHits === 0) {
             if (storyAudioBuffersRef.current.size === 0) {
               setStoryVoiceOffline(true);
             }
             break;
           }
 
-          if (b64) {
-            storeBase64Audio(targetItem.key, b64);
-            loadedAny = true;
-            setStoryVoiceOffline(false);
-            syncLoadedCount();
-            setStoryVoiceReadyTick((t) => t + 1);
-          } else {
-            const isPending = Array.isArray(data?.pending) && data.pending.includes(trimmed);
-            if (!isPending) {
-              // Câu này bị từ chối/rỗng -> đánh dấu hết lượt thử để không lặp vô tận
-              attemptsByKey.set(targetItem.key, MAX_ATTEMPTS_PER_BEAT);
+          const pendingNormSet = new Set(
+            Array.isArray(data?.pending) ? data.pending.map((p) => getTtsCacheKey(p)) : []
+          );
+          let hasPending = false;
+          for (const it of targetBatch) {
+            if (storyAudioBuffersRef.current.has(it.key)) continue;
+            if (pendingNormSet.has(it.key)) {
+              hasPending = true;
             } else {
-              await new Promise((r) => setTimeout(r, 1200));
+              // Câu này bị từ chối/rỗng -> đánh dấu hết lượt thử để không lặp vô tận
+              attemptsByKey.set(it.key, MAX_ATTEMPTS_PER_BEAT);
             }
+          }
+          if (hasPending && batchHits === 0) {
+            await new Promise((r) => setTimeout(r, 1100));
           }
         }
 
         syncLoadedCount();
-        if (!loadedAny && !ctrl.signal.aborted && storyAudioBuffersRef.current.size === 0 && vsServerOffline) {
+        if (
+          !loadedAny &&
+          !ctrl.signal.aborted &&
+          storyAudioBuffersRef.current.size === 0 &&
+          vsServerOfflineRef.current
+        ) {
           setStoryVoiceOffline(true);
         }
       } catch (err) {
@@ -2319,19 +2419,26 @@ export default function EndGameRecap({
     })();
 
     return () => ctrl.abort();
-  }, [storyBeats, speechEnabled, voiceRecheckTick, vsServerOffline]);
+  }, [orderedVoicePlan.planKey, speechEnabled, voiceRecheckTick, autoRetryTick]);
 
+  const effectiveVoiceTotalCount = storyVoiceTotalCount || orderedVoicePlan.totalUnique;
   const currentBeatCacheKey =
     currentBeat?.narration && !currentBeat?.dialogueText
       ? getTtsCacheKey(currentBeat.narration)
       : "";
   const hasCurrentBeatAudio = Boolean(
     currentBeatCacheKey &&
-      (storyVoiceReadyTick >= 0) &&
+      storyVoiceReadyTick >= 0 &&
       storyAudioBuffersRef.current.has(currentBeatCacheKey)
   );
-  const shouldWaitCurrentBeatAudio =
-    !hasCurrentBeatAudio && storyVoiceLoading && !storyVoiceOffline;
+  const shouldWaitCurrentBeatAudio = Boolean(
+    speechEnabled &&
+      currentBeatCacheKey &&
+      !hasCurrentBeatAudio &&
+      storyVoiceLoading &&
+      !storyVoiceOffline &&
+      !voiceHttpErrorCode
+  );
 
   // NHỊP 3: Lồng tiếng Giọng Đọc Kể Chuyện MC Clone (b5d182f3) qua WebAudio (thu trọn vào cả Loa & Video MP4/WebM — Tuyệt đối 0% speechSynthesis!)
   useEffect(() => {
@@ -2355,7 +2462,7 @@ export default function EndGameRecap({
         setSpeechCompletedForBeatId(beatId);
         return undefined;
       }
-      // Giữ nhịp máy quay chờ tối đa 14s nếu cảnh hiện tại đang được RTX 3090 tổng hợp trực tiếp; ngay khi MP3 về là đọc trọn câu!
+      // Giữ nhịp máy quay chờ tối đa 14s nếu cảnh hiện tại đang được tải / tổng hợp; ngay khi MP3 về là đọc trọn câu!
       setSpeechCompletedForBeatId(null);
       const waitTimer = setTimeout(() => {
         setSpeechCompletedForBeatId(beatId);
@@ -2385,8 +2492,13 @@ export default function EndGameRecap({
       const playedOk = await audioEngine.playVoiceArrayBuffer(readyBuffer, recapSpeed);
       if (cancelled) return;
       if (playedOk) {
+        setVoiceBlockedByGesture(false);
         // Đệm lắng đọng cảm xúc 850ms sau khi MC vừa dứt lời!
         settlePauseTimer = setTimeout(markDone, 850);
+      } else if (audioEngine.wasBlockedByAutoplay?.()) {
+        // Trình duyệt tạm khóa Autoplay (ví dụ F5 thẳng vào màn kết game): hiện nhắc chạm chuột và giữ cảnh chờ tới 8s để phát lại ngay khi chạm!
+        setVoiceBlockedByGesture(true);
+        settlePauseTimer = setTimeout(markDone, 8000);
       } else {
         markDone();
       }
@@ -2408,6 +2520,7 @@ export default function EndGameRecap({
     shouldWaitCurrentBeatAudio,
     speechEnabled,
     recapSpeed,
+    unlockReplayTick,
   ]);
 
   // Dọn dẹp tài nguyên khi rời màn hình Recap
@@ -2622,38 +2735,61 @@ export default function EndGameRecap({
               className="vf-rec-pill"
               onClick={() => {
                 unlockCinemaAudioEngine();
+                if (voiceBlockedRef.current) {
+                  voiceBlockedRef.current = false;
+                  setVoiceBlockedByGesture(false);
+                  setUnlockReplayTick((t) => t + 1);
+                }
+                setVoiceHttpErrorCode(null);
                 setStoryVoiceOffline(false);
+                setAutoRetryTick((t) => t + 1);
                 onRecheckVoice?.();
               }}
               title={
-                (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
-                  ? "Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh. Bấm để kiểm tra & nạp lại ngay!"
-                  : "Giọng đọc kể chuyện Voice Clone cá nhân (RTX 3090) đang sẵn sàng — Bấm để mở khóa loa & làm mới trạng thái"
+                voiceBlockedByGesture
+                  ? "Trình duyệt tạm khóa tự phát tiếng sau khi tải lại trang — Bấm để phát ngay giọng kể chuyện cảnh hiện tại!"
+                  : voiceHttpErrorCode
+                    ? `Kết nối tải Voice trả mã HTTP ${voiceHttpErrorCode} — Bấm để làm mới phiên và tải lại ngay!`
+                    : (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                      ? "Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh. Bấm để kiểm tra & nạp lại ngay!"
+                      : "Giọng đọc kể chuyện Voice Clone cá nhân (RTX 3090) đang sẵn sàng — Bấm để mở khóa loa & làm mới trạng thái"
               }
               style={{
                 cursor: "pointer",
-                borderColor:
-                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                borderColor: voiceBlockedByGesture
+                  ? "rgba(251, 191, 36, 0.72)"
+                  : (voiceHttpErrorCode || storyVoiceOffline || vsServerOffline) &&
+                      storyAudioBuffersRef.current.size === 0
                     ? "rgba(248, 113, 113, 0.55)"
                     : "rgba(52, 211, 153, 0.55)",
-                background:
-                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                background: voiceBlockedByGesture
+                  ? "rgba(120, 53, 15, 0.52)"
+                  : (voiceHttpErrorCode || storyVoiceOffline || vsServerOffline) &&
+                      storyAudioBuffersRef.current.size === 0
                     ? "rgba(127, 29, 29, 0.42)"
                     : "rgba(6, 78, 59, 0.38)",
-                color:
-                  (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                color: voiceBlockedByGesture
+                  ? "#fde68a"
+                  : (voiceHttpErrorCode || storyVoiceOffline || vsServerOffline) &&
+                      storyAudioBuffersRef.current.size === 0
                     ? "#fecaca"
                     : "#a7f3d0",
               }}
             >
               <span>
-                {(storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
-                  ? "🔴 Voice Offline (Bấm thử lại)"
-                  : storyVoiceLoading && storyVoiceTotalCount > 0 && storyVoiceLoadedCount < storyVoiceTotalCount
-                    ? `🎙️ Đang nạp Voice (${storyVoiceLoadedCount}/${storyVoiceTotalCount})...`
-                    : vsStatusChecking
-                      ? "⏳ Đang kiểm tra Voice..."
-                      : `🟢 Voice Clone Sẵn Sàng${storyVoiceTotalCount > 0 ? ` (${storyVoiceLoadedCount}/${storyVoiceTotalCount})` : ""}`}
+                {voiceBlockedByGesture
+                  ? `🔊 Chạm bất kỳ để bật tiếng (${storyVoiceLoadedCount}/${effectiveVoiceTotalCount})`
+                  : voiceHttpErrorCode && storyAudioBuffersRef.current.size === 0
+                    ? `⚠️ Voice nghẽn HTTP ${voiceHttpErrorCode} (Bấm thử lại)`
+                    : (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                      ? "🔴 Voice Offline (Bấm thử lại)"
+                      : storyVoiceLoading &&
+                          effectiveVoiceTotalCount > 0 &&
+                          storyVoiceLoadedCount < effectiveVoiceTotalCount
+                        ? `🎙️ Đang nạp Voice (${storyVoiceLoadedCount}/${effectiveVoiceTotalCount})...`
+                        : vsStatusChecking
+                          ? "⏳ Đang kiểm tra Voice..."
+                          : `🟢 Voice Clone Sẵn Sàng${effectiveVoiceTotalCount > 0 ? ` (${storyVoiceLoadedCount}/${effectiveVoiceTotalCount})` : ""}`}
               </span>
             </button>
           )}

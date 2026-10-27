@@ -43,6 +43,7 @@ export function getCinemaAudioEngine() {
     let activeVoiceSource = null;
     let activeFallbackAudio = null;
     let activeFallbackUrl = null;
+    let lastPlayBlockedByGesture = false;
     const decodedVoiceCache = new WeakMap();
 
     const cleanupFallbackAudio = () => {
@@ -109,11 +110,19 @@ export function getCinemaAudioEngine() {
             resolve(ok);
           };
 
+          audio.onplaying = () => {
+            lastPlayBlockedByGesture = false;
+          };
           audio.onended = () => finish(true);
           audio.onerror = () => finish(false);
           const playPromise = audio.play();
           if (playPromise && typeof playPromise.catch === "function") {
-            playPromise.catch(() => finish(false));
+            playPromise.catch((err) => {
+              if (err?.name === "NotAllowedError" || ctx.state !== "running") {
+                lastPlayBlockedByGesture = true;
+              }
+              finish(false);
+            });
           }
         } catch {
           resolve(false);
@@ -134,6 +143,7 @@ export function getCinemaAudioEngine() {
         }
 
         if (ctx.state === "running") {
+          lastPlayBlockedByGesture = false;
           let audioBuffer = decodedVoiceCache.get(arrayBuffer);
           if (!audioBuffer) {
             audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
@@ -283,6 +293,10 @@ export function getCinemaAudioEngine() {
       triggerBeatSound,
       playVoiceArrayBuffer,
       stopVoice,
+      wasBlockedByAutoplay: () => lastPlayBlockedByGesture,
+      clearAutoplayBlockFlag: () => {
+        lastPlayBlockedByGesture = false;
+      },
     };
     return sharedAudioEngine;
   } catch {
@@ -298,10 +312,17 @@ export function unlockCinemaAudioEngine() {
   const eng = getCinemaAudioEngine();
   if (eng?.ctx && eng.ctx.state !== "running") {
     try {
-      eng.ctx.resume().catch(() => {});
+      eng.ctx
+        .resume()
+        .then(() => {
+          eng.clearAutoplayBlockFlag?.();
+        })
+        .catch(() => {});
     } catch {
       // ignore
     }
+  } else {
+    eng?.clearAutoplayBlockFlag?.();
   }
   return eng;
 }
