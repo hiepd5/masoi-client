@@ -172,13 +172,19 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   // ============ AUDIO: MP3 pre-generated + VoiceStudio Hybrid TTS ============
   // Thứ tự ưu tiên: (1) MP3 file khớp pattern → (2) VoiceStudio local API → (3) speechSynthesis fallback
   const AUDIO_MAP = [
+    { pattern: /lá bài định mệnh|bí mật xem thân phận/,  file: 'role_reveal_intro.mp3' },
+    { pattern: /Thần Tình Yêu ơi.*thức dậy/,            file: 'cupid_wake.mp3' },
+    { pattern: /Thần Tình Yêu đã ngủ lại.*Bảo Vệ/,      file: 'guard_wake.mp3' },
+    { pattern: /Thần Tình Yêu đã ngủ lại/,              file: 'cupid_sleep.mp3' },
     { pattern: /Đêm đầu tiên buông xuống/,               file: 'game_start.mp3' },
+    { pattern: /Bảo Vệ ơi, hãy thức dậy/,                file: 'guard_wake.mp3' },
     { pattern: /Bảo Vệ ơi.*thức dậy/,                   file: 'night_starts.mp3' },
     { pattern: /Bảo Vệ đã ngủ lại.*Sói ơi/,             file: 'wolf_wake.mp3' },
+    { pattern: /Phù Thủy ơi.*không ai bị cắn/,          file: 'witch_wake_nodeath.mp3' },
     { pattern: /Sói đã ngủ lại.*Phù Thủy/,               file: 'witch_wake.mp3' },
     { pattern: /Phù Thủy đã ngủ lại.*Tiên Tri/,         file: 'seer_wake.mp3' },
-    { pattern: /Thần Tình Yêu ơi.*thức dậy/,            file: 'cupid_wake.mp3' },
-    { pattern: /Thần Tình Yêu đã ngủ lại/,              file: 'cupid_sleep.mp3' },
+    { pattern: /Thợ Săn.*hơi thở cuối|bắn.*đạn bạc trả thù/, file: 'hunter_revenge.mp3' },
+    { pattern: /giơ cao Quyền Trượng Vàng|công bố thân phận Trưởng Làng/, file: 'mayor_reveal.mp3' },
     { pattern: /Đêm qua không ai chết/,                  file: 'no_death.mp3' },
     { pattern: /đêm đẫm máu/i,                           file: 'night_bloody.mp3' },
     { pattern: /Cả làng thảo luận/,                     file: 'begin_discuss.mp3' },

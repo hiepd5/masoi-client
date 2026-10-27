@@ -125,7 +125,7 @@ export const ROLES_CONFIG = {
     description: "Khi ngã xuống (bị Sói cắn, treo cổ hoặc vỡ tim), bạn được bắn 1 phát đạn bạc cuối cùng kéo theo 1 người bất kỳ!",
     wakePhase: null,
     actionBanner: { icon: "🏹", color: "#10b981", text: "Hơi thở cuối cùng! Chọn 1 mục tiêu để bắn phát đạn bạc trả thù!" },
-    wakeAudio: null,
+    wakeAudio: "hunter_revenge.mp3",
   },
   cupid: {
     label: "Thần Tình Yêu",
@@ -137,7 +137,7 @@ export const ROLES_CONFIG = {
     description: "Đêm đầu tiên, bắn mũi tên tơ hồng kết nối 2 người thành Đôi Tình Nhân sinh tử có nhau (khác phe thành Phe Cặp Đôi).",
     wakePhase: "night_cupid",
     actionBanner: { icon: "💘", color: "#ec4899", text: "Chọn 2 người bất kỳ để kết duyên sinh tử bằng mũi tên tơ hồng!" },
-    wakeAudio: null,
+    wakeAudio: "cupid_wake.mp3",
   },
   alpha_wolf: {
     label: "Sói Đầu Đàn",
@@ -161,7 +161,7 @@ export const ROLES_CONFIG = {
     description: "Bậc uy quyền đứng đầu ngôi làng. Khi giơ Quyền Trượng công bố thân phận ban ngày, lá phiếu biểu quyết của bạn được tính gấp đôi (x2)!",
     wakePhase: null,
     actionBanner: null,
-    wakeAudio: null,
+    wakeAudio: "mayor_reveal.mp3",
   },
   villager_female: {
     label: "Thôn Nữ",

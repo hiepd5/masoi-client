@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAtIso": "2026-10-26T15:56:43.970Z",
-  "note": "Thả 9 file char_<key>.glb có xương Auto-Rig từ Tripo AI vào thư mục này — Engine tự động gập chân ngồi ghế 0.48m và diễn hoạt Đầu/Lưng/Tay!",
+  "updatedAtIso": "2026-10-27T14:25:10.525Z",
+  "compressedFormat": "webp+meshopt_lossless",
+  "note": "Kho Nhan Vat 3D Tripo AI (Ho tro Kep Smart Mesh Y=0.00m & Auto-Rig + Bien the Soi Phu wolf_alt)!",
   "characters": {
     "cursed": "/models/characters/char_cursed.glb",
     "guard": "/models/characters/char_guard.glb",

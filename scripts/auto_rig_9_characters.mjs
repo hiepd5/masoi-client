@@ -43,6 +43,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "wolf",
     fileName: "char_wolf_noel.glb",
+    expectedHeight: 2.05,
     headCrownRatio: 0.91,
     isWolf: true,
     garmentSkirt: 0.14,
@@ -51,6 +52,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "wolf_alt",
     fileName: "char_wolf_alt_noel.glb",
+    expectedHeight: 2.05,
     headCrownRatio: 0.91,
     isWolf: true,
     garmentSkirt: 0.24,
@@ -59,6 +61,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "seer",
     fileName: "char_seer_noel.glb",
+    expectedHeight: 1.78,
     headCrownRatio: 0.94,
     isWolf: false,
     garmentSkirt: 0.48,
@@ -67,6 +70,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "witch",
     fileName: "char_witch_noel.glb",
+    expectedHeight: 1.74,
     headCrownRatio: 0.83, // Trừ chóp nón nhọn Phù Thủy (0.83..1.00 gắn 100% vào Head)
     isWolf: false,
     garmentSkirt: 0.52,
@@ -75,6 +79,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "guard",
     fileName: "char_guard_noel.glb",
+    expectedHeight: 1.88,
     headCrownRatio: 0.94,
     isWolf: false,
     garmentSkirt: 0.28,
@@ -83,6 +88,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "villager",
     fileName: "char_villager_noel.glb",
+    expectedHeight: 1.76,
     headCrownRatio: 0.95,
     isWolf: false,
     garmentSkirt: 0.34,
@@ -91,6 +97,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "tough_guy",
     fileName: "char_tough_guy_noel.glb",
+    expectedHeight: 1.92,
     headCrownRatio: 0.96,
     isWolf: false,
     garmentSkirt: 0.18,
@@ -99,6 +106,7 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "cursed",
     fileName: "char_cursed_noel.glb",
+    expectedHeight: 1.78,
     headCrownRatio: 0.94,
     isWolf: false,
     garmentSkirt: 0.36,
@@ -107,65 +115,79 @@ const CHARACTER_RIG_PROFILES = [
   {
     id: "tanner",
     fileName: "char_tanner_noel.glb",
+    expectedHeight: 1.75,
     headCrownRatio: 0.95,
     isWolf: false,
     garmentSkirt: 0.24,
     backCapeShield: false,
   },
-  // === 6 CỔNG NHÂN VẬT MỚI V3.3 (#19 -> #24 — MỞ SẴN HOT-PLUG) ===
+  // === 6 CỔNG NHÂN VẬT MỚI V4.1 (#19 -> #24 — AUTO-RIG 18/20 XƯƠNG + HOT-PLUG READY) ===
   {
     id: "hunter",
-    fileName: "char_hunter.glb",
-    altFiles: ["char_hunter_noel.glb"],
+    fileName: "char_hunter_noel.glb",
+    altFiles: ["char_hunter.glb"],
+    expectedHeight: 1.86,
     headCrownRatio: 0.89, // Chừa mũ da Ba Góc & lông chim xanh ngọc trên đỉnh đầu
     isWolf: false,
     garmentSkirt: 0.28,
     backCapeShield: true,
+    selfTestProxyBackup: "char_tough_guy_noel.glb",
   },
   {
     id: "cupid",
-    fileName: "char_cupid.glb",
-    altFiles: ["char_cupid_noel.glb"],
+    fileName: "char_cupid_noel.glb",
+    altFiles: ["char_cupid.glb"],
+    expectedHeight: 1.76,
     headCrownRatio: 0.92,
     isWolf: false,
-    garmentSkirt: 0.34,
-    backCapeShield: true, // Giữ cứng đôi cánh lông vũ sau lưng (-Z) gắn theo xương Chest!
+    garmentSkirt: 0.36,
+    backCapeShield: true,
+    hasBackWings: true, // Khóa cứng 100% đôi cánh lông vũ sau lưng (-Z) vào xương Chest (0% biến dạng cánh khi vung tay)!
+    selfTestProxyBackup: "char_seer_noel.glb",
   },
   {
     id: "alpha_wolf",
-    fileName: "char_alpha_wolf.glb",
-    altFiles: ["char_alpha_wolf_noel.glb"],
+    fileName: "char_alpha_wolf_noel.glb",
+    altFiles: ["char_alpha_wolf.glb"],
+    expectedHeight: 2.18,
     headCrownRatio: 0.86, // Chừa Vương Miện Sừng Thép Huyết Nguyệt gắn liền đỉnh sọ
     isWolf: true, // Có đủ 20 xương (Jaw hàm nanh + Tail đuôi sói vương)
     garmentSkirt: 0.26,
     backCapeShield: true,
+    selfTestProxyBackup: "char_wolf_alt_noel.glb",
   },
   {
     id: "mayor",
-    fileName: "char_mayor.glb",
-    altFiles: ["char_mayor_noel.glb"],
+    fileName: "char_mayor_noel.glb",
+    altFiles: ["char_mayor.glb"],
+    expectedHeight: 1.84,
     headCrownRatio: 0.9, // Chừa Mũ Lông Gấu Đai Vàng của Trưởng Làng
     isWolf: false,
-    garmentSkirt: 0.42,
+    garmentSkirt: 0.46,
     backCapeShield: true,
+    selfTestProxyBackup: "char_guard_noel.glb",
   },
   {
     id: "villager_female",
-    fileName: "char_villager_female.glb",
-    altFiles: ["char_villager_female_noel.glb"],
+    fileName: "char_villager_female_noel.glb",
+    altFiles: ["char_villager_female.glb"],
+    expectedHeight: 1.72,
     headCrownRatio: 0.94,
     isWolf: false,
-    garmentSkirt: 0.44,
+    garmentSkirt: 0.5,
     backCapeShield: true,
+    selfTestProxyBackup: "char_villager_noel.glb",
   },
   {
     id: "villager_elder",
-    fileName: "char_villager_elder.glb",
-    altFiles: ["char_villager_elder_noel.glb"],
+    fileName: "char_villager_elder_noel.glb",
+    altFiles: ["char_villager_elder.glb"],
+    expectedHeight: 1.74,
     headCrownRatio: 0.93,
     isWolf: false,
-    garmentSkirt: 0.38,
+    garmentSkirt: 0.46,
     backCapeShield: true,
+    selfTestProxyBackup: "char_villager_noel.glb",
   },
 ];
 
@@ -267,9 +289,9 @@ function pointToSegmentInfo(px, py, pz, ax, ay, az, bx, by, bz) {
 
 /**
  * Nướng (Bake) toàn bộ ma trận nút tĩnh vào đỉnh POSITION / NORMAL và căn chuẩn:
- * minY = 0.0000m, centerX = 0.0000m, centerZ = 0.0000m
+ * minY = 0.0000m, centerX = 0.0000m, centerZ = 0.0000m + chuẩn hóa chiều cao expectedHeight
  */
-function bakeSceneToCleanRootMesh(srcDoc) {
+function bakeSceneToCleanRootMesh(srcDoc, expectedHeight = null) {
   const outDoc = new Document();
   const buffer = outDoc.createBuffer("MasoiRigBuffer");
   const scene = outDoc.createScene("Scene");
@@ -428,30 +450,35 @@ function bakeSceneToCleanRootMesh(srcDoc) {
     traverseNode(rootNode, identity);
   }
 
-  // Dịch tâm XZ về (0, 0) và đáy chân minY về đúng 0.0000m
+  // Dịch tâm XZ về (0, 0), đáy chân minY về đúng 0.0000m và chuẩn hóa chiều cao 1:1 nếu lệch
   const cx = (minX + maxX) * 0.5;
   const cz = (minZ + maxZ) * 0.5;
   const shiftY = -minY;
+  const rawHeight = Math.max(1e-5, maxY - minY);
+  const scaleFactor =
+    expectedHeight && Math.abs(rawHeight - expectedHeight) > 0.004
+      ? expectedHeight / rawHeight
+      : 1.0;
 
   for (const bp of bakedPrims) {
     const pos = bp.positions;
     for (let i = 0; i < pos.length; i += 3) {
-      pos[i + 0] -= cx;
-      pos[i + 1] += shiftY;
-      pos[i + 2] -= cz;
+      pos[i + 0] = (pos[i + 0] - cx) * scaleFactor;
+      pos[i + 1] = (pos[i + 1] + shiftY) * scaleFactor;
+      pos[i + 2] = (pos[i + 2] - cz) * scaleFactor;
     }
   }
 
   const bounds = {
-    minX: minX - cx,
-    maxX: maxX - cx,
+    minX: (minX - cx) * scaleFactor,
+    maxX: (maxX - cx) * scaleFactor,
     minY: 0,
-    maxY: maxY - minY,
-    minZ: minZ - cz,
-    maxZ: maxZ - cz,
-    sizeX: maxX - minX,
-    sizeY: maxY - minY,
-    sizeZ: maxZ - minZ,
+    maxY: rawHeight * scaleFactor,
+    minZ: (minZ - cz) * scaleFactor,
+    maxZ: (maxZ - cz) * scaleFactor,
+    sizeX: (maxX - minX) * scaleFactor,
+    sizeY: rawHeight * scaleFactor,
+    sizeZ: (maxZ - minZ) * scaleFactor,
   };
 
   return { outDoc, buffer, scene, bakedPrims, bounds };
@@ -667,11 +694,15 @@ function computeVertexSkinWeights(vx, vy, vz, skel, profile) {
     const segHand = pointToSegmentInfo(vx, vy, vz, wPos[0], wPos[1], wPos[2], tipPos[0], tipPos[1], tipPos[2]);
     const minArmDist = Math.min(segUpper.dist, segFore.dist, segHand.dist);
 
-    // Chắn vùng áo choàng sau lưng (-Z sâu) khỏi bị cuốn theo cánh tay
+    // Chắn vùng áo choàng sau lưng (-Z sâu) & đôi cánh lông vũ Cupid (hasBackWings) khỏi bị cuốn theo cánh tay
     const capeBackFade = profile.backCapeShield ? 1 - smoothstep(-0.14, -0.28, vz) * 0.65 : 1;
+    const wingShieldFade =
+      profile.hasBackWings && vy > spineY - 0.04 && vy < headY + 0.08
+        ? 1 - smoothstep(-0.095, -0.17, vz)
+        : 1;
     const lateralGate = smoothstep(shoulderX * 0.72, shoulderX * 1.38, Math.abs(vx));
     const tubeGate = 1 - smoothstep(0.16, 0.31, minArmDist);
-    armWeightTotal = clamp(lateralGate * tubeGate * capeBackFade * (1 - headGate), 0, 1);
+    armWeightTotal = clamp(lateralGate * tubeGate * capeBackFade * wingShieldFade * (1 - headGate), 0, 1);
 
     if (armWeightTotal > 0.001) {
       const idxUpper = isLeft ? 6 : 9;
@@ -748,18 +779,31 @@ function computeVertexSkinWeights(vx, vy, vz, skel, profile) {
         const legsShare = coreShare * effectiveLegShare;
 
         if (torsoShare > 0.001) {
-          if (vy <= spineY) {
-            const t = smoothstep(hipY - 0.04, spineY, vy);
-            addW(1, torsoShare * (1 - t));
-            addW(2, torsoShare * t);
-          } else if (vy <= chestY) {
-            const t = smoothstep(spineY, chestY, vy);
-            addW(2, torsoShare * (1 - t));
-            addW(3, torsoShare * t);
-          } else {
-            const t = smoothstep(chestY, neckY + 0.02, vy);
-            addW(3, torsoShare * (1 - t * 0.35));
-            addW(4, torsoShare * (t * 0.35));
+          // Khóa cứng đôi cánh lông vũ sau lưng Cupid vào xương Chest (joint 3) để cánh nhịp theo lồng ngực 100% tự nhiên
+          const wingChestLock =
+            profile.hasBackWings && vz < -0.1 && vy > spineY - 0.04 && vy < headY + 0.08
+              ? smoothstep(-0.1, -0.175, vz)
+              : 0;
+          const lockedChestShare = torsoShare * wingChestLock;
+          const stdTorsoShare = torsoShare * (1 - wingChestLock);
+          if (lockedChestShare > 0.0005) {
+            addW(3, lockedChestShare);
+          }
+
+          if (stdTorsoShare > 0.0005) {
+            if (vy <= spineY) {
+              const t = smoothstep(hipY - 0.04, spineY, vy);
+              addW(1, stdTorsoShare * (1 - t));
+              addW(2, stdTorsoShare * t);
+            } else if (vy <= chestY) {
+              const t = smoothstep(spineY, chestY, vy);
+              addW(2, stdTorsoShare * (1 - t));
+              addW(3, stdTorsoShare * t);
+            } else {
+              const t = smoothstep(chestY, neckY + 0.02, vy);
+              addW(3, stdTorsoShare * (1 - t * 0.35));
+              addW(4, stdTorsoShare * (t * 0.35));
+            }
           }
           void headRadialXZ;
         }
@@ -808,50 +852,11 @@ function computeVertexSkinWeights(vx, vy, vz, skel, profile) {
   };
 }
 
-console.log("===============================================================================");
-console.log("  MA SOI 3D - DONG CO AUTO-SKINNING 9 NHAN VAT (18-20 BONES + SKIRT SHIELD)");
-console.log("===============================================================================");
-console.log(`  [+] Thu muc glb_ready:        ${READY_DIR}`);
-console.log(`  [+] Backup Smart Mesh tinh:   ${STATIC_BACKUP_DIR}`);
-
-let riggedCount = 0;
-let nativeTripoPreserved = 0;
-
-for (const profile of CHARACTER_RIG_PROFILES) {
-  const candidateNames = [profile.fileName, ...(profile.altFiles || [])];
-  const resolvedFileName = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
-  if (!resolvedFileName) {
-    console.warn(`  [CHO FILE] Chua co model o cong ${profile.fileName} (Bo qua an toan)`);
-    continue;
-  }
-  const readyPath = path.join(READY_DIR, resolvedFileName);
-
-  const backupPath = path.join(STATIC_BACKUP_DIR, resolvedFileName);
-  const currentDoc = await io.read(readyPath);
-  const existingSkins = currentDoc.getRoot().listSkins();
-
-  // Nếu người dùng đã thả file Auto-Rig gốc từ Tripo Studio Web (không phải MasoiAutoRigArmature): bảo toàn 100%!
-  if (
-    existingSkins.length > 0 &&
-    existingSkins.every((sk) => sk.getName() !== "MasoiAutoRigArmature")
-  ) {
-    const boneCount = existingSkins[0].listJoints().length;
-    console.log(
-      `  [GIU NGUYEN TRIPO RIG] ${profile.fileName.padEnd(26)} | Da co san Skin ngoai (${boneCount} bones)`
-    );
-    nativeTripoPreserved++;
-    continue;
-  }
-
-  // Đảm bảo luôn lưu giữ bản gốc tĩnh sạch 100% vào glb_static_backup/ trước khi ghi rig
-  if (!fs.existsSync(backupPath) && existingSkins.length === 0) {
-    fs.copyFileSync(readyPath, backupPath);
-  }
-
-  const cleanSourcePath = fs.existsSync(backupPath) ? backupPath : readyPath;
-  const staticDoc = await io.read(cleanSourcePath);
-
-  const { outDoc, buffer, scene, bakedPrims, bounds } = bakeSceneToCleanRootMesh(staticDoc);
+function buildSkinnedDocumentFromStatic(staticDoc, profile) {
+  const { outDoc, buffer, scene, bakedPrims, bounds } = bakeSceneToCleanRootMesh(
+    staticDoc,
+    profile.expectedHeight || null
+  );
   const skel = detectAnatomicalSkeleton(bakedPrims, bounds, profile);
 
   // Khởi tạo cây Node Xương chuẩn GLTF (Mọi xương có Rotation = Identity trong Bind Pose!)
@@ -915,6 +920,7 @@ for (const profile of CHARACTER_RIG_PROFILES) {
 
   const outMesh = outDoc.createMesh(`${profile.id}_SkinnedMesh`);
   let totalVertices = 0;
+  let maxWeightSumError = 0;
 
   for (let pIdx = 0; pIdx < bakedPrims.length; pIdx++) {
     const bp = bakedPrims[pIdx];
@@ -939,6 +945,11 @@ for (const profile of CHARACTER_RIG_PROFILES) {
       weightsArr[v * 4 + 1] = sw.weights[1];
       weightsArr[v * 4 + 2] = sw.weights[2];
       weightsArr[v * 4 + 3] = sw.weights[3];
+
+      const err = Math.abs(
+        sw.weights[0] + sw.weights[1] + sw.weights[2] + sw.weights[3] - 1.0
+      );
+      if (err > maxWeightSumError) maxWeightSumError = err;
     }
 
     const prim = outDoc.createPrimitive().setMode(bp.mode);
@@ -994,11 +1005,130 @@ for (const profile of CHARACTER_RIG_PROFILES) {
     .setSkin(skin);
   scene.addChild(skinnedMeshNode);
 
+  return { outDoc, bounds, skel, totalVertices, maxWeightSumError };
+}
+
+const isSelfTest6New = process.argv.includes("--self-test-6-new");
+
+if (isSelfTest6New) {
+  console.log("===============================================================================");
+  console.log("  [SELF-TEST 1:1] KIEM DINH AUTO-RIG 6 NHAN VAT MOI (#19 -> #24: 18/20 BONES)");
+  console.log("===============================================================================");
+  const newProfiles = CHARACTER_RIG_PROFILES.filter((p) => Boolean(p.selfTestProxyBackup));
+  const REQUIRED_HUMANOID = [
+    "Hips", "Spine", "Chest", "Neck", "Head",
+    "LeftArm", "LeftForeArm", "LeftHand",
+    "RightArm", "RightForeArm", "RightHand",
+    "LeftUpLeg", "LeftLeg", "LeftFoot",
+    "RightUpLeg", "RightLeg", "RightFoot",
+  ];
+  let passCount = 0;
+
+  for (const profile of newProfiles) {
+    const proxyPath = path.join(STATIC_BACKUP_DIR, profile.selfTestProxyBackup);
+    if (!fs.existsSync(proxyPath)) {
+      throw new Error(`Thieu file backup mau de self-test: ${proxyPath}`);
+    }
+    const staticDoc = await io.read(proxyPath);
+    const { outDoc, bounds, skel, totalVertices, maxWeightSumError } =
+      buildSkinnedDocumentFromStatic(staticDoc, profile);
+
+    // Ghi thu nhị phân GLB trong RAM & doc nguoc de kiem dinh 1:1
+    const glbBytes = await io.writeBinary(outDoc);
+    const roundtripDoc = await io.readBinary(glbBytes);
+    const skin = roundtripDoc.getRoot().listSkins()[0];
+    if (!skin) throw new Error(`Self-test that bai: ${profile.id} khong co Skin!`);
+
+    const jointNames = skin.listJoints().map((j) => j.getName());
+    const expectedBones = profile.isWolf ? 20 : 18;
+    if (jointNames.length !== expectedBones) {
+      throw new Error(`${profile.id}: so xuong ${jointNames.length} != ${expectedBones}`);
+    }
+    for (const req of REQUIRED_HUMANOID) {
+      if (!jointNames.includes(req)) {
+        throw new Error(`${profile.id}: thieu xuong bat buoc ${req}`);
+      }
+    }
+    if (profile.isWolf && (!jointNames.includes("Jaw") || !jointNames.includes("Tail"))) {
+      throw new Error(`${profile.id}: thieu xuong Jaw/Tail cua Soi Dau Dan!`);
+    }
+    if (Math.abs(bounds.minY) > 1e-4) {
+      throw new Error(`${profile.id}: minY=${bounds.minY} khac 0.0000m`);
+    }
+    if (Math.abs(bounds.sizeY - profile.expectedHeight) > 2e-3) {
+      throw new Error(`${profile.id}: H=${bounds.sizeY} lech expectedHeight=${profile.expectedHeight}`);
+    }
+    if (maxWeightSumError > 1e-4) {
+      throw new Error(`${profile.id}: sum(WEIGHTS_0) sai so ${maxWeightSumError}`);
+    }
+
+    console.log(
+      `  [PASS 100%] #${profile.id.padEnd(16)} | H=${bounds.sizeY.toFixed(2)}m (minY=${bounds.minY.toFixed(4)}m) | ` +
+        `${jointNames.length} bones${profile.isWolf ? " (+Jaw,+Tail)" : ""}${profile.hasBackWings ? " (+ChestWingLock)" : ""} | ` +
+        `${totalVertices} verts | ${(glbBytes.byteLength / 1024).toFixed(1)} KB`
+    );
+    passCount++;
+  }
+  console.log("-------------------------------------------------------------------------------");
+  console.log(`  KET QUA SELF-TEST: ${passCount}/6 Nhan Vat Moi PASS 100% chuan SkinnedCharacterGLB!`);
+  console.log("===============================================================================");
+  process.exit(0);
+}
+
+console.log("===============================================================================");
+console.log("  MA SOI 3D V4.1 - DONG CO AUTO-SKINNING 15 NHAN VAT (18-20 BONES + WING/SKIRT)");
+console.log("===============================================================================");
+console.log(`  [+] Thu muc glb_ready:        ${READY_DIR}`);
+console.log(`  [+] Backup Smart Mesh tinh:   ${STATIC_BACKUP_DIR}`);
+
+let riggedCount = 0;
+let nativeTripoPreserved = 0;
+let waitingNewCount = 0;
+
+for (const profile of CHARACTER_RIG_PROFILES) {
+  const candidateNames = [profile.fileName, ...(profile.altFiles || [])];
+  const resolvedFileName = candidateNames.find((fn) => fs.existsSync(path.join(READY_DIR, fn)));
+  if (!resolvedFileName) {
+    waitingNewCount++;
+    console.log(`  [SAN SANG HOT-PLUG] Cong #${profile.id.padEnd(16)} (${profile.fileName}) dang cho file .glb tu Tripo`);
+    continue;
+  }
+  const readyPath = path.join(READY_DIR, resolvedFileName);
+
+  const backupPath = path.join(STATIC_BACKUP_DIR, resolvedFileName);
+  const currentDoc = await io.read(readyPath);
+  const existingSkins = currentDoc.getRoot().listSkins();
+
+  // Nếu người dùng đã thả file Auto-Rig gốc từ Tripo Studio Web (không phải MasoiAutoRigArmature): bảo toàn 100%!
+  if (
+    existingSkins.length > 0 &&
+    existingSkins.every((sk) => sk.getName() !== "MasoiAutoRigArmature")
+  ) {
+    const boneCount = existingSkins[0].listJoints().length;
+    console.log(
+      `  [GIU NGUYEN TRIPO RIG] ${resolvedFileName.padEnd(26)} | Da co san Skin ngoai (${boneCount} bones)`
+    );
+    nativeTripoPreserved++;
+    continue;
+  }
+
+  // Nếu readyPath là Smart Mesh tĩnh mới xuất từ sync_glb_pipeline.py (0 skin), luôn làm mới backup để không đọc nhầm bản cũ!
+  if (existingSkins.length === 0) {
+    fs.copyFileSync(readyPath, backupPath);
+  }
+
+  const cleanSourcePath = fs.existsSync(backupPath) ? backupPath : readyPath;
+  const staticDoc = await io.read(cleanSourcePath);
+  const { outDoc, bounds, skel, totalVertices } = buildSkinnedDocumentFromStatic(
+    staticDoc,
+    profile
+  );
+
   await io.write(readyPath, outDoc);
   const outKB = (fs.statSync(readyPath).size / 1024).toFixed(1);
 
   console.log(
-    `  [RIGGED] ${profile.fileName.padEnd(25)} | H=${bounds.sizeY.toFixed(2)}m | ` +
+    `  [RIGGED] ${resolvedFileName.padEnd(28)} | H=${bounds.sizeY.toFixed(2)}m | ` +
       `${skel.joints.length} bones | ${totalVertices} verts | ${outKB} KB`
   );
   riggedCount++;
@@ -1006,6 +1136,6 @@ for (const profile of CHARACTER_RIG_PROFILES) {
 
 console.log("-------------------------------------------------------------------------------");
 console.log(
-  `  HOAN TAT AUTO-SKINNING: ${riggedCount} model da gan xuong | ${nativeTripoPreserved} Tripo Rig goc bao toan!`
+  `  HOAN TAT AUTO-SKINNING: ${riggedCount} model da gan xuong | ${nativeTripoPreserved} Tripo Rig bao toan | ${waitingNewCount} cong cho Hot-Plug!`
 );
 console.log("===============================================================================");

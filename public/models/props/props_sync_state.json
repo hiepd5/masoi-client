@@ -1,5 +1,5 @@
 {
-  "syncedAt": "2026-10-25T17:18:35.056Z",
+  "syncedAt": "2026-10-27T14:25:10.526Z",
   "compressedFormat": "webp+meshopt",
   "syncedCount": 14,
   "totalSlots": 18,
@@ -106,7 +106,7 @@
       "rawSizeBytes": 930816,
       "sizeBytes": 411108,
       "sizeMB": 0.39,
-      "mtimeMs": 1792948714892
+      "mtimeMs": 1793111110368
     },
     "prop_mist_well": {
       "fileName": "prop_mist_well.glb",
@@ -114,7 +114,7 @@
       "rawSizeBytes": 1157018,
       "sizeBytes": 543036,
       "sizeMB": 0.52,
-      "mtimeMs": 1792948715046
+      "mtimeMs": 1793111110517
     }
   }
 }
