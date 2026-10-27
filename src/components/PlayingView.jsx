@@ -18,6 +18,7 @@ const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
 
 
 const PHASE_LABELS = {
+  role_reveal: '🎭 Nhận Vai Định Mệnh',
   night_cupid: '💘 Thần Tình Yêu Se Duyên',
   night_guard: '🌙 Bảo Vệ Thức Dậy',
   night_wolf: '🌙 Đêm Sói Săn Mồi',
@@ -34,6 +35,7 @@ const PHASE_LABELS = {
 
 // Banner ngữ cảnh — dẫn dắt người chơi biết phải làm gì
 const ACTION_BANNERS = {
+  role_reveal:     { icon:'🎭', color:'#eab308', text:'Ghi nhớ kỹ thân phận bí mật của bạn trước khi màn đêm đầu tiên buông xuống!' },
   night_cupid:     { icon:'💘', color:'#ec4899', text:'Đêm đầu tiên: Click chọn 2 người trên vòng ghế để kết duyên sinh tử!' },
   night_guard:     { icon:'🛡️', color:'#3b82f6', text:'Chọn 1 người để bảo vệ đêm nay. Không được chọn trùng đêm trước!' },
   night_wolf:      { icon:'🐺', color:'#ef4444', text:'Cùng bầy sói thống nhất chọn 1 con mồi. Click vào người đó!' },
@@ -144,9 +146,16 @@ export default function PlayingView({
 
   const isMyHunterRevenge = g.nightDayPhase === "hunter_revenge" && g.hunterPendingId === me?.id;
 
-  // Tutorial 3 bước — hiện khi game bắt đầu (kể cả khi mở màn bằng Đêm 1 của Cupid)
+  // Tutorial 3 bước — chỉ tự bật ở Ván Đầu Tiên của người chơi mới (từ ván thứ 2 tắt tự động để không che mất 20s Đêm 1!)
   useEffect(() => {
-    if (me?.role && g.dayNumber === 1 && (g.nightDayPhase === 'night_cupid' || g.nightDayPhase === 'night_guard')) {
+    if (
+      me?.role &&
+      g.dayNumber === 1 &&
+      !localStorage.getItem("ws_tutorial_done") &&
+      (g.nightDayPhase === "role_reveal" ||
+        g.nightDayPhase === "night_cupid" ||
+        g.nightDayPhase === "night_guard")
+    ) {
       setTutorialStep(1);
       setTutorialSeconds(7);
     }
@@ -162,8 +171,14 @@ export default function PlayingView({
       setTutorialSeconds(s => {
         if (s <= 1) {
           clearInterval(interval);
-          // Tự sang bước tiếp hoặc ẩn
-          setTutorialStep(prev => prev >= 3 ? 0 : prev + 1);
+          // Tự sang bước tiếp hoặc đánh dấu hoàn thành & ẩn
+          setTutorialStep(prev => {
+            if (prev >= 3) {
+              try { localStorage.setItem("ws_tutorial_done", "1"); } catch {}
+              return 0;
+            }
+            return prev + 1;
+          });
           return 0;
         }
         return s - 1;
@@ -510,7 +525,7 @@ export default function PlayingView({
 
   function handleWitch(save, poisonTargetId) {
     const savedVictimId = g.witchInfo?.victimId || null;
-    socketRef.current.emit("action:witchDecide", { save, poisonTargetId }, (res) => {
+    socketRef.current.emit("action:witchDecide", { save, poisonTargetId, pass: true }, (res) => {
       if (res?.error) {
         flashActionFeedback(`⚠️ ${res.error}`);
         return;
@@ -522,6 +537,13 @@ export default function PlayingView({
       }
       setHasActed(true);
       setSelectedId(null);
+    });
+  }
+
+  function handleRoleRevealReady() {
+    SFX.select();
+    socketRef.current.emit("action:roleRevealReady", {}, () => {
+      setHasActed(true);
     });
   }
 
@@ -687,10 +709,37 @@ export default function PlayingView({
       <div className={`phase-header phase-${g.nightDayPhase ? g.nightDayPhase.split('_')[0] : 'default'}`}>
         <div className="hud-left">
           <HudGameClock gameStartedAt={g.gameStartedAt} />
+          {g.isTurbo && (
+            <span
+              title="Chế độ Tốc Chiến 5 Phút đang bật"
+              style={{
+                padding: '2px 7px',
+                borderRadius: '999px',
+                fontSize: '0.68rem',
+                fontWeight: 800,
+                background: 'rgba(245, 158, 11, 0.24)',
+                border: '1px solid rgba(251, 191, 36, 0.65)',
+                color: '#fef08a',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              ⚡ 5 Phút
+            </span>
+          )}
           <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
         </div>
         <div className="hud-center">
-          <span className="role-badge">
+          <span
+            className="role-badge"
+            style={{ cursor: me?.role ? 'pointer' : 'default' }}
+            title={me?.role ? `${ROLE_DESCRIPTIONS[me.role] || ''} (Nhấn để xem lại nhiệm vụ)` : ''}
+            onClick={() => {
+              if (me?.role && !g.winner) {
+                setTutorialStep(1);
+                setTutorialSeconds(7);
+              }
+            }}
+          >
             {ROLE_EMOJIS[me?.role]} {me?.role ? ROLE_LABELS[me.role] : 'Chết'}
           </span>
           {myLoverPartner && (
@@ -859,10 +908,11 @@ export default function PlayingView({
         </div>
       </div>
 
-      {/* Timer progress bar (chuẩn hóa thời lượng từng phase, không re-render toàn trang) */}
+      {/* Timer progress bar (chuẩn hóa thời lượng từng phase, đồng bộ phaseDurationSec từ Server) */}
       <HudPhaseProgressBar
         phaseEndsAt={g.phaseEndsAt}
         nightDayPhase={g.nightDayPhase}
+        phaseDurationSec={g.phaseDurationSec}
         hasWinner={Boolean(g.winner)}
       />
 
@@ -1015,6 +1065,32 @@ export default function PlayingView({
 
               {actionFeedback ? (
                 <span className="dock-hint dock-feedback">{actionFeedback}</span>
+              ) : g.nightDayPhase === "role_reveal" ? (
+                /* ================= PHA MỞ MÀN ĐỘC LẬP: NHẬN VAI ĐỊNH MỆNH (6 GIÂY) ================= */
+                <div className="dock-row">
+                  <span className="dock-hint" style={{ color: '#fef08a' }}>
+                    {ROLE_EMOJIS[me?.role] || '🎭'} Vai của bạn: <strong>{ROLE_LABELS[me?.role] || '...'}</strong>
+                    {ROLE_DESCRIPTIONS[me?.role] ? ` — ${ROLE_DESCRIPTIONS[me.role]}` : ''}
+                  </span>
+                  {hasActed || g.roleRevealReadyIds?.[me?.id] ? (
+                    <span className="dock-chip" style={{ color: '#a7f3d0', borderColor: 'rgba(52,211,153,0.5)' }}>
+                      ✅ Đã sẵn sàng vào Đêm 1
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="dock-btn dock-btn-confirm"
+                      style={{
+                        background: 'linear-gradient(135deg, #eab308, #d97706)',
+                        color: '#0f172a',
+                        fontWeight: 800,
+                      }}
+                      onClick={handleRoleRevealReady}
+                    >
+                      ⚡ Đã rõ vai trò!
+                    </button>
+                  )}
+                </div>
               ) : g.nightDayPhase === "hunter_revenge" ? (
                 /* ================= PHÁP TRƯỜNG / BÌNH MINH: THỢ SĂN BẮN ĐẠN BẠC CUỐI CÙNG ================= */
                 <div className="dock-row">
@@ -1605,11 +1681,17 @@ export default function PlayingView({
                   </button>
                 ) : (
                   <button className="btn-primary tutorial-btn"
-                          onClick={() => setTutorialStep(0)}>
+                          onClick={() => {
+                            try { localStorage.setItem("ws_tutorial_done", "1"); } catch {}
+                            setTutorialStep(0);
+                          }}>
                     Bắt đầu! ✓
                   </button>
                 )}
-                <button className="tutorial-skip-btn" onClick={() => setTutorialStep(0)}>Skip</button>
+                <button className="tutorial-skip-btn" onClick={() => {
+                  try { localStorage.setItem("ws_tutorial_done", "1"); } catch {}
+                  setTutorialStep(0);
+                }}>Skip</button>
               </div>
             </div>
 

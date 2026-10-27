@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { saveSession } from "../hooks/useSocket.js";
+import { saveSession, getDeviceId } from "../hooks/useSocket.js";
 import "./Lobby.css";
 
 const RANDOM_NAMES = [
@@ -39,6 +39,7 @@ const RULES_TABS = [
 ];
 
 const PHASE_SHORT_LABELS = {
+  role_reveal: "🎭 Nhận vai",
   night_cupid: "🌙 Đêm • Ghép đôi",
   night_guard: "🌙 Đêm • Bảo Vệ",
   night_wolf: "🌙 Đêm • Sói săn",
@@ -70,6 +71,7 @@ export default function Lobby({
   const [roomTitle, setRoomTitle] = useState("");
   const [accessMode, setAccessMode] = useState("public"); // 'public' | 'password' | 'hidden'
   const [createPassword, setCreatePassword] = useState("");
+  const [createTurbo, setCreateTurbo] = useState(false);
 
   // Vào phòng bằng Mã 5 ký tự (kèm mật khẩu nếu phòng khóa)
   const [roomCode, setRoomCode] = useState("");
@@ -176,7 +178,9 @@ export default function Lobby({
         roomTitle: roomTitle.trim(),
         accessMode: effectiveMode,
         password: effectivePwd,
+        isTurbo: createTurbo,
         soloQuickStart,
+        deviceId: getDeviceId(),
       },
       (res) => {
         setLoading(false);
@@ -208,6 +212,7 @@ export default function Lobby({
         name: finalName,
         avatarUrl: selectedAvatarUrl,
         password: codePassword.trim(),
+        deviceId: getDeviceId(),
       },
       (res) => {
         setLoading(false);
@@ -241,6 +246,7 @@ export default function Lobby({
         name: finalName,
         avatarUrl: selectedAvatarUrl,
         password: providedPassword.trim(),
+        deviceId: getDeviceId(),
       },
       (res) => {
         setLoading(false);
@@ -545,6 +551,33 @@ export default function Lobby({
 
               <button
                 type="button"
+                onClick={() => setCreateTurbo((v) => !v)}
+                style={{
+                  width: "100%",
+                  margin: "0 0 8px 0",
+                  padding: "8px 12px",
+                  borderRadius: "10px",
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: createTurbo
+                    ? "linear-gradient(135deg, rgba(245, 158, 11, 0.26), rgba(234, 88, 12, 0.24))"
+                    : "rgba(30, 41, 59, 0.65)",
+                  border: createTurbo
+                    ? "1px solid rgba(251, 191, 36, 0.72)"
+                    : "1px solid rgba(148, 163, 184, 0.25)",
+                  color: createTurbo ? "#fef08a" : "#cbd5e1",
+                }}
+              >
+                <span>⚡ Chế độ Tốc Chiến (5 Phút / Ván)</span>
+                <span>{createTurbo ? "ĐANG BẬT ✓" : "Tắt"}</span>
+              </button>
+
+              <button
+                type="button"
                 className="btn-primary"
                 style={{ marginBottom: 0 }}
                 disabled={loading}
@@ -700,6 +733,18 @@ export default function Lobby({
                               </span>
                               {r.hasExpandedRoles && (
                                 <span className="room-tag v33-badge">✨ V3.3</span>
+                              )}
+                              {r.isTurbo && (
+                                <span
+                                  className="room-tag"
+                                  style={{
+                                    background: "rgba(245, 158, 11, 0.24)",
+                                    borderColor: "rgba(251, 191, 36, 0.65)",
+                                    color: "#fef08a",
+                                  }}
+                                >
+                                  ⚡ 5 Phút
+                                </span>
                               )}
                             </div>
 

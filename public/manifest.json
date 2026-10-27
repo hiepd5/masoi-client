@@ -1,12 +1,12 @@
-﻿{
-  "name": "Ma Soi Online",
-  "short_name": "Ma Soi",
-  "description": "Tro choi Ma Soi nhap vai voi voice chat realtime",
+{
+  "name": "Ma Sói Online 3D",
+  "short_name": "Ma Sói 3D",
+  "description": "Trò chơi Ma Sói 3D suy luận ẩn vai với Voice Chat realtime & AI Bot thông minh",
   "start_url": "/",
-  "display": "fullscreen",
-  "orientation": "landscape",
-  "theme_color": "#0f0f1a",
-  "background_color": "#0f0f1a",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#090d18",
+  "background_color": "#090d18",
   "lang": "vi",
   "categories": ["games", "social"],
   "icons": [

@@ -5,6 +5,20 @@ const SERVER_URL = import.meta.env.PROD
   ? "https://masoi-server-2eca.onrender.com"
   : "http://localhost:3001";
 
+// Định danh thiết bị ẩn danh (chống mở 2 tab cày/soi bài trên bàn công khai Production - SEC-07)
+export function getDeviceId() {
+  try {
+    let id = localStorage.getItem("ws_device_id");
+    if (!id || id.length < 8) {
+      id = `dev_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-6)}`;
+      localStorage.setItem("ws_device_id", id);
+    }
+    return id;
+  } catch {
+    return "dev_fallback01";
+  }
+}
+
 // Each browser tab gets a unique key so sessions don't cross-contaminate
 function getTabId() {
   let id = sessionStorage.getItem('ws_tab_id');
@@ -65,10 +79,10 @@ export function useSocket() {
               activeRoomCodeRef.current = session.roomCode;
               setReconnectStatus(null);
             } else {
-              // Token failed — fall back to name-based rejoin
-              if (session?.name && session?.roomCode) {
+              // Token hết hạn / phòng đã đóng: chỉ thử vào lại nếu phòng đang ở sảnh chờ (SEC-03 chặn vào ngang bằng tên khi đang chơi)
+              if (session?.name && session?.roomCode && res?.phase !== "playing") {
                 socket.emit("room:join",
-                  { roomCode: session.roomCode, name: session.name },
+                  { roomCode: session.roomCode, name: session.name, deviceId: getDeviceId() },
                   (res2) => {
                     if (res2?.ok) {
                       saveSession(session.roomCode, res2.sessionToken || session.sessionToken, res2.playerId, session.name);
@@ -76,11 +90,13 @@ export function useSocket() {
                       activeRoomCodeRef.current = session.roomCode;
                       setReconnectStatus(null);
                     } else {
+                      clearSession();
                       setReconnectStatus('failed');
                     }
                   }
                 );
               } else {
+                clearSession();
                 setReconnectStatus('failed');
               }
             }

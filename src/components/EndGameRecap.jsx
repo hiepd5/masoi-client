@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, isWolfTeamRole } from "../config/roles.config.js";
 import {
   getCinemaAudioEngine,
+  unlockCinemaAudioEngine,
   startCinemaStoryRecording,
 } from "../utils/cinemaVideoRecorder.js";
+import { getSession } from "../hooks/useSocket.js";
 import { getTtsCacheKey } from "../utils/ttsTextUtils.js";
 import "./EndGameRecap.css";
 
@@ -1864,6 +1866,9 @@ export default function EndGameRecap({
   const [storyVoiceLoading, setStoryVoiceLoading] = useState(false);
   const [storyVoiceOffline, setStoryVoiceOffline] = useState(false);
   const [storyVoiceReadyTick, setStoryVoiceReadyTick] = useState(0);
+  const [storyVoiceLoadedCount, setStoryVoiceLoadedCount] = useState(0);
+  const [storyVoiceTotalCount, setStoryVoiceTotalCount] = useState(0);
+  const beatIndexRef = useRef(0);
   const [followDirector, setFollowDirector] = useState(true);
   const [relockToken, setRelockToken] = useState(0);
   const [drawerTab, setDrawerTab] = useState(() => (viewMode === "2d" ? "cards" : null));
@@ -1894,6 +1899,7 @@ export default function EndGameRecap({
   );
 
   const safeBeatIdx = Math.min(beatIndex, Math.max(0, storyBeats.length - 1));
+  beatIndexRef.current = safeBeatIdx;
   const currentBeat = storyBeats[safeBeatIdx] || storyBeats[0];
   const isAtFinale = safeBeatIdx >= storyBeats.length - 1;
 
@@ -1946,10 +1952,19 @@ export default function EndGameRecap({
     window.addEventListener("mousemove", handleMove, { passive: true });
     window.addEventListener("touchstart", handleMove, { passive: true });
     window.addEventListener("keydown", handleKeyDown);
+    const handleUnlockGesture = () => {
+      unlockCinemaAudioEngine();
+    };
+    window.addEventListener("pointerdown", handleUnlockGesture, { passive: true });
+    window.addEventListener("touchstart", handleUnlockGesture, { passive: true });
+    window.addEventListener("keydown", handleUnlockGesture);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("touchstart", handleMove);
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pointerdown", handleUnlockGesture);
+      window.removeEventListener("touchstart", handleUnlockGesture);
+      window.removeEventListener("keydown", handleUnlockGesture);
       if (idleHudTimerRef.current) clearTimeout(idleHudTimerRef.current);
     };
   }, [wakeUpHud, showVideoPlayerModal, storyBeats.length]);
@@ -2115,89 +2130,179 @@ export default function EndGameRecap({
     }
   }, [vsServerOffline, voiceRecheckTick]);
 
-  // Đồng bộ toàn bộ gói giọng kể chuyện đã tạo cuốn chiếu trên RAM Server về RAM Client (bỏ qua các cảnh chat tự do của người chơi)
+  // Đồng bộ gói giọng kể chuyện 2 giai đoạn:
+  // - Giai đoạn 1 (cacheOnly: true, <80ms): Hút tức thì toàn bộ câu đã tạo cuốn chiếu trên RAM Server để Cảnh 0 cất tiếng ngay ở 0.28s!
+  // - Giai đoạn 2 (Streaming từng cảnh CHUNK=1 theo con trỏ beatIndexRef): Nạp ưu tiên đúng cảnh đang xem/sắp tới, không bao giờ nghẽn cả cụm 8 câu!
   useEffect(() => {
     if (!speechEnabled || !Array.isArray(storyBeats) || storyBeats.length === 0) return undefined;
 
-    const narratablePhrases = [];
-    const seenKeys = new Set();
-    for (const beat of storyBeats) {
+    const orderedItems = [];
+    const itemByKey = new Map();
+    storyBeats.forEach((beat, idx) => {
       // Theo đặc tả v3: Không đọc các cảnh chat của người chơi (wolf_chat / village_chat có dialogueText)
-      if (!beat?.narration || beat.dialogueText) continue;
+      if (!beat?.narration || beat.dialogueText) return;
       const k = getTtsCacheKey(beat.narration);
-      if (k && !seenKeys.has(k) && !storyAudioBuffersRef.current.has(k)) {
-        seenKeys.add(k);
-        narratablePhrases.push(beat.narration);
+      if (!k) return;
+      let entry = itemByKey.get(k);
+      if (!entry) {
+        entry = { key: k, raw: beat.narration, beatIndices: [idx] };
+        itemByKey.set(k, entry);
+        orderedItems.push(entry);
+      } else {
+        entry.beatIndices.push(idx);
       }
+    });
+
+    const totalUnique = orderedItems.length;
+    setStoryVoiceTotalCount(totalUnique);
+
+    const syncLoadedCount = () => {
+      let ready = 0;
+      for (const it of orderedItems) {
+        if (storyAudioBuffersRef.current.has(it.key)) ready += 1;
+      }
+      setStoryVoiceLoadedCount(ready);
+      return ready;
+    };
+
+    if (totalUnique === 0 || syncLoadedCount() >= totalUnique) {
+      setStoryVoiceLoading(false);
+      return undefined;
     }
-    if (narratablePhrases.length === 0) return undefined;
+
+    const storeBase64Audio = (cacheKey, b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      storyAudioBuffersRef.current.set(cacheKey, ab);
+    };
+
+    const pickNextMissingItem = (attemptsByKey, maxAttempts) => {
+      const curIdx = beatIndexRef.current || 0;
+      const totalBeats = storyBeats.length;
+      for (let offset = 0; offset < totalBeats; offset += 1) {
+        const bIdx = (curIdx + offset) % totalBeats;
+        const beat = storyBeats[bIdx];
+        if (!beat?.narration || beat.dialogueText) continue;
+        const k = getTtsCacheKey(beat.narration);
+        const item = k ? itemByKey.get(k) : null;
+        if (
+          item &&
+          !storyAudioBuffersRef.current.has(item.key) &&
+          (attemptsByKey.get(item.key) || 0) < maxAttempts
+        ) {
+          return item;
+        }
+      }
+      return null;
+    };
 
     const ctrl = new AbortController();
     const vsProfileId = localStorage.getItem("mc_voice_profile_id") || "b5d182f3";
     const batchUrl = import.meta.env.PROD
       ? "https://masoi-server-2eca.onrender.com/api/tts-batch"
       : "http://localhost:3001/api/tts-batch";
+    const buildBatchHeaders = () => ({
+      "Content-Type": "application/json",
+      "x-game-session": getSession()?.sessionToken || "",
+    });
 
     (async () => {
       setStoryVoiceLoading(true);
       let loadedAny = false;
-      const CHUNK = 8;
       try {
-        let queue = [...narratablePhrases];
-        for (let pass = 0; pass < 3 && queue.length > 0; pass += 1) {
-          if (ctrl.signal.aborted) break;
-          if (pass > 0) {
-            await new Promise((r) => setTimeout(r, 3200));
-            if (ctrl.signal.aborted) break;
-          }
-          const nextPending = [];
-          for (let idx = 0; idx < queue.length; idx += CHUNK) {
-            if (ctrl.signal.aborted) break;
-            const chunk = queue
-              .slice(idx, idx + CHUNK)
-              .filter((raw) => !storyAudioBuffersRef.current.has(getTtsCacheKey(raw)));
-            if (chunk.length === 0) continue;
+        // GIAI ĐOẠN 1 (<80ms): Quét nhanh 100% câu đã có sẵn trong LRU RAM Cache trên Server
+        const initialMissingRaws = orderedItems
+          .filter((it) => !storyAudioBuffersRef.current.has(it.key))
+          .map((it) => it.raw);
 
-            const resp = await fetch(batchUrl, {
+        if (initialMissingRaws.length > 0 && !ctrl.signal.aborted) {
+          try {
+            const fastResp = await fetch(batchUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: buildBatchHeaders(),
               body: JSON.stringify({
-                phrases: chunk,
+                phrases: initialMissingRaws,
                 voice: vsProfileId,
                 speed: 0.82,
-                urgent: pass === 0 && idx === 0,
+                cacheOnly: true,
               }),
               signal: ctrl.signal,
             });
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const data = await resp.json();
-            if (data?.vsOnline === false && Object.values(data?.results || {}).every((v) => !v)) {
-              setStoryVoiceOffline(true);
-              return;
-            }
-            const results = data?.results || {};
-            const pendingSet = new Set(Array.isArray(data?.pending) ? data.pending : []);
-            let chunkLoaded = 0;
-            for (const raw of chunk) {
-              const trimmed = raw.trim();
-              const b64 = results[trimmed];
-              if (b64) {
-                const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-                const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-                storyAudioBuffersRef.current.set(getTtsCacheKey(raw), ab);
-                chunkLoaded += 1;
-                loadedAny = true;
-              } else if (pendingSet.has(trimmed)) {
-                nextPending.push(raw);
+            if (fastResp.ok) {
+              const fastData = await fastResp.json();
+              const fastResults = fastData?.results || {};
+              let fastHits = 0;
+              for (const raw of initialMissingRaws) {
+                const b64 = fastResults[raw.trim()];
+                if (b64) {
+                  storeBase64Audio(getTtsCacheKey(raw), b64);
+                  fastHits += 1;
+                  loadedAny = true;
+                }
+              }
+              if (fastHits > 0) {
+                setStoryVoiceOffline(false);
+                syncLoadedCount();
+                setStoryVoiceReadyTick((t) => t + 1);
               }
             }
-            if (chunkLoaded > 0 || data?.vsOnline === true) {
-              setStoryVoiceOffline(false);
-              if (chunkLoaded > 0) setStoryVoiceReadyTick((t) => t + 1);
+          } catch (fastErr) {
+            if (fastErr?.name === "AbortError") return;
+          }
+        }
+
+        // GIAI ĐOẠN 2 (CHUNK = 1, Urgent Streaming): Nạp từng cảnh còn thiếu bám sát cảnh người chơi đang xem!
+        const attemptsByKey = new Map();
+        const MAX_ATTEMPTS_PER_BEAT = 4;
+
+        while (!ctrl.signal.aborted) {
+          const targetItem = pickNextMissingItem(attemptsByKey, MAX_ATTEMPTS_PER_BEAT);
+          if (!targetItem) break;
+
+          const prevTries = attemptsByKey.get(targetItem.key) || 0;
+          attemptsByKey.set(targetItem.key, prevTries + 1);
+
+          const resp = await fetch(batchUrl, {
+            method: "POST",
+            headers: buildBatchHeaders(),
+            body: JSON.stringify({
+              phrases: [targetItem.raw],
+              voice: vsProfileId,
+              speed: 0.82,
+              urgent: true,
+            }),
+            signal: ctrl.signal,
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const data = await resp.json();
+
+          const trimmed = targetItem.raw.trim();
+          const b64 = data?.results?.[trimmed];
+          if (data?.vsOnline === false && !b64) {
+            if (storyAudioBuffersRef.current.size === 0) {
+              setStoryVoiceOffline(true);
+            }
+            break;
+          }
+
+          if (b64) {
+            storeBase64Audio(targetItem.key, b64);
+            loadedAny = true;
+            setStoryVoiceOffline(false);
+            syncLoadedCount();
+            setStoryVoiceReadyTick((t) => t + 1);
+          } else {
+            const isPending = Array.isArray(data?.pending) && data.pending.includes(trimmed);
+            if (!isPending) {
+              // Câu này bị từ chối/rỗng -> đánh dấu hết lượt thử để không lặp vô tận
+              attemptsByKey.set(targetItem.key, MAX_ATTEMPTS_PER_BEAT);
+            } else {
+              await new Promise((r) => setTimeout(r, 1200));
             }
           }
-          queue = nextPending;
         }
+
+        syncLoadedCount();
         if (!loadedAny && !ctrl.signal.aborted && storyAudioBuffersRef.current.size === 0 && vsServerOffline) {
           setStoryVoiceOffline(true);
         }
@@ -2206,12 +2311,15 @@ export default function EndGameRecap({
           setStoryVoiceOffline(true);
         }
       } finally {
-        if (!ctrl.signal.aborted) setStoryVoiceLoading(false);
+        if (!ctrl.signal.aborted) {
+          syncLoadedCount();
+          setStoryVoiceLoading(false);
+        }
       }
     })();
 
     return () => ctrl.abort();
-  }, [storyBeats, speechEnabled, voiceRecheckTick]);
+  }, [storyBeats, speechEnabled, voiceRecheckTick, vsServerOffline]);
 
   const currentBeatCacheKey =
     currentBeat?.narration && !currentBeat?.dialogueText
@@ -2247,11 +2355,11 @@ export default function EndGameRecap({
         setSpeechCompletedForBeatId(beatId);
         return undefined;
       }
-      // Nếu gói chunk đầu đang tải về từ RAM Server (~50-300ms), đợi tối đa 1.8s; nếu quá hạn tự nhường nhịp để phim không bao giờ khựng
+      // Giữ nhịp máy quay chờ tối đa 14s nếu cảnh hiện tại đang được RTX 3090 tổng hợp trực tiếp; ngay khi MP3 về là đọc trọn câu!
       setSpeechCompletedForBeatId(null);
       const waitTimer = setTimeout(() => {
         setSpeechCompletedForBeatId(beatId);
-      }, 1800);
+      }, 14000);
       return () => clearTimeout(waitTimer);
     }
 
@@ -2392,6 +2500,7 @@ export default function EndGameRecap({
 
   // Nút [🔴 Quay Video Phim]: Tự tua về Mở Màn 00:00, ẩn sạch thanh công cụ để ghi trọn bộ phim và bật trình xem lại ngay!
   const handleStartFullStoryVideoRecording = useCallback(() => {
+    unlockCinemaAudioEngine();
     setRecordErrorMsg("");
     if (viewMode !== "3d" && onToggleViewMode) {
       onToggleViewMode();
@@ -2512,13 +2621,14 @@ export default function EndGameRecap({
               type="button"
               className="vf-rec-pill"
               onClick={() => {
+                unlockCinemaAudioEngine();
                 setStoryVoiceOffline(false);
                 onRecheckVoice?.();
               }}
               title={
                 (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
                   ? "Máy chủ VoiceStudio cá nhân đang tắt — tự động phát nhạc nền điện ảnh & phụ đề sạch, 0% giọng tiếng Anh. Bấm để kiểm tra & nạp lại ngay!"
-                  : "Giọng đọc kể chuyện Voice Clone cá nhân (RTX 3090) đang sẵn sàng — Bấm để làm mới trạng thái"
+                  : "Giọng đọc kể chuyện Voice Clone cá nhân (RTX 3090) đang sẵn sàng — Bấm để mở khóa loa & làm mới trạng thái"
               }
               style={{
                 cursor: "pointer",
@@ -2537,11 +2647,13 @@ export default function EndGameRecap({
               }}
             >
               <span>
-                {vsStatusChecking || storyVoiceLoading
-                  ? "⏳ Đang đồng bộ Voice..."
-                  : (storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
-                    ? "🔴 Voice Offline (Bấm thử lại)"
-                    : "🟢 Voice Clone Sẵn Sàng"}
+                {(storyVoiceOffline || vsServerOffline) && storyAudioBuffersRef.current.size === 0
+                  ? "🔴 Voice Offline (Bấm thử lại)"
+                  : storyVoiceLoading && storyVoiceTotalCount > 0 && storyVoiceLoadedCount < storyVoiceTotalCount
+                    ? `🎙️ Đang nạp Voice (${storyVoiceLoadedCount}/${storyVoiceTotalCount})...`
+                    : vsStatusChecking
+                      ? "⏳ Đang kiểm tra Voice..."
+                      : `🟢 Voice Clone Sẵn Sàng${storyVoiceTotalCount > 0 ? ` (${storyVoiceLoadedCount}/${storyVoiceTotalCount})` : ""}`}
               </span>
             </button>
           )}

@@ -37,25 +37,18 @@ function getDevServerOrigin() {
 }
 
 export function isDevArchitectAllowed() {
-  if (import.meta.env?.DEV) return true;
+  // SEC-06: Khóa cứng 100% trên bản Build Production & bên trong App CapacitorJS (nơi hostname cũng là "localhost"!)
+  if (import.meta.env?.PROD) return false;
   if (typeof window !== "undefined") {
     try {
-      const host = (window.location.hostname || "").toLowerCase();
-      if (
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.startsWith("192.168.") ||
-        host.startsWith("10.") ||
-        host.endsWith(".local")
-      ) {
-        return true;
-      }
+      if (window.Capacitor?.isNativePlatform?.()) return false;
+      const proto = String(window.location?.protocol || "").toLowerCase();
+      if (proto === "capacitor:" || proto === "ionic:") return false;
     } catch {
       return false;
     }
   }
-  // Khóa cứng 100% trên Web Production (không mở qua query param để bảo vệ giao diện người chơi)
-  return false;
+  return Boolean(import.meta.env?.DEV);
 }
 
 export const EXTERIOR_CATEGORIES = [

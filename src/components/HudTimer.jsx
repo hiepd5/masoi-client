@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 
 // Thời lượng chuẩn từng phase (khớp 1:1 với server/gameEngine.js & gameController.js)
 const PHASE_DURATIONS_SEC = {
+  role_reveal: 6,
   night_cupid: 20,
   night_guard: 20,
   night_wolf: 30,
@@ -92,9 +93,9 @@ export function HudPhaseCountdown({ phaseEndsAt, isNight, isMyTurn, hasWinner })
 }
 
 /**
- * Thanh tiến trình thời gian ở dưới HUD (chia chuẩn theo thời lượng thật của từng Phase thay vì chia cứng /60).
+ * Thanh tiến trình thời gian ở dưới HUD (đồng bộ chuẩn theo `phaseDurationSec` thật từ Server, kể cả Tốc Chiến 5 Phút).
  */
-export function HudPhaseProgressBar({ phaseEndsAt, nightDayPhase, hasWinner }) {
+export function HudPhaseProgressBar({ phaseEndsAt, nightDayPhase, phaseDurationSec = null, hasWinner }) {
   const [pct, setPct] = useState(100);
 
   useEffect(() => {
@@ -102,7 +103,7 @@ export function HudPhaseProgressBar({ phaseEndsAt, nightDayPhase, hasWinner }) {
       setPct(0);
       return;
     }
-    const baseDurMs = (PHASE_DURATIONS_SEC[nightDayPhase] || 30) * 1000;
+    const baseDurMs = (Number(phaseDurationSec) > 0 ? Number(phaseDurationSec) : (PHASE_DURATIONS_SEC[nightDayPhase] || 30)) * 1000;
     const initialSpanMs = Math.max(baseDurMs, phaseEndsAt - Date.now());
 
     const tick = () => {
@@ -113,7 +114,7 @@ export function HudPhaseProgressBar({ phaseEndsAt, nightDayPhase, hasWinner }) {
     tick();
     const id = setInterval(tick, 250);
     return () => clearInterval(id);
-  }, [phaseEndsAt, nightDayPhase, hasWinner]);
+  }, [phaseEndsAt, nightDayPhase, phaseDurationSec, hasWinner]);
 
   if (!phaseEndsAt || hasWinner) return null;
 

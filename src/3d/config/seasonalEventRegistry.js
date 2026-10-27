@@ -99,7 +99,7 @@ export function isDateInSeasonalRange(mmdd, startMMDD, endMMDD) {
   return mmdd >= startMMDD || mmdd <= endMMDD;
 }
 
-export function resolveActiveSeasonalEvent(dateObj = new Date(), forceEventId = "noel") {
+export function resolveActiveSeasonalEvent(dateObj = new Date(), forceEventId = null) {
   if (forceEventId) {
     if (forceEventId === "default_nordic") return DEFAULT_BASE_THEME;
     const forced = SEASONAL_EVENTS_CALENDAR.find((ev) => ev.eventId === forceEventId);
@@ -116,7 +116,7 @@ export function resolveActiveSeasonalEvent(dateObj = new Date(), forceEventId = 
       isDateInSeasonalRange(mmdd, ev.activeRange.startMMDD, ev.activeRange.endMMDD)
   );
 
-  return matched || SEASONAL_EVENTS_CALENDAR[0] || DEFAULT_BASE_THEME;
+  return matched || DEFAULT_BASE_THEME;
 }
 
 const RENDER_MODE_STORAGE_KEY = "ws_masoi_3d_render_mode_v1";

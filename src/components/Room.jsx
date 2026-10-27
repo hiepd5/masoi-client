@@ -12,6 +12,8 @@ import {
   loadScenePresetsIndex,
 } from "../3d/editor/defaultVillageLayout.js";
 import { getTtsCacheKey, normalizeTtsText } from "../utils/ttsTextUtils.js";
+import { unlockCinemaAudioEngine } from "../utils/cinemaVideoRecorder.js";
+import { getSession } from "../hooks/useSocket.js";
 import "./Room.css";
 
 const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
@@ -44,6 +46,12 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
   const lastSpokenRef = useRef(-1);
   const currentAudioRef = useRef(null);
+  const currentAudioMetaRef = useRef(null);
+  const currentPhaseRef = useRef(room?.game?.nightDayPhase || room?.phase || "lobby");
+
+  useEffect(() => {
+    currentPhaseRef.current = room?.game?.nightDayPhase || room?.phase || "lobby";
+  }, [room?.game?.nightDayPhase, room?.phase]);
 
   // Pre-gen voice cache: Map<normalizedKey, blobURL>
   const voiceCacheRef = useRef(new Map());
@@ -124,7 +132,18 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       let type = "mc";
       if (msg.includes("không qua khỏi") || msg.includes("bị treo cổ") || msg.includes("chết")) type = "death";
       else if (msg.includes("không ai chết") || msg.includes("được tha")) type = "save";
-      setMcLog((prev) => [...prev, { text: msg, type }]);
+      const isImportant =
+        type !== "mc" ||
+        /chiến thắng|rời khỏi ván đấu|ĐOÀNG|Quyền Trượng|Tơ hồng|Hơi thở cuối/i.test(msg);
+      setMcLog((prev) => [
+        ...prev,
+        {
+          text: msg,
+          type,
+          phaseTag: currentPhaseRef.current,
+          isImportant,
+        },
+      ]);
     };
 
     socket.on("room:lobbyMessage", handleLobbyMsg);
@@ -289,118 +308,23 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     return url;
   }
 
-  // Xây dựng bộ câu thông báo động khớp 1:1 với gameController.js (sau khi đã bù đủ AI Bot, không nổ tổ hợp O(N^2))
-  function buildDynamicPhrases(players) {
-    const validPlayers = (players || []).filter((p) => p && p.name);
-    const phrases = [];
-    const seen = new Set();
-    const addUnique = (s) => {
-      const k = getTtsCacheKey(s);
-      if (k && !seen.has(k)) {
-        seen.add(k);
-        phrases.push(s);
-      }
+  // Mở khóa sớm WebAudio ngay từ cú click đầu tiên ở Sảnh Chờ / Vào Bàn để Phim Kể Chuyện cuối game phát tiếng tức thì 100%!
+  useEffect(() => {
+    const unlockOnce = () => {
+      unlockCinemaAudioEngine();
     };
+    window.addEventListener("pointerdown", unlockOnce, { passive: true });
+    window.addEventListener("touchstart", unlockOnce, { passive: true });
+    window.addEventListener("keydown", unlockOnce);
+    return () => {
+      window.removeEventListener("pointerdown", unlockOnce);
+      window.removeEventListener("touchstart", unlockOnce);
+      window.removeEventListener("keydown", unlockOnce);
+    };
+  }, []);
 
-    for (const p of validPlayers) {
-      const name = p.name;
-      const defenseSec = p.isBot ? 8 : 60;
-      addUnique(`Trời đã sáng. Đêm qua ${name} đã không qua khỏi.`);
-      addUnique(`${name} bị đề cử nhiều nhất. Mời lần lượt lên biện hộ.`);
-      addUnique(`🎤 Mời ${name} lên biện hộ. (${defenseSec} giây)`);
-      addUnique(`⚖️ Mời cả làng vote cho ${name}: Treo cổ hay Tha.`);
-      addUnique(`Làng đã quyết định! ${name} sẽ rời khỏi ván đấu. Xin hãy giữ im lặng tuyệt đối.`);
-      addUnique(`Làng đã tha ${name}! Không ai bị xử tử hôm nay.`);
-    }
-    return phrases;
-  }
-
-  // Chia nhỏ theo từng cụm 6 câu + hỗ trợ lấy bù pendingKeys sau 3.2s để không bao giờ đụng trần Timeout Proxy Render
-  async function pregenVoice(players, abortSignal) {
-    if (!mcVoiceEnabled || pregenInProgressRef.current) return;
-    const allPhrases = buildDynamicPhrases(players).filter(
-      (p) => !voiceCacheRef.current.has(getTtsCacheKey(p))
-    );
-    if (allPhrases.length === 0) return;
-
-    const CHUNK_SIZE = 6;
-    const serverBatchUrl = `${SERVER_BASE_URL}/api/tts-batch`;
-
-    pregenInProgressRef.current = true;
-    setVoicePregening(true);
-    let successCount = 0;
-    const totalTarget = allPhrases.length;
-    setVoicePregenProgress({ done: 0, total: totalTarget });
-
-    try {
-      let queueToFetch = [...allPhrases];
-      for (let pass = 0; pass < 3 && queueToFetch.length > 0; pass += 1) {
-        if (abortSignal?.aborted) break;
-        if (pass > 0) {
-          await new Promise((r) => setTimeout(r, 3200));
-          if (abortSignal?.aborted) break;
-        }
-        const nextPending = [];
-        for (let idx = 0; idx < queueToFetch.length; idx += CHUNK_SIZE) {
-          if (abortSignal?.aborted) break;
-          const chunk = queueToFetch
-            .slice(idx, idx + CHUNK_SIZE)
-            .filter((p) => !voiceCacheRef.current.has(getTtsCacheKey(p)));
-          if (chunk.length === 0) continue;
-
-          const resp = await fetch(serverBatchUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phrases: chunk, voice: vsProfileId, speed: 0.82 }),
-            signal: abortSignal,
-          });
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          const data = await resp.json();
-          if (data?.vsOnline === false) {
-            setVsStatusReady(false);
-            setVsServerOffline(true);
-            return;
-          }
-          const results = data?.results || {};
-          const pendingSet = new Set(Array.isArray(data?.pending) ? data.pending : []);
-          for (const phrase of chunk) {
-            const trimmed = phrase.trim();
-            const b64 = results[trimmed];
-            if (b64) {
-              const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-              const blob = new Blob([bytes], { type: 'audio/mpeg' });
-              setCachedVoiceBlobUrl(phrase, blob);
-              successCount += 1;
-            } else if (pendingSet.has(trimmed)) {
-              nextPending.push(phrase);
-            }
-          }
-          if (successCount > 0 || data?.vsOnline === true) {
-            setVsStatusReady(true);
-            setVsServerOffline(false);
-          }
-          const completedSoFar = allPhrases.filter((p) =>
-            voiceCacheRef.current.has(getTtsCacheKey(p))
-          ).length;
-          setVoicePregenProgress({ done: completedSoFar, total: totalTarget });
-        }
-        queueToFetch = nextPending;
-      }
-      if (successCount === 0 && !abortSignal?.aborted) {
-        await probeVoiceServerStatus({ force: true });
-      }
-    } catch (e) {
-      if (e?.name !== 'AbortError') {
-        console.warn('[VoicePregen] failed:', e.message);
-        await probeVoiceServerStatus({ force: true });
-      }
-    } finally {
-      pregenInProgressRef.current = false;
-      setVoicePregening(false);
-    }
-  }
-
-  // Giải phóng Blob URL cũ khi quay lại Sảnh Chờ; tự động kích hoạt Pre-gen khi vào ván hoặc khi Voice vừa bật lại (voiceRecheckTick)
+  // Zero-Waste: Cắt bỏ hoàn toàn 48 câu tạo sẵn giả định ở giây 0 để dành 100% GPU RTX 3090 cho Phim Kể Chuyện cuối game!
+  // Giải phóng Blob URL cũ khi quay lại Sảnh Chờ; tự động ngắt tiếng thông báo cũ của Room khi chuyển sang màn Kết Game (EndGameRecap)
   useEffect(() => {
     if (!room?.phase || room.phase === 'lobby') {
       if (voiceCacheRef.current.size > 0) {
@@ -410,20 +334,21 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         voiceCacheRef.current.clear();
       }
       setVoicePregening(false);
+      setVoicePregenProgress({ done: 0, total: 0 });
       return undefined;
     }
 
-    if (room.phase === 'playing' && mcVoiceEnabled && Array.isArray(room.players) && room.players.length > 0) {
-      const hasUncached = buildDynamicPhrases(room.players).some(
-        (p) => !voiceCacheRef.current.has(getTtsCacheKey(p))
-      );
-      if (!hasUncached) return undefined;
-      const ctrl = new AbortController();
-      pregenVoice(room.players, ctrl.signal);
-      return () => ctrl.abort();
+    if (room.phase === 'ended' || Boolean(room?.game?.winner)) {
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+        } catch {}
+        currentAudioRef.current = null;
+      }
+      setVoicePregening(false);
     }
     return undefined;
-  }, [room?.phase, room?.code, room?.players?.length, mcVoiceEnabled, voiceRecheckTick]);
+  }, [room?.phase, room?.game?.winner]);
 
   async function checkVoiceStudio() {
     // Không có URL trực tiếp (production HTTPS) → trả false để dùng server proxy
@@ -503,7 +428,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const tid = setTimeout(() => ctrl.abort(), 16000);
       const resp = await fetch(SERVER_TTS_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-game-session': room?.mySessionToken || getSession()?.sessionToken || '',
+        },
         body: JSON.stringify({ text, voice: vsProfileId, speed: 0.82 }),
         signal: ctrl.signal,
       });
@@ -538,14 +466,58 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     return null;
   }
 
+  // Fade-out mượt 180ms cho câu gọi dậy của pha cũ khi Smart Pacing / Turbo chuyển sang pha mới (giữ trọn câu báo tử / phán quyết / thắng thua)
+  const fadeOutCurrentMcAudio = useCallback((durationMs = 180) => {
+    const audio = currentAudioRef.current;
+    if (!audio) return;
+    currentAudioRef.current = null;
+    currentAudioMetaRef.current = null;
+    const startVol = audio.volume || 0.92;
+    const steps = 6;
+    const stepMs = Math.max(16, Math.round(durationMs / steps));
+    let cur = 0;
+    const timer = setInterval(() => {
+      cur += 1;
+      try {
+        audio.volume = Math.max(0, startVol * (1 - cur / steps));
+        if (cur >= steps) {
+          clearInterval(timer);
+          audio.pause();
+        }
+      } catch {
+        clearInterval(timer);
+      }
+    }, stepMs);
+  }, []);
+
+  useEffect(() => {
+    const activePhase = room?.game?.nightDayPhase;
+    if (!activePhase) return;
+    const meta = currentAudioMetaRef.current;
+    if (
+      currentAudioRef.current &&
+      meta &&
+      !meta.isImportant &&
+      meta.phaseTag &&
+      meta.phaseTag !== activePhase
+    ) {
+      fadeOutCurrentMcAudio(180);
+    }
+  }, [room?.game?.nightDayPhase, fadeOutCurrentMcAudio]);
+
   // Giữ nguyên Blob URL nằm trong voiceCacheRef xuyên suốt ván đấu (chỉ dọn khi về Lobby để phát lại không bao giờ lỗi 404)
-  function playMp3(src, { revokeOnEnd = false } = {}) {
+  function playMp3(src, { revokeOnEnd = false, meta = null } = {}) {
     return new Promise((resolve) => {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
+      currentAudioMetaRef.current = meta;
       const cleanup = (ok) => {
+        if (currentAudioRef.current === audio) {
+          currentAudioRef.current = null;
+          currentAudioMetaRef.current = null;
+        }
         if (revokeOnEnd && typeof src === 'string' && src.startsWith('blob:')) {
           try { URL.revokeObjectURL(src); } catch {}
         }
@@ -563,6 +535,17 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   useEffect(() => {
     if (!mcVoiceEnabled) return;
     if (mcLog.length === 0) return;
+    // Khi đã kết thúc ván đấu (chuyển sang Phim Kể Chuyện EndGameRecap), tắt ngay luồng đọc chat thông báo của Room để nhường 100% Loa & GPU cho Bộ Phim!
+    if (room?.phase === 'ended' || Boolean(room?.game?.winner)) {
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+        } catch {}
+        currentAudioRef.current = null;
+      }
+      lastSpokenRef.current = mcLog.length - 1;
+      return;
+    }
     const newMessages = mcLog.slice(lastSpokenRef.current + 1).filter(m => m.type !== 'player');
     if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
 
@@ -573,11 +556,24 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       for (const msg of newMessages) {
         const text = msg.text || msg;
         if (!text) continue;
+        const msgMeta = {
+          phaseTag: msg.phaseTag || currentPhaseRef.current,
+          isImportant: Boolean(msg.isImportant),
+        };
+        // Bỏ qua câu gọi dậy cũ nếu mạch game đã chuyển sang pha mới trước khi tới lượt đọc
+        if (
+          !msgMeta.isImportant &&
+          msg.phaseTag &&
+          currentPhaseRef.current &&
+          msg.phaseTag !== currentPhaseRef.current
+        ) {
+          continue;
+        }
 
         // Ưu tiên 1: Nếu câu đã có sẵn bản Voice Clone cá nhân hóa trong Cache RAM -> Phát ngay 0ms!
         const cachedBlobUrl = voiceCacheRef.current.get(getTtsCacheKey(text));
         if (cachedBlobUrl) {
-          const cachedOk = await playMp3(cachedBlobUrl);
+          const cachedOk = await playMp3(cachedBlobUrl, { meta: msgMeta });
           if (cachedOk) continue;
         }
 
@@ -588,7 +584,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         if (!isPersonalized) {
           const staticSrc = findAudioFile(text);
           if (staticSrc) {
-            const mp3Played = await playMp3(staticSrc);
+            const mp3Played = await playMp3(staticSrc, { meta: msgMeta });
             if (mp3Played) continue;
           }
         }
@@ -711,6 +707,14 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     setError("");
     socketRef.current.emit("room:manageBots", { action, count }, (res) => {
       if (res && !res.ok) setError(res.error || "Không chỉnh được ghế AI Bot.");
+    });
+  }
+
+  function handleToggleTurbo() {
+    if (!me?.isHost) return;
+    setError("");
+    socketRef.current.emit("room:setTurbo", { isTurbo: !room?.isTurbo }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không đổi được chế độ Tốc Chiến.");
     });
   }
 
@@ -927,6 +931,19 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 ? "🔐 Có mật khẩu"
                 : "🌍 Công khai"}
           </span>
+          {room.isTurbo && (
+            <span
+              className="lobby-privacy-chip"
+              title="Chế độ Tốc Chiến 5 Phút: Thảo luận 75s • Đề cử 20s • Biện hộ 35s • Bỏ phiếu 20s"
+              style={{
+                background: "rgba(245, 158, 11, 0.24)",
+                border: "1px solid rgba(251, 191, 36, 0.65)",
+                color: "#fef08a",
+              }}
+            >
+              ⚡ Tốc Chiến 5 Phút
+            </span>
+          )}
         </div>
 
         <div className="lobby-header-center">
@@ -1145,6 +1162,30 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                           🗑️ Xóa Bot ({botCount})
                         </button>
                       )}
+                    </div>
+                  </div>
+
+                  <div className="lobby-access-row">
+                    <span className="mini-panel-label">⚡ Nhịp độ ván:</span>
+                    <div className="lobby-mini-pills">
+                      <button
+                        type="button"
+                        className="mini-pill"
+                        onClick={handleToggleTurbo}
+                        title="Rút gọn thời gian ban ngày (Thảo luận 75s, Đề cử 20s, Biện hộ 35s, Bỏ phiếu 20s) — trọn ván ~5 phút!"
+                        style={
+                          room.isTurbo
+                            ? {
+                                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                                borderColor: "#fde047",
+                                color: "#0f172a",
+                                fontWeight: 800,
+                              }
+                            : undefined
+                        }
+                      >
+                        {room.isTurbo ? "⚡ Tốc Chiến 5 Phút: BẬT" : "🕐 Chuẩn (Bấm bật ⚡ 5 Phút)"}
+                      </button>
                     </div>
                   </div>
                 </div>

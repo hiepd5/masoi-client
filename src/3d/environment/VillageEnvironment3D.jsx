@@ -40,8 +40,8 @@ const ATMOSPHERE_PALETTES = {
     dirIntensity: 1.08,
     dirPos: [-7, 17, -18],
     rimColor: "#38bdf8",
-    rimIntensity: 0.48,
-    envIntensity: 0.62,
+    rimIntensity: 0.78,
+    envIntensity: 0.68,
     groundTint: "#6e8580",
     plazaTint: "#94a3b8",
     starOpacity: 0.92,
@@ -64,8 +64,8 @@ const ATMOSPHERE_PALETTES = {
     dirIntensity: 1.24,
     dirPos: [10, 13, -15],
     rimColor: "#f472b6",
-    rimIntensity: 0.4,
-    envIntensity: 0.72,
+    rimIntensity: 0.58,
+    envIntensity: 0.74,
     groundTint: "#8f8a88",
     plazaTint: "#b8c4d4",
     starOpacity: 0.34,
@@ -89,8 +89,8 @@ const ATMOSPHERE_PALETTES = {
     dirIntensity: 1.28,
     dirPos: [-6, 18, -16],
     rimColor: "#93c5fd",
-    rimIntensity: 0.38,
-    envIntensity: 0.78,
+    rimIntensity: 0.54,
+    envIntensity: 0.8,
     groundTint: "#859990",
     plazaTint: "#aebdcb",
     starOpacity: 0.38,
@@ -113,8 +113,8 @@ const ATMOSPHERE_PALETTES = {
     dirIntensity: 1.25,
     dirPos: [-8, 14, -17],
     rimColor: "#f97316",
-    rimIntensity: 0.52,
-    envIntensity: 0.65,
+    rimIntensity: 0.72,
+    envIntensity: 0.7,
     groundTint: "#8c7780",
     plazaTint: "#b6adb8",
     starOpacity: 0.48,
@@ -132,6 +132,10 @@ function resolveMoodKey(isNight, phase, hasWinner) {
 
 function resolvePhaseAccentHex(phase) {
   switch (phase) {
+    case "role_reveal":
+      return "#eab308"; // Vàng Cổ Ngữ Nhận Vai Định Mệnh
+    case "night_cupid":
+      return "#ec4899"; // Hồng Tơ Hồng Cupid
     case "night_guard":
       return "#38bdf8"; // Lam Hộ Vệ
     case "night_wolf":
@@ -456,7 +460,8 @@ function AtmosphereAndSky3D({
         shadow-camera-bottom={-15}
       />
 
-      <directionalLight ref={rimLightRef} position={[14, 11, 14]} intensity={0.45} color="#38bdf8" />
+      <directionalLight ref={rimLightRef} position={[14, 11, 14]} intensity={0.76} color="#38bdf8" />
+      <directionalLight position={[-13, 9, 13]} intensity={0.34} color="#a5f3fc" />
 
       {/* Vòm Trời Mây Trôi Bắc Âu Shader (hoặc Panorama nếu có) */}
       {activePanorama ? (
