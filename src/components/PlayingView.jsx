@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
+import RolePortrait from "./RolePortrait.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
 import VoiceRoom from "./VoiceRoom.jsx";
 import FullscreenButton from "./FullscreenButton.jsx";
@@ -70,17 +71,24 @@ export default function PlayingView({
   voiceRecheckTick = 0,
 }) {
   const g = room.game;
+  const isSpectator = Boolean(room.isSpectator);
   // Dùng playerId ổn định (không thay đổi khi reconnect), kèm fallback sessionToken sống từ room.players
   const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
-  const me =
-    room.players.find((p) => p.id === myPlayerId) ||
-    room.players.find((p) => p.sessionToken);
-  const liveSessionToken = me?.sessionToken || "";
+  const me = isSpectator
+    ? null
+    : room.players.find((p) => p.id === myPlayerId) ||
+      room.players.find((p) => p.sessionToken);
+  const liveSessionToken = isSpectator
+    ? room.spectatorSessionToken || ""
+    : me?.sessionToken || "";
   
   const [selectedId, setSelectedId] = useState(null);
   const [cupidTargets, setCupidTargets] = useState([]);
   const [wolfChatInput, setWolfChatInput] = useState("");
   const [villageChatInput, setVillageChatInput] = useState("");
+  const [chatChannel, setChatChannel] = useState("village");
+  const [ghostChatLog, setGhostChatLog] = useState([]);
+  const [ghostChatInput, setGhostChatInput] = useState("");
   const [localBubbleChatLog, setLocalBubbleChatLog] = useState({});
   const [hasActed, setHasActed] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem("ws_view_mode") || "3d");
@@ -212,12 +220,16 @@ export default function PlayingView({
 
   // Dead overlay: hiện 1 lần khi người chơi vừa chết (hoãn lại nếu là Thợ Săn đang gồng hơi thở cuối bắn trả thù!)
   useEffect(() => {
+    if (isSpectator) return;
     const isAliveOrHoldingBreath = me?.alive !== false || isMyHunterRevenge;
     if (prevAliveRef.current === true && !isAliveOrHoldingBreath && !g.winner) {
       setShowDeadOverlay(true);
     }
+    if (me?.alive) {
+      setChatChannel("village");
+    }
     prevAliveRef.current = isAliveOrHoldingBreath ?? true;
-  }, [me?.alive, isMyHunterRevenge, g.winner]);
+  }, [isSpectator, me?.alive, isMyHunterRevenge, g.winner]);
 
   // Ngay khi Kết Game (g.winner): tự động dẹp sạch mọi popup che khuất để mở Rạp Chiếu Replay Không Gian Thật 100vw!
   useEffect(() => {
@@ -333,11 +345,27 @@ export default function PlayingView({
       }]);
     };
 
+    const handleGhostChat = ({ senderId, senderName, message }) => {
+      setGhostChatLog((prev) => [
+        ...prev,
+        {
+          type: "ghost",
+          senderId,
+          senderName: senderName || "Linh Hồn",
+          text: message,
+          time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
+    };
+
     socketRef.current.on("wolf:chat", handleWolfChat);
     socketRef.current.on("village:chat", handleVillageChat);
+    socketRef.current.on("ghost:chat", handleGhostChat);
     return () => {
       socketRef.current.off("wolf:chat", handleWolfChat);
       socketRef.current.off("village:chat", handleVillageChat);
+      socketRef.current.off("ghost:chat", handleGhostChat);
     };
   }, [socketRef, room.players]);
 
@@ -397,6 +425,7 @@ export default function PlayingView({
   }
 
   function handleSelectSeat(id) {
+    if (isSpectator) return;
     if (!id) {
       setSelectedId(null);
       return;
@@ -569,7 +598,7 @@ export default function PlayingView({
 
   function handleVillageChat(e) {
     e.preventDefault();
-    if (!villageChatInput.trim()) return;
+    if (!villageChatInput.trim() || !me?.id) return;
     socketRef.current.emit("action:villageChat", { message: villageChatInput });
     setLocalBubbleChatLog(prev => ({ ...prev, [me.id]: villageChatInput }));
     setVillageChatInput("");
@@ -580,6 +609,28 @@ export default function PlayingView({
         return next;
       });
     }, 4000);
+  }
+
+  function handleGhostChat(e) {
+    e.preventDefault();
+    const clean = ghostChatInput.trim();
+    if (!clean || isSpectator || me?.alive) return;
+    socketRef.current.emit("action:ghostChat", { message: clean }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+      }
+    });
+    setGhostChatInput("");
+  }
+
+  function handleGhostBet(team) {
+    if (isSpectator || me?.alive || g.winner) return;
+    SFX.select();
+    socketRef.current.emit("action:ghostBet", { team }, (res) => {
+      if (res?.error) {
+        flashActionFeedback(`⚠️ ${res.error}`);
+      }
+    });
   }
 
   // --- Computed: Action Banner ---
@@ -734,19 +785,34 @@ export default function PlayingView({
           <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
         </div>
         <div className="hud-center">
-          <span
-            className="role-badge"
-            style={{ cursor: me?.role ? 'pointer' : 'default' }}
-            title={me?.role ? `${ROLE_DESCRIPTIONS[me.role] || ''} (Nhấn để xem lại nhiệm vụ)` : ''}
-            onClick={() => {
-              if (me?.role && !g.winner) {
-                setTutorialStep(1);
-                setTutorialSeconds(7);
-              }
-            }}
-          >
-            {ROLE_EMOJIS[me?.role]} {me?.role ? ROLE_LABELS[me.role] : 'Chết'}
-          </span>
+          {isSpectator ? (
+            <span
+              className="role-badge"
+              style={{
+                background: 'rgba(14, 116, 144, 0.35)',
+                borderColor: 'rgba(56, 189, 248, 0.65)',
+                color: '#e0f2fe',
+              }}
+              title="Bạn đang xem trực tiếp với chế độ chống lộ vai (Zero-Leak) — hệ thống đã xếp hàng tự động đưa bạn vào ghế chơi ván tiếp theo!"
+            >
+              👀 Khán Giả ({room.spectatorCount || 1})
+            </span>
+          ) : (
+            <span
+              className="role-badge"
+              style={{ cursor: me?.role ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              title={me?.role ? `${ROLE_DESCRIPTIONS[me.role] || ''} (Nhấn để xem lại nhiệm vụ)` : ''}
+              onClick={() => {
+                if (me?.role && !g.winner) {
+                  setTutorialStep(1);
+                  setTutorialSeconds(7);
+                }
+              }}
+            >
+              {me?.role ? <RolePortrait roleKey={me.role} size={22} /> : '👻'}
+              <span>{me?.role ? ROLE_LABELS[me.role] : 'Đã tử nạn'}</span>
+            </span>
+          )}
           {myLoverPartner && (
             <span
               className="role-badge"
@@ -921,6 +987,12 @@ export default function PlayingView({
         hasWinner={Boolean(g.winner)}
       />
 
+      {isSpectator && !g.winner && (
+        <div className="spectator-queue-banner">
+          👀 Bạn đang xem trực tiếp (Chế độ Zero-Leak) — Đã đặt chỗ tự động vào ghế chơi ngay ván sau!
+        </div>
+      )}
+
       {/* Tab bar — chỉ hiện trên mobile portrait */}
       <div className="mobile-tab-bar">
         <button
@@ -980,6 +1052,7 @@ export default function PlayingView({
                   }
                 >
                   <WerewolfScene3D
+                    roomCode={room.code}
                     players={room.players}
                     me={me}
                     phase={g.nightDayPhase}
@@ -1019,10 +1092,12 @@ export default function PlayingView({
               <VillageBackdrop isNight={isNight} />
               <ParticleBackground isNight={isNight} />
               <PlayerCircle 
+                roomCode={room.code}
                 players={room.players} 
                 me={me}
                 phase={g.nightDayPhase}
                 myRole={me?.role}
+                hasWinner={Boolean(g.winner)}
                 onSelectPlayer={handleSelectSeat}
                 selectedPlayerId={selectedId}
                 wolfVictimId={g.witchInfo?.victimId}
@@ -1035,6 +1110,10 @@ export default function PlayingView({
                 defendantId={(g.nightDayPhase === "day_defense" || g.nightDayPhase === "day_final_vote") ? g.hotSeatQueue?.[g.hotSeatIndex] : null}
                 recapAnimation={recapAnimation}
                 wolfTeammates={g.wolfTeammates || []}
+                mayorRevealedId={g.mayorRevealedId || null}
+                myLoverPartnerId={g.myLoverPartnerId || null}
+                hunterPendingId={g.hunterPendingId || null}
+                alphaWolfId={g.alphaWolfInfo?.alphaWolfId || null}
                 speakingIds={speakingIds}
                 reactions={reactions}
               />
@@ -1042,12 +1121,12 @@ export default function PlayingView({
           )}
 
           {/* Nút tròn thả cảm xúc 😊 thu gọn ở góc dưới bên phải sân khấu */}
-          {!g.winner && me?.alive && (
+          {!isSpectator && !g.winner && me?.alive && (
             <EmojiReactions socketRef={socketRef} myName={me?.name} />
           )}
 
           {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Floating Glass Dock cho cả 3D & 2D + Thợ Săn bắn trả thù) */}
-          {!g.winner && (me?.alive || isMyHunterRevenge) && (
+          {!isSpectator && !g.winner && (me?.alive || isMyHunterRevenge) && (
             <div className="action-panel compact-floating-dock">
               {/* Popover Lịch sử Tiên Tri (chỉ mở khi bấm nút 🔮 Đã soi) */}
               {showSeerPopover && seerHistory.length > 0 && (
@@ -1073,9 +1152,12 @@ export default function PlayingView({
               ) : g.nightDayPhase === "role_reveal" ? (
                 /* ================= PHA MỞ MÀN ĐỘC LẬP: NHẬN VAI ĐỊNH MỆNH (6 GIÂY) ================= */
                 <div className="dock-row">
-                  <span className="dock-hint" style={{ color: '#fef08a' }}>
-                    {ROLE_EMOJIS[me?.role] || '🎭'} Vai của bạn: <strong>{ROLE_LABELS[me?.role] || '...'}</strong>
-                    {ROLE_DESCRIPTIONS[me?.role] ? ` — ${ROLE_DESCRIPTIONS[me.role]}` : ''}
+                  <span className="dock-hint" style={{ color: '#fef08a', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    {me?.role ? <RolePortrait roleKey={me.role} size={28} glow /> : '🎭'}
+                    <span>
+                      Vai của bạn: <strong>{ROLE_LABELS[me?.role] || '...'}</strong>
+                      {ROLE_DESCRIPTIONS[me?.role] ? ` — ${ROLE_DESCRIPTIONS[me.role]}` : ''}
+                    </span>
                   </span>
                   {hasActed || g.roleRevealReadyIds?.[me?.id] ? (
                     <span className="dock-chip" style={{ color: '#a7f3d0', borderColor: 'rgba(52,211,153,0.5)' }}>
@@ -1463,9 +1545,9 @@ export default function PlayingView({
             <VoiceRoom 
               socketRef={socketRef} 
               isNight={isNight} 
-              myRole={isWolfTeamRole(me?.role) ? "wolf" : me?.role} 
-              isAlive={me?.alive}
-              myId={me?.id}
+              myRole={isSpectator ? null : (isWolfTeamRole(me?.role) ? "wolf" : me?.role)} 
+              isAlive={Boolean(me?.alive) && !isSpectator}
+              myId={isSpectator ? room.mySpectatorId : me?.id}
               wolfTeammates={g.wolfTeammates || []} 
               onSpeakingChange={handleSpeakingChange}
             />
@@ -1473,6 +1555,56 @@ export default function PlayingView({
 
           
           <div className="mc-chat-panel">
+            {!g.winner && !isSpectator && me && !me.alive && !isMyHunterRevenge && (
+              <>
+                <div className="ghost-channel-switcher">
+                  <button
+                    type="button"
+                    className={`ghost-tab-btn ${chatChannel === "village" ? "active" : ""}`}
+                    onClick={() => setChatChannel("village")}
+                  >
+                    💬 Kênh Làng ({chatLog.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost-tab-btn ${chatChannel === "ghost" ? "active" : ""}`}
+                    onClick={() => setChatChannel("ghost")}
+                  >
+                    👻 Cõi Âm ({ghostChatLog.length})
+                  </button>
+                </div>
+                <div className="ghost-bet-box">
+                  {g.myGhostBet ? (
+                    <span>
+                      🔮 Đã dự đoán:{" "}
+                      <strong>{g.myGhostBet === "wolf" ? "🐺 Phe Sói" : "🏡 Phe Dân"}</strong>{" "}
+                      (Đúng +35 XP!)
+                    </span>
+                  ) : (
+                    <>
+                      <span>🔮 Dự đoán phe thắng (+35 XP):</span>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn-ghost-bet"
+                          onClick={() => handleGhostBet("village")}
+                        >
+                          🏡 Phe Dân
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost-bet"
+                          onClick={() => handleGhostBet("wolf")}
+                        >
+                          🐺 Phe Sói
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+
             {/* Chat messages */}
             <div
               className="chat-messages"
@@ -1484,7 +1616,12 @@ export default function PlayingView({
                 if (atBottom) setNewMsgCount(0);
               }}
             >
-              {chatLog.map((msg, i) => (
+              {chatChannel === "ghost" && !isSpectator && me && !me.alive && ghostChatLog.length === 0 && (
+                <div style={{ padding: "14px 10px", textAlign: "center", fontSize: "0.78rem", color: "#c4b5fd" }}>
+                  👻 Chào mừng đến <strong>Cõi Âm</strong>! Chỉ những người đã ngã xuống mới đọc & trò chuyện được tại đây.
+                </div>
+              )}
+              {(chatChannel === "ghost" && !isSpectator && me && !me.alive ? ghostChatLog : chatLog).map((msg, i) => (
                 <div key={i} className={`chat-msg chat-msg-${msg.type} ${msg.senderId === me?.id ? 'chat-msg-mine' : ''}`}>
 
                   {/* MC announcement */}
@@ -1508,8 +1645,8 @@ export default function PlayingView({
                     </div>
                   )}
 
-                  {/* Player chat bubble — Zalo style */}
-                  {(msg.type === 'village' || msg.type === 'wolf') && (() => {
+                  {/* Player chat bubble — Zalo style (Village / Wolf / Ghost) */}
+                  {(msg.type === 'village' || msg.type === 'wolf' || msg.type === 'ghost') && (() => {
                     const isMine = msg.senderId === me?.id;
                     const senderPlayer = room.players.find(p => p.id === msg.senderId);
                     const avatarSrc = senderPlayer?.avatar || '/icon-192.png';
@@ -1525,6 +1662,7 @@ export default function PlayingView({
                           {!isMine && (
                             <div className="chat-header-row">
                               {msg.type === 'wolf' && <span className="wolf-tag">🐺</span>}
+                              {msg.type === 'ghost' && <span className="wolf-tag">👻</span>}
                               <span className="chat-sender-name">{msg.senderName}</span>
                               <span className="chat-time">{msg.time}</span>
                             </div>
@@ -1568,7 +1706,7 @@ export default function PlayingView({
             
             {/* Chat inputs — sticky bottom */}
             <div className="chat-input-area">
-              {isNight && isWolfTeamRole(me?.role) && me?.alive && (
+              {!isSpectator && isNight && isWolfTeamRole(me?.role) && me?.alive && (
                 <form onSubmit={handleWolfChat} className="chat-input-form wolf-input">
                   <input 
                     className="chat-input"
@@ -1579,13 +1717,24 @@ export default function PlayingView({
                   <button type="submit" className="btn-send wolf-send">➤</button>
                 </form>
               )}
-              {!isNight && me?.alive && (
+              {!isSpectator && !isNight && me?.alive && (
                 <form onSubmit={handleVillageChat} className="chat-input-form village-input">
                   <input 
                     className="chat-input"
                     placeholder="💬 Thảo luận..." 
                     value={villageChatInput}
                     onChange={e => setVillageChatInput(e.target.value)}
+                  />
+                  <button type="submit" className="btn-send village-send">➤</button>
+                </form>
+              )}
+              {!isSpectator && !g.winner && me && !me.alive && !isMyHunterRevenge && chatChannel === "ghost" && (
+                <form onSubmit={handleGhostChat} className="chat-input-form">
+                  <input
+                    className="chat-input"
+                    placeholder="👻 Trò chuyện Cõi Âm (chỉ linh hồn thấy)..."
+                    value={ghostChatInput}
+                    onChange={e => setGhostChatInput(e.target.value)}
                   />
                   <button type="submit" className="btn-send village-send">➤</button>
                 </form>
@@ -1603,7 +1752,14 @@ export default function PlayingView({
           history={g.history || EMPTY_ARRAY} 
           replayTimeline={g.replayTimeline || EMPTY_ARRAY}
           awards={g.awards || EMPTY_ARRAY}
-          isHost={me?.isHost} 
+          isHost={Boolean(me?.isHost)} 
+          isSpectator={isSpectator}
+          rematchEndsAt={g.rematchEndsAt}
+          rematchReadyCount={g.rematchReadyCount || 0}
+          rematchRequiredCount={g.rematchRequiredCount || 1}
+          myRematchReady={Boolean(g.myRematchReady)}
+          ghostBetBonusXp={g.ghostBetBonusXp || 0}
+          onRematchReady={() => socketRef.current.emit("room:rematchReady")}
           onRestart={() => socketRef.current.emit("room:restart")}
           onAnimate={setRecapAnimation}
           onStageChange={setRecapStageState}
@@ -1638,7 +1794,9 @@ export default function PlayingView({
             {/* Bước 1: Vai của bạn */}
             {tutorialStep === 1 && (
               <div className="tutorial-step-content">
-                <div className="role-tutorial-emoji">{ROLE_EMOJIS[me.role] || '🎭'}</div>
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                  <RolePortrait roleKey={me.role} mode="card" size={88} glow />
+                </div>
                 <h2>Bạn là <span style={{ color: '#f59e0b' }}>{ROLE_LABELS[me.role]}</span></h2>
                 <p className="tutorial-team">Phe: {isWolfTeamRole(me.role) ? '🐺 Sói' : me.role === 'tanner' ? '💀 Trung Lập' : '👥 Dân Làng'}</p>
               </div>
@@ -1662,9 +1820,12 @@ export default function PlayingView({
                   {g.roleCounts && Object.entries(g.roleCounts)
                     .filter(([, c]) => c > 0)
                     .map(([r, c]) => (
-                      <div key={r} className={`role-count-chip ${r === me.role ? 'role-count-mine' : ''}`}>
-                        {ROLE_EMOJIS[r]} {ROLE_LABELS[r]} × {c}
-                        {r === me.role && ' (Bạn!)'}
+                      <div key={r} className={`role-count-chip ${r === me.role ? 'role-count-mine' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        <RolePortrait roleKey={r} size={20} />
+                        <span>
+                          {ROLE_LABELS[r]} × {c}
+                          {r === me.role && ' (Bạn!)'}
+                        </span>
                       </div>
                     ))
                   }
@@ -1711,9 +1872,17 @@ export default function PlayingView({
           <div className="dead-overlay-card">
             <div className="dead-overlay-emoji">💀</div>
             <h2>Bạn đã rời ván đấu</h2>
-            <p>Bạn có thể <strong>xem tiếp</strong> nhưng không được tiết lộ thông tin cho người còn sống.</p>
-            <button className="btn-primary" onClick={() => setShowDeadOverlay(false)}>
-              👁️ Xem tiếp
+            <p>
+              Bạn có thể <strong>xem tiếp</strong>, trò chuyện riêng tại <strong>👻 Cõi Âm</strong> và dự đoán phe chiến thắng (<strong>+35 XP</strong>)!
+            </p>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                setShowDeadOverlay(false);
+                setChatChannel("ghost");
+              }}
+            >
+              👻 Vào Cõi Âm & Xem Tiếp
             </button>
           </div>
         </div>

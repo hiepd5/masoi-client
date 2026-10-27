@@ -108,12 +108,24 @@ export function useSocket() {
     socket.on("disconnect", () => setConnected(false));
     socket.on("room:update", (data) => {
       setRoomData(data);
-      // Keep session token fresh from server data
-      const token = data?.mySessionToken || data?.players?.find(p => p.sessionToken)?.sessionToken;
+      const promotedMe = data?.players?.find((p) => p.sessionToken);
+      if (promotedMe?.id) {
+        sessionStorage.setItem("ws_playerId", promotedMe.id);
+      }
+      // Keep session token fresh from server data (hỗ trợ cả ghế chính thức & hàng chờ Khán giả)
+      const token =
+        data?.mySessionToken ||
+        promotedMe?.sessionToken ||
+        data?.spectatorSessionToken;
       if (token) {
         const session = getSession();
         if (session) {
-          saveSession(session.roomCode, token, session.playerId, session.name);
+          saveSession(
+            session.roomCode,
+            token,
+            promotedMe?.id || data?.mySpectatorId || session.playerId,
+            session.name
+          );
         }
       }
     });

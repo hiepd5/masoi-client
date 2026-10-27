@@ -1,9 +1,11 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
+import RolePortrait from "./RolePortrait.jsx";
 import Scene3DErrorBoundary from "../3d/components/Scene3DErrorBoundary.jsx";
 import {
   PLAYABLE_ROLE_KEYS,
   ROLES_CONFIG,
+  ROLE_PORTRAIT_CARDS,
   generateDefaultRoles,
   generateExpandedV33Roles,
 } from "../config/roles.config.js";
@@ -26,6 +28,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [nameInput, setNameInput] = useState("");
   const [error, setError] = useState("");
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [showPwdEditor, setShowPwdEditor] = useState(false);
   const [pwdDraft, setPwdDraft] = useState("");
 
@@ -630,6 +633,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     setTimeout(() => setCopiedCode(false), 2200);
   }
 
+  function copyInviteLink() {
+    const shareUrl = `${window.location.origin}/?room=${encodeURIComponent(roomCode)}`;
+    navigator.clipboard?.writeText(shareUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2400);
+  }
+
   function handleLeave() {
     socketRef.current.emit("room:leave");
     onLeave();
@@ -878,6 +888,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
               }
             >
               <WerewolfScene3D
+                roomCode={room.code}
                 players={room.players}
                 me={me}
                 phase="lobby"
@@ -899,7 +910,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 const p = room.players[idx];
                 return (
                   <div key={p?.id || `empty-${idx}`} className={`lobby-2d-seat-card ${p ? "occupied" : "empty"}`}>
-                    <div className="seat-wolf-icon">{p ? "🐺" : "🪑"}</div>
+                    <div className="seat-wolf-icon">
+                      {p ? <RolePortrait roleKey="wolf" size={38} glow /> : "🪑"}
+                    </div>
                     <div className="seat-wolf-name">{p ? p.name : `Ghế #${idx + 1}`}</div>
                     {p && (
                       <div className="seat-wolf-state">
@@ -921,6 +934,23 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <span className="code-text">{room.code}</span>
             <span className="copy-hint">{copiedCode ? "✅ Đã copy!" : "📋 Copy"}</span>
           </div>
+          <button
+            type="button"
+            className="lobby-privacy-chip"
+            onClick={copyInviteLink}
+            title="Sao chép đường dẫn 1-Click gửi bạn bè (vào thẳng phòng hoặc hàng chờ khán giả)"
+            style={{
+              width: "auto",
+              margin: 0,
+              cursor: "pointer",
+              background: copiedLink ? "rgba(16, 185, 129, 0.25)" : "rgba(217, 164, 65, 0.2)",
+              border: copiedLink ? "1px solid rgba(52, 211, 153, 0.65)" : "1px solid rgba(245, 194, 92, 0.55)",
+              color: copiedLink ? "#a7f3d0" : "#fef08a",
+              fontWeight: 800,
+            }}
+          >
+            {copiedLink ? "✅ Đã chép Link!" : "🔗 Link Mời"}
+          </button>
           <span
             className={`lobby-privacy-chip mode-${roomAccessMode}`}
             title={
@@ -1221,8 +1251,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                           type="button"
                           className={`solo-role-chip ${activeSoloRole === rk ? "selected" : ""}`}
                           onClick={() => handleSelectSoloRole(rk)}
+                          style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                         >
-                          {rc.emoji} {rc.label}
+                          <RolePortrait roleKey={rk} size={20} />
+                          <span>{rc.label}</span>
                         </button>
                       );
                     })}
@@ -1299,16 +1331,26 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       style={{ "--role-accent": conf.color || "#fbbf24" }}
                       title={`${conf.label} (${teamText}): ${conf.description}`}
                     >
-                      {/* Khung ảnh Thumbnail nghệ thuật + Huy hiệu Phe + Huy hiệu Số lượng to rõ */}
+                      {/* Khung ảnh Thumbnail Studio 3D + Huy hiệu Phe + Huy hiệu Số lượng to rõ */}
                       <div
-                        className="role-thumb-art"
+                        className={`role-thumb-art ${ROLE_PORTRAIT_CARDS[roleKey] ? "has-studio-portrait" : ""}`}
                         style={{ background: conf.thumbGradient || "linear-gradient(145deg, #1e293b, #334155)" }}
                       >
+                        {ROLE_PORTRAIT_CARDS[roleKey] ? (
+                          <img
+                            src={ROLE_PORTRAIT_CARDS[roleKey]}
+                            alt={conf.label}
+                            loading="lazy"
+                            decoding="async"
+                            className="role-thumb-studio-img"
+                          />
+                        ) : (
+                          <div className="role-thumb-emblem">{conf.emoji}</div>
+                        )}
                         <span className={`role-thumb-team ${conf.team}`}>{teamText}</span>
                         <span className={`role-thumb-qty-badge ${count > 0 ? "has-qty" : ""}`}>
                           x{count}
                         </span>
-                        <div className="role-thumb-emblem">{conf.emoji}</div>
                       </div>
 
                       {/* Tên vai + Tag chức năng 1 dòng */}

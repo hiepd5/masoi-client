@@ -4,8 +4,8 @@
  * - Đợt 2 (6 món mở rộng): Sân đá cổ ngữ, Thông cao, Thông tán rộng, Cây khô vặn xoắn, Cột đèn lồng, Hàng rào đá rêu.
  */
 
-export const ASSET_SYNC_VERSION = 13;
-export const SKY_ENABLED = false;
+export const ASSET_SYNC_VERSION = 14;
+export const SKY_ENABLED = true;
 
 export const PROP_MANIFEST = {
   // ==================== ĐỢT 1: 6 ĐẠO CỤ KIẾN TRÚC CHỦ LỰC ====================

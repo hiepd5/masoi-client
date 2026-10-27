@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
-import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS } from "../../config/roles.config.js";
+import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, getPublicCitizenPersona } from "../../config/roles.config.js";
 import { ROLE_COSTUME_MANIFEST } from "../config/roleCostumeManifest.js";
 import { resolveActiveCharacterSlot } from "../config/characterManifest.js";
 import { SEAT_TOP_Y } from "../utils/seatLayout.js";
@@ -118,6 +118,7 @@ const VILLAGER_TUNIC_PALETTE = [
  *   và diễn các tư thế castLunge / hitRecoil / cheer đồng bộ với tia VFX 3D!
  */
 export default function GreyboxActor({
+  roomCode = "MASOI",
   player,
   seatTransform,
   cameraMode = "shoulder",
@@ -258,6 +259,11 @@ export default function GreyboxActor({
       choreoActionSpec?.actionType === "tribunal_torch_stand"
   );
 
+  const publicPersona = useMemo(
+    () => getPublicCitizenPersona(roomCode, seatTransform?.seatIdx ?? 0),
+    [roomCode, seatTransform?.seatIdx]
+  );
+
   const isWolfVisual = visibleCostumeRole === "wolf" || visibleCostumeRole === "alpha_wolf";
   const activeCharSlot = useMemo(
     () =>
@@ -265,9 +271,10 @@ export default function GreyboxActor({
         hasWinner,
         visibleCostumeRole,
         seatIndex: seatTransform?.seatIdx ?? 0,
+        roomCode,
         preferAltWolf: Boolean(metamorphWolfActive),
       }),
-    [hasWinner, visibleCostumeRole, seatTransform?.seatIdx, metamorphWolfActive]
+    [hasWinner, visibleCostumeRole, seatTransform?.seatIdx, roomCode, metamorphWolfActive]
   );
   const characterGlbEntry = useOptionalCharacterGlb(activeCharSlot);
   const isStandingSmartMesh = Boolean(
@@ -291,15 +298,15 @@ export default function GreyboxActor({
       : player.role;
   const roleAccentColor = revealedRole ? ROLE_COLORS[revealedRole] || "#fbbf24" : "#94a3b8";
 
-  // Màu trang phục thân nhân vật
+  // Màu trang phục thân nhân vật (khóa cứng theo publicPersonaSeed của roomCode + seatIdx — Chốt #10)
   const tunicColor = useMemo(() => {
     if (effectiveIsDead) return "#1e3a5f";
     if (isWolfVisual) return "#691414";
     if (hasWinner && visibleCostumeRole && ROLE_COSTUME_MANIFEST[visibleCostumeRole]) {
       return ROLE_COSTUME_MANIFEST[visibleCostumeRole].tunicColor;
     }
-    return VILLAGER_TUNIC_PALETTE[seatTransform.seatIdx % VILLAGER_TUNIC_PALETTE.length];
-  }, [effectiveIsDead, isWolfVisual, hasWinner, visibleCostumeRole, seatTransform.seatIdx]);
+    return publicPersona.tunicHex || VILLAGER_TUNIC_PALETTE[seatTransform.seatIdx % VILLAGER_TUNIC_PALETTE.length];
+  }, [effectiveIsDead, isWolfVisual, hasWinner, visibleCostumeRole, publicPersona.tunicHex, seatTransform.seatIdx]);
 
   const skinColor = effectiveIsDead ? "#7dd3fc" : isWolfVisual ? "#27272a" : "#d9a97c";
   const pantsColor = effectiveIsDead ? "#0c4a6e" : isWolfVisual ? "#18181b" : "#222933";
@@ -441,6 +448,9 @@ export default function GreyboxActor({
         targetPosY = SEAT_TOP_Y + Math.abs(Math.sin(t * 5.2 + seed)) * 0.055;
       } else if (isSleeping) {
         targetLeanX = 0.19 + Math.sin(t * 1.1 + seed) * 0.02;
+      } else if (isSpeaking) {
+        targetLeanX = -0.04 + Math.sin(t * 9.5 + seed) * 0.045;
+        targetPosY = SEAT_TOP_Y + Math.abs(Math.sin(t * 9.5 + seed)) * 0.024;
       } else {
         targetLeanX = isDefendant || recapPose === "defend" ? -0.07 : Math.sin(breathPhase) * 0.025;
         targetPosY = SEAT_TOP_Y + Math.sin(breathPhase) * 0.009;

@@ -3,6 +3,7 @@ import {
   subscribe3DModelRenderMode,
 } from "./seasonalEventRegistry.js";
 import { ASSET_SYNC_VERSION } from "./propManifest.js";
+import { getPublicCitizenPersona } from "../../config/roles.config.js";
 
 function withAssetVersion(url) {
   if (!url) return null;
@@ -306,8 +307,8 @@ export function subscribeCharacterManifest(fn) {
 
 /**
  * Quyết định khe Nhân Vật 3D nào được hiển thị trên ghế:
- * - Trong ván đấu (`!hasWinner`): Mặc định xoay vòng 3 tạo hình Dân Làng Ẩn Danh (`seatIndex % 3`) khi đã cắm file `.GLB`,
- *   nếu chưa có file `.GLB` mới thì dùng `villager_cloak` ẩn danh tuyệt đối (Zero-Leak 100%).
+ * - Trong ván đấu (`!hasWinner`): Khóa bất biến `publicPersonaSeed` theo `roomCode + seatIndex` (`Chốt #10`)
+ *   xoay vòng 3 tạo hình Dân Làng Ẩn Danh (`villager_cloak`, `villager_female`, `villager_elder`) không bao giờ nhảy dáng khi bị đồng hóa.
  * - Với Ma Sói (`wolf`): Tự động xen kẽ `wolf` (#07) & `wolf_alt` (#07B) theo `seatIndex % 2`.
  * - Khi chiếu băng Replay cuối ván (`hasWinner === true`) hoặc Studio Hoạt Cảnh: Mở khóa toàn bộ các Vai Thật & Cổng V3.3!
  */
@@ -315,27 +316,25 @@ export function resolveActiveCharacterSlot({
   hasWinner,
   visibleCostumeRole,
   seatIndex = 0,
+  roomCode = "MASOI",
   preferAltWolf = false,
 }) {
-  const safeSeatMod3 = Math.abs(Number(seatIndex) || 0) % 3;
-  if (!visibleCostumeRole) {
-    if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) {
+  const persona = getPublicCitizenPersona(roomCode, seatIndex);
+  const resolveCitizenSlot = (fallbackTrueVillager = false) => {
+    if (persona.slotKey === "villager_female" && availableCharacterModels.villager_female) {
       return "villager_female";
     }
-    if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) {
+    if (persona.slotKey === "villager_elder" && availableCharacterModels.villager_elder) {
       return "villager_elder";
     }
-    return "villager_cloak";
+    return fallbackTrueVillager ? "villager_true" : "villager_cloak";
+  };
+
+  if (!visibleCostumeRole) {
+    return resolveCitizenSlot(false);
   }
   if (visibleCostumeRole === "villager") {
-    if (!hasWinner) {
-      if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) return "villager_female";
-      if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) return "villager_elder";
-      return "villager_cloak";
-    }
-    if (safeSeatMod3 === 1 && availableCharacterModels.villager_female) return "villager_female";
-    if (safeSeatMod3 === 2 && availableCharacterModels.villager_elder) return "villager_elder";
-    return "villager_true";
+    return resolveCitizenSlot(Boolean(hasWinner));
   }
   if (visibleCostumeRole === "wolf") {
     const useAlt = Boolean(preferAltWolf || Math.abs(Number(seatIndex) || 0) % 2 === 1);

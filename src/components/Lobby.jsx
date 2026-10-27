@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { saveSession, getDeviceId } from "../hooks/useSocket.js";
+import RolePortrait from "./RolePortrait.jsx";
 import "./Lobby.css";
 
 const RANDOM_NAMES = [
@@ -18,18 +19,18 @@ const CUSTOM_AVATARS = Array.from({ length: 10 }, (_, i) =>
 );
 
 const ROLE_RULES = [
-  { emoji: "🐺", name: "Sói", desc: "Mỗi đêm bí mật chọn 1 nạn nhân. Ban ngày che giấu danh tính!" },
-  { emoji: "🩸", name: "Sói Đầu Đàn", desc: "1 lần mỗi ván có thể bật Huyết Nguyệt biến nạn nhân bị cắn thành Sói thay vì chết." },
-  { emoji: "🛡️", name: "Bảo Vệ", desc: "Mỗi đêm gác 1 người khỏi nanh vuốt Sói (không trùng 2 đêm liên tiếp)." },
-  { emoji: "🔮", name: "Tiên Tri", desc: "Mỗi đêm soi 1 người: 🔴 Phe Sói, 🔵 Người tốt." },
-  { emoji: "🧪", name: "Phù Thủy", desc: "Sở hữu 1 bình Cứu + 1 bình Độc trong cả ván đấu." },
-  { emoji: "🏹", name: "Thợ Săn", desc: "Khi ngã xuống (trừ khi trúng độc Phù Thủy), có 15s bắn 1 viên đạn bạc kéo theo 1 người!" },
-  { emoji: "💘", name: "Thần Tình Yêu", desc: "Đêm đầu kết duyên 2 Tình Nhân sinh tử. Nếu khác phe và sống sót 2 người cuối sẽ thắng riêng!" },
-  { emoji: "👑", name: "Trưởng Làng", desc: "Ban ngày có thể giơ Quyền Trượng lộ diện — từ đó lá phiếu Đề cử & Treo cổ được tính x2!" },
-  { emoji: "💪", name: "Người Cứng Cỏi", desc: "Nếu bị Sói cắn sẽ gắng gượng sống thêm trọn 1 ngày trước khi gục." },
-  { emoji: "🌑", name: "Kẻ Bị Nguyền", desc: "Ban đầu là Dân, nhưng nếu bị Sói cắn trong đêm sẽ hóa thành Sói." },
-  { emoji: "💀", name: "Chán Đời", desc: "Phe Độc Lập — thắng ngay lập tức nếu lừa được cả làng treo cổ mình!" },
-  { emoji: "👨‍🌾", name: "Nông Dân", desc: "Quan sát, suy luận và bỏ phiếu chuẩn xác để thanh trừng bầy Sói." },
+  { key: "wolf", name: "Sói", desc: "Mỗi đêm bí mật chọn 1 nạn nhân. Ban ngày che giấu danh tính!" },
+  { key: "alpha_wolf", name: "Sói Đầu Đàn", desc: "1 lần mỗi ván có thể bật Huyết Nguyệt biến nạn nhân bị cắn thành Sói thay vì chết." },
+  { key: "guard", name: "Bảo Vệ", desc: "Mỗi đêm gác 1 người khỏi nanh vuốt Sói (không trùng 2 đêm liên tiếp)." },
+  { key: "seer", name: "Tiên Tri", desc: "Mỗi đêm soi 1 người: 🔴 Phe Sói, 🔵 Người tốt." },
+  { key: "witch", name: "Phù Thủy", desc: "Sở hữu 1 bình Cứu + 1 bình Độc trong cả ván đấu." },
+  { key: "hunter", name: "Thợ Săn", desc: "Khi ngã xuống (trừ khi trúng độc Phù Thủy), có 15s bắn 1 viên đạn bạc kéo theo 1 người!" },
+  { key: "cupid", name: "Thần Tình Yêu", desc: "Đêm đầu kết duyên 2 Tình Nhân sinh tử. Nếu khác phe và sống sót 2 người cuối sẽ thắng riêng!" },
+  { key: "mayor", name: "Trưởng Làng", desc: "Ban ngày có thể giơ Quyền Trượng lộ diện — từ đó lá phiếu Đề cử & Treo cổ được tính x2!" },
+  { key: "tough_guy", name: "Người Cứng Cỏi", desc: "Nếu bị Sói cắn sẽ gắng gượng sống thêm trọn 1 ngày trước khi gục." },
+  { key: "cursed", name: "Kẻ Bị Nguyền", desc: "Ban đầu là Dân, nhưng nếu bị Sói cắn trong đêm sẽ hóa thành Sói." },
+  { key: "tanner", name: "Chán Đời", desc: "Phe Độc Lập — thắng ngay lập tức nếu lừa được cả làng treo cổ mình!" },
+  { key: "villager", name: "Nông Dân", desc: "Quan sát, suy luận và bỏ phiếu chuẩn xác để thanh trừng bầy Sói." },
 ];
 
 const RULES_TABS = [
@@ -93,6 +94,77 @@ export default function Lobby({
   // Rules modal
   const [showRules, setShowRules] = useState(false);
   const [rulesTab, setRulesTab] = useState("roles");
+  const autoInviteHandledRef = useRef(false);
+
+  // Tự động bắt Link mời 1-Chạm (?room=ABCDE) từ Zalo / Messenger / TikTok Bio
+  useEffect(() => {
+    if (autoInviteHandledRef.current || typeof window === "undefined") return;
+    const socket = socketRef.current;
+    if (!socket) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const invitedCode = (params.get("room") || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 5);
+      if (invitedCode.length !== 5) return;
+      autoInviteHandledRef.current = true;
+      setRoomCode(invitedCode);
+
+      // Xóa tham số ?room= khỏi thanh địa chỉ để F5 sau này không bị kẹt vòng lặp
+      params.delete("room");
+      const restQuery = params.toString();
+      const cleanUrl = `${window.location.pathname}${restQuery ? `?${restQuery}` : ""}${window.location.hash || ""}`;
+      window.history.replaceState({}, "", cleanUrl);
+
+      const finalName = (sessionStorage.getItem("ws_name") || "").trim() || suggestName();
+      setLoading(true);
+      persistName(finalName);
+
+      socket.emit(
+        "room:join",
+        {
+          roomCode: invitedCode,
+          name: finalName,
+          avatarUrl: selectedAvatarUrl,
+          password: "",
+          deviceId: getDeviceId(),
+        },
+        (res) => {
+          if (res?.ok) {
+            setLoading(false);
+            finalizeJoinSuccess(res, finalName);
+            return;
+          }
+          // Nếu bàn đang chơi hoặc đang tổng kết -> tự động đưa vào Chế độ Vào Xem & Đặt Ghế Ván Sau!
+          if (res?.phase === "playing" || res?.phase === "ended") {
+            socket.emit(
+              "room:spectate",
+              {
+                roomCode: invitedCode,
+                name: finalName,
+                avatarUrl: selectedAvatarUrl,
+                password: "",
+                deviceId: getDeviceId(),
+              },
+              (specRes) => {
+                setLoading(false);
+                if (specRes?.ok) {
+                  finalizeJoinSuccess(specRes, finalName);
+                  return;
+                }
+                if (specRes?.requirePassword) setNeedCodePassword(true);
+                setError(specRes?.error || res?.error || "Không thể vào phòng.");
+              }
+            );
+            return;
+          }
+          setLoading(false);
+          if (res?.requirePassword) setNeedCodePassword(true);
+          setError(res?.error || "Không thể vào phòng qua link mời.");
+        }
+      );
+    } catch {
+      // ignore malformed URL
+    }
+  }, [socketRef, selectedAvatarUrl]);
 
   // Nạp ngầm trước Đợt 1 (Ghế, Bếp lửa, Sân đá, Đài treo cổ) để vào phòng 3D mượt tức thì
   useEffect(() => {
@@ -215,12 +287,94 @@ export default function Lobby({
         deviceId: getDeviceId(),
       },
       (res) => {
+        if (!res?.ok && (res?.phase === "playing" || res?.phase === "ended")) {
+          // Tự động chuyển sang Vào Xem & Đặt Ghế nếu bàn đang đấu!
+          socketRef.current.emit(
+            "room:spectate",
+            {
+              roomCode: cleanCode,
+              name: finalName,
+              avatarUrl: selectedAvatarUrl,
+              password: codePassword.trim(),
+              deviceId: getDeviceId(),
+            },
+            (specRes) => {
+              setLoading(false);
+              if (!specRes?.ok) {
+                if (specRes?.requirePassword) setNeedCodePassword(true);
+                setError(specRes?.error || res?.error || "Không thể vào phòng.");
+                return;
+              }
+              finalizeJoinSuccess(specRes, finalName);
+            }
+          );
+          return;
+        }
         setLoading(false);
         if (!res?.ok) {
           if (res?.requirePassword) {
             setNeedCodePassword(true);
           }
           setError(res?.error || "Không thể vào phòng.");
+          return;
+        }
+        finalizeJoinSuccess(res, finalName);
+      }
+    );
+  }
+
+  function handleQuickMatch() {
+    setError("");
+    const finalName = name.trim() || suggestName();
+    setLoading(true);
+    persistName(finalName);
+
+    socketRef.current.emit(
+      "room:quickMatch",
+      {
+        name: finalName,
+        avatarUrl: selectedAvatarUrl,
+        preferTurbo: createTurbo,
+        deviceId: getDeviceId(),
+      },
+      (res) => {
+        setLoading(false);
+        if (!res?.ok) {
+          setError(res?.error || "Không thể ghép bàn nhanh lúc này.");
+          return;
+        }
+        finalizeJoinSuccess(res, finalName);
+      }
+    );
+  }
+
+  function handleSpectateCard(roomItem, providedPassword = "") {
+    setError("");
+    if (roomItem.hasPassword && !providedPassword.trim()) {
+      setUnlockingRoomCode(roomItem.code);
+      setUnlockRoomPwd("");
+      return;
+    }
+    const finalName = name.trim() || suggestName();
+    setLoading(true);
+    persistName(finalName);
+
+    socketRef.current.emit(
+      "room:spectate",
+      {
+        roomCode: roomItem.code,
+        name: finalName,
+        avatarUrl: selectedAvatarUrl,
+        password: providedPassword.trim(),
+        deviceId: getDeviceId(),
+      },
+      (res) => {
+        setLoading(false);
+        if (!res?.ok) {
+          if (res?.requirePassword) {
+            setUnlockingRoomCode(roomItem.code);
+          }
+          setError(res?.error || "Không thể vào xem phòng này.");
           return;
         }
         finalizeJoinSuccess(res, finalName);
@@ -282,12 +436,17 @@ export default function Lobby({
 
   return (
     <>
+      {/* Nền Làng Cổ Ngữ Dark Nordic Arcane (Chốt #11: Không mở WebGL thứ 2 trên Trang chủ, 100% an toàn RAM Mobile!) */}
+      <div className="home-arcane-backdrop" aria-hidden="true">
+        <div className="home-arcane-rune-halo" />
+      </div>
+
       {/* Rules Modal */}
       {showRules && (
         <div className="rules-modal-overlay" onClick={() => setShowRules(false)}>
           <div className="rules-modal" onClick={(e) => e.stopPropagation()}>
             <div className="rules-modal-header">
-              <h2>📖 Luật Chơi Ma Sói V3.4</h2>
+              <h2>📖 Sổ Tay 12 Vai Ma Sói 3D (V4.1)</h2>
               <button className="rules-close" onClick={() => setShowRules(false)}>
                 ✕
               </button>
@@ -309,8 +468,8 @@ export default function Lobby({
               {rulesTab === "roles" && (
                 <div className="rules-roles-list">
                   {ROLE_RULES.map((r) => (
-                    <div key={r.name} className="rules-role-row">
-                      <span className="rules-role-emoji">{r.emoji}</span>
+                    <div key={r.key} className="rules-role-row">
+                      <RolePortrait roleKey={r.key} size={46} glow />
                       <div>
                         <div className="rules-role-name">{r.name}</div>
                         <div className="rules-role-desc">{r.desc}</div>
@@ -484,6 +643,28 @@ export default function Lobby({
               </div>
             </div>
 
+            {/* NÚT VÀNG CHỦ LỰC V4.1: GHÉP BÀN NHANH 1-CHẠM + TRƯNG BÀY DÀN NHÂN VẬT 3D STUDIO */}
+            <div className="quick-match-hero-card">
+              <button
+                type="button"
+                className="btn-quick-match-gold"
+                disabled={loading}
+                onClick={handleQuickMatch}
+              >
+                🔥 CHƠI NGAY — Ghép Bàn Nhanh 1-Chạm
+              </button>
+              <div className="quick-match-showcase-strip">
+                <div className="quick-match-portraits-row">
+                  {["wolf", "alpha_wolf", "seer", "witch", "hunter", "mayor"].map((rk) => (
+                    <RolePortrait key={rk} roleKey={rk} size={30} />
+                  ))}
+                </div>
+                <span style={{ fontSize: "0.74rem", color: "#fde68a", fontWeight: 600 }}>
+                  Vào ngay bàn đông nhất • Tự bù AI Bot thông minh
+                </span>
+              </div>
+            </div>
+
             {/* HỘP 1-CLICK CHƠI NHANH 1 MÌNH KHÔNG CẦN ĐỦ 6 NGƯỜI */}
             <div className="solo-hero-box">
               <button
@@ -492,10 +673,10 @@ export default function Lobby({
                 disabled={loading}
                 onClick={() => handleCreateRoom({ soloQuickStart: true })}
               >
-                ⚡ Chơi Nhanh 1 Mình (8 Ghế V3.3 + AI Bot)
+                ⚡ Luyện Tập 1 Mình (8 Ghế V4.1 + Tự Chọn Vai)
               </button>
               <p className="solo-hero-desc">
-                🎯 Vào thẳng sảnh 3D với 7 AI Bot dựng sẵn (Thợ Săn, Tình Yêu, Sói Đầu Đàn, Trưởng Làng) — chọn vai muốn test rồi bấm chạy ngay không cần chờ 6 người!
+                🎯 Vào thẳng sảnh 3D với 7 AI Bot biết tranh biện — tự chọn vai muốn thử rồi xuất trận ngay!
               </p>
             </div>
 
@@ -753,6 +934,7 @@ export default function Lobby({
                               <span>
                                 👤 {r.humanCount} người
                                 {r.botCount > 0 ? ` + 🤖 ${r.botCount} Bot` : ""} / {r.maxSeats} ghế
+                                {r.spectatorCount > 0 ? ` • 👀 ${r.spectatorCount}` : ""}
                               </span>
                               {!isLobby && r.phase === "playing" && (
                                 <span style={{ color: "#fde68a", fontWeight: 700 }}>
@@ -774,18 +956,28 @@ export default function Lobby({
                             {r.hasPassword ? "🔐 Nhập mật khẩu" : "Vào Phòng ➤"}
                           </button>
                         ) : (
-                          <button type="button" className="btn-room-join" disabled>
-                            ⏳ Đang chơi (Chờ hết ván)
+                          <button
+                            type="button"
+                            className="btn-room-spectate"
+                            disabled={loading}
+                            onClick={() => handleSpectateCard(r)}
+                            title="Ngồi xem sân khấu 3D trực tiếp (Zero-Leak) và tự động giữ ghế cho ván kế tiếp!"
+                          >
+                            {r.hasPassword ? "🔐 Xem & Đặt Ghế" : "👀 Vào Xem & Đặt Ghế"}
                           </button>
                         )}
                       </div>
 
-                      {isLobby && isUnlocking && (
+                      {isUnlocking && (
                         <form
                           className="room-inline-pwd-form"
                           onSubmit={(e) => {
                             e.preventDefault();
-                            handleJoinPublicCard(r, unlockRoomPwd);
+                            if (isLobby) {
+                              handleJoinPublicCard(r, unlockRoomPwd);
+                            } else {
+                              handleSpectateCard(r, unlockRoomPwd);
+                            }
                           }}
                         >
                           <input

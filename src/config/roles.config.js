@@ -191,6 +191,88 @@ export const ROLE_EMOJIS       = Object.fromEntries(Object.entries(ROLES_CONFIG)
 export const ROLE_COLORS       = Object.fromEntries(Object.entries(ROLES_CONFIG).map(([k, v]) => [k, v.color]));
 export const ROLE_DESCRIPTIONS = Object.fromEntries(Object.entries(ROLES_CONFIG).map(([k, v]) => [k, v.description]));
 
+// ==================== BỘ CHÂN DUNG 3D STUDIO ARCANE (16 HUY HIỆU 1:1 + 16 THẺ BÀI 2:3 WEBP) ====================
+const PORTRAIT_KEYS = [
+  "wolf",
+  "wolf_alt",
+  "alpha_wolf",
+  "guard",
+  "witch",
+  "seer",
+  "hunter",
+  "cupid",
+  "mayor",
+  "tough_guy",
+  "cursed",
+  "tanner",
+  "villager",
+  "villager_cloak",
+  "villager_female",
+  "villager_elder",
+];
+
+export const ROLE_PORTRAIT_BADGES = Object.fromEntries(
+  PORTRAIT_KEYS.map((k) => [k, `/portraits/badges/${k}.webp`])
+);
+
+export const ROLE_PORTRAIT_CARDS = Object.fromEntries(
+  PORTRAIT_KEYS.map((k) => [k, `/portraits/cards/${k}.webp`])
+);
+
+Object.entries(ROLES_CONFIG).forEach(([k, v]) => {
+  v.portraitBadge = ROLE_PORTRAIT_BADGES[k] || ROLE_PORTRAIT_BADGES.villager_cloak;
+  v.portraitCard = ROLE_PORTRAIT_CARDS[k] || ROLE_PORTRAIT_CARDS.villager_cloak;
+});
+
+const PUBLIC_CITIZEN_TUNIC_PALETTE = [
+  "#7f2936", // Đỏ Rượu Burgundy Cổ
+  "#284b63", // Xanh Thép Bắc Âu
+  "#8a5224", // Nâu Hổ Phách Da Thuộc
+  "#264e36", // Xanh Rừng Thông Sẫm
+  "#4b3869", // Tím Chàm Hoàng Gia
+  "#6b5b2b", // Vàng Rêu Ô-liu Cổ
+  "#22575e", // Xanh Đá Phiến Biển Bắc
+  "#6e3426", // Đỏ Đồng Nung
+  "#2d3a66", // Chàm Đêm Sương Mù
+  "#662c4b", // Tím Dâu Rừng Sẫm
+];
+
+const PUBLIC_CITIZEN_SLOTS = [
+  { slotKey: "villager_cloak", label: "Áo Choàng Bí Ẩn" },
+  { slotKey: "villager_female", label: "Thôn Nữ Bắc Âu" },
+  { slotKey: "villager_elder", label: "Bô Lão Bắc Âu" },
+];
+
+/**
+ * Chốt #10 (Zero-Leak Public Persona):
+ * Sinh diện mạo công khai cố định 100% theo `roomCode + seatIndex` (tuyệt đối KHÔNG phụ thuộc `p.role` hay `p.id`).
+ * Khi Kẻ Bị Nguyền hoặc nạn nhân Sói Đầu Đàn bị đồng hóa giữa ván, ngoại hình công khai trên ghế giữ nguyên bất biến!
+ */
+export function getPublicCitizenPersona(roomCode, seatIndex = 0) {
+  const safeCode = String(roomCode || "MASOI").trim().toUpperCase();
+  const safeSeat = Math.max(0, Number(seatIndex) || 0);
+  const seedStr = `${safeCode}:SEAT:${safeSeat}`;
+  let h = 2166136261;
+  for (let i = 0; i < seedStr.length; i += 1) {
+    h ^= seedStr.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  const u = h >>> 0;
+  // Ghế kề nhau luôn khác dáng nhờ cộng seatIndex + offset theo mã phòng
+  const roomOffset = u % 3;
+  const archetype = PUBLIC_CITIZEN_SLOTS[(safeSeat + roomOffset) % PUBLIC_CITIZEN_SLOTS.length];
+  const tunicHex =
+    PUBLIC_CITIZEN_TUNIC_PALETTE[(safeSeat * 3 + (u % 7)) % PUBLIC_CITIZEN_TUNIC_PALETTE.length];
+
+  return {
+    slotKey: archetype.slotKey,
+    cloakLabel: archetype.label,
+    tunicHex,
+    portraitBadge: ROLE_PORTRAIT_BADGES[archetype.slotKey] || ROLE_PORTRAIT_BADGES.villager_cloak,
+    portraitCard: ROLE_PORTRAIT_CARDS[archetype.slotKey] || ROLE_PORTRAIT_CARDS.villager_cloak,
+  };
+}
+
 // Số lượng Sói chuẩn theo số người chơi
 export function calculateWolfCount(totalPlayers) {
   if (totalPlayers <= 8) return 2; // 6-8 người

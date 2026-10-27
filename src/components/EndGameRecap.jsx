@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import RolePortrait from "./RolePortrait.jsx";
 import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, isWolfTeamRole } from "../config/roles.config.js";
 import {
   getCinemaAudioEngine,
@@ -1841,6 +1842,13 @@ export default function EndGameRecap({
   replayTimeline = [],
   awards = [],
   isHost,
+  isSpectator = false,
+  rematchEndsAt = null,
+  rematchReadyCount = 0,
+  rematchRequiredCount = 1,
+  myRematchReady = false,
+  ghostBetBonusXp = 0,
+  onRematchReady = null,
   onRestart,
   onAnimate,
   onStageChange,
@@ -1858,6 +1866,22 @@ export default function EndGameRecap({
   onRecheckVoice = null,
   voiceRecheckTick = 0,
 }) {
+  const [rematchSecLeft, setRematchSecLeft] = useState(() =>
+    rematchEndsAt ? Math.max(0, Math.ceil((rematchEndsAt - Date.now()) / 1000)) : 0
+  );
+  useEffect(() => {
+    if (!rematchEndsAt) {
+      setRematchSecLeft(0);
+      return;
+    }
+    const tick = () => {
+      setRematchSecLeft(Math.max(0, Math.ceil((rematchEndsAt - Date.now()) / 1000)));
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [rematchEndsAt]);
+
   const [beatIndex, setBeatIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   // Tốc độ kể chuyện chuyên nghiệp: 0.75 (Chậm sâu) | 1 (Chuẩn điện ảnh) | 1.5 (Nhanh)
@@ -2942,12 +2966,15 @@ export default function EndGameRecap({
                             <span className="back-name">{p.name}</span>
                           </div>
                           <div className={`card-flip-back ${team}`}>
-                            <img src={p.avatar} alt={p.name} className="card-flip-avatar" />
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <RolePortrait roleKey={roleKey} size={40} glow />
+                              <img src={p.avatar} alt={p.name} className="card-flip-avatar" style={{ width: 28, height: 28 }} />
+                            </div>
                             <span
                               className="card-flip-role-badge"
                               style={{ color: ROLE_COLORS[roleKey] || "#fff" }}
                             >
-                              {ROLE_EMOJIS[roleKey]} {ROLE_LABELS[roleKey]}
+                              {ROLE_LABELS[roleKey]}
                             </span>
                             {wasCursed && (
                               <span style={{ fontSize: "10px", color: "#c084fc", fontWeight: 700 }}>
@@ -3228,12 +3255,41 @@ export default function EndGameRecap({
                 👑 MVP ({awards.length})
               </button>
 
+              {ghostBetBonusXp > 0 && (
+                <span
+                  className="director-wait-host"
+                  style={{
+                    color: "#e9d5ff",
+                    borderColor: "rgba(192, 132, 252, 0.65)",
+                    background: "rgba(88, 28, 135, 0.55)",
+                    fontWeight: 800,
+                  }}
+                >
+                  🔮 +{ghostBetBonusXp} XP Tiên Tri Âm Giới!
+                </span>
+              )}
+
               {isHost ? (
                 <button type="button" className="btn-director-restart" onClick={onRestart}>
-                  🔄 Ván Mới
+                  🔄 Mở Sảnh Ván Mới{rematchSecLeft > 0 ? ` (${rematchSecLeft}s)` : ""}
                 </button>
+              ) : isSpectator ? (
+                <span className="director-wait-host" style={{ color: "#bae6fd" }}>
+                  👀 Tự vào ghế sau {rematchSecLeft || 45}s...
+                </span>
               ) : (
-                <span className="director-wait-host">⏳ Chờ Host...</span>
+                <button
+                  type="button"
+                  className="btn-director-restart"
+                  onClick={() => onRematchReady?.()}
+                  disabled={myRematchReady}
+                  style={myRematchReady ? { opacity: 0.85, cursor: "default" } : undefined}
+                >
+                  {myRematchReady
+                    ? `✅ Đã Sẵn Sàng (${rematchReadyCount}/${rematchRequiredCount})`
+                    : `🙋 Ván Mới (${rematchReadyCount}/${rematchRequiredCount})`}
+                  {rematchSecLeft > 0 ? ` • ${rematchSecLeft}s` : ""}
+                </button>
               )}
             </div>
           </div>

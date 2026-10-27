@@ -114,6 +114,7 @@ function AdaptivePerformanceGuard({ architectMode, isLowPowerDevice, onAdjustDpr
  * - Dev Setup (localhost / ?architect=1): Trang bị '🏗️ D5 Architect Studio' với Gizmo 3 mũi tên (Move), Vòng xoay (Rotate) & Nút kéo Scale riêng 3 chiều X·Y·Z, khóa cứng ghế người chơi!
  */
 export default function WerewolfScene3D({
+  roomCode = "MASOI",
   players = [],
   me,
   phase,
@@ -1820,6 +1821,7 @@ export default function WerewolfScene3D({
           return (
             <GreyboxActor
               key={p.id}
+              roomCode={roomCode}
               player={p}
               seatTransform={seatTransform}
               cameraMode={cameraMode}
