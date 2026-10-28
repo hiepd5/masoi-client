@@ -62,15 +62,46 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [lobbyMessages, setLobbyMessages] = useState(room?.lobbyMessages || []);
   const chatEndRef = useRef(null);
 
-  // MC audio / Voice + Auto-Ducking (-40%) cho kênh đàm thoại người chơi
+  // MC audio / Voice + Auto-Ducking (-40%) cho kênh đàm thoại người chơi & Giọng AI Bot thu sẵn
   const [mcLog, setMcLog] = useState([]);
   const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
+  const [botVoiceEnabled, setBotVoiceEnabled] = useState(
+    () => localStorage.getItem("ws_bot_voice") !== "0"
+  );
   const [isMcSpeakingNow, setIsMcSpeakingNow] = useState(false);
   const [speakingIds, setSpeakingIds] = useState([]);
   const lastSpokenRef = useRef(-1);
+  const mcPlayQueueRef = useRef([]);
+  const mcWorkerRunningRef = useRef(false);
   const currentAudioRef = useRef(null);
   const currentAudioMetaRef = useRef(null);
   const currentPhaseRef = useRef(room?.game?.nightDayPhase || room?.phase || "lobby");
+
+  const hasBotsInRoom = Boolean((room?.players || []).some((p) => p.isBot));
+  const effectiveMcPacingMode =
+    room?.game?.mcPacingMode ||
+    room?.mcPacingMode ||
+    (hasBotsInRoom && !room?.isTurbo ? "full" : "fast");
+  const mcPacingModeRef = useRef(effectiveMcPacingMode);
+  mcPacingModeRef.current = effectiveMcPacingMode;
+
+  const handleToggleBotVoice = useCallback(() => {
+    setBotVoiceEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("ws_bot_voice", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const handleToggleMcPacing = useCallback(() => {
+    const nextMode = mcPacingModeRef.current === "full" ? "fast" : "full";
+    if (nextMode === "fast") {
+      mcPlayQueueRef.current = mcPlayQueueRef.current.filter((m) => m?.isImportant);
+    }
+    socketRef.current?.emit("room:setMcPacing", { mode: nextMode });
+  }, [socketRef]);
 
   const handleVoiceSpeakingChange = useCallback((nextIds) => {
     setSpeakingIds((prev) => {
@@ -439,10 +470,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   }
 
   // Gọi VoiceStudio OpenAI-compat /v1/audio/speech → lưu Cache RAM → play
-  async function speakVoiceStudio(text) {
+  async function speakVoiceStudio(text, meta = null) {
     if (!VOICESTUDIO_URL) return false; // production HTTPS → skip
     const cached = voiceCacheRef.current.get(getTtsCacheKey(text));
-    if (cached) return await playMp3(cached);
+    if (cached) return await playMp3(cached, { meta });
     const cleanInput = normalizeTtsText(text);
     if (!cleanInput) return false;
     try {
@@ -476,7 +507,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       setVsStatusReady(true);
       setVsServerOffline(false);
       const blobUrl = setCachedVoiceBlobUrl(text, blob);
-      return blobUrl ? await playMp3(blobUrl) : false;
+      return blobUrl ? await playMp3(blobUrl, { meta }) : false;
     } catch {
       vsAvailableRef.current = false;
       probeVoiceServerStatus({ force: true });
@@ -485,10 +516,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   }
 
   // Gọi /api/tts trên server Render (tra LRU RAM Cache ~5ms hoặc qua ngrok) kèm Circuit Breaker 8s
-  async function speakViaServerProxy(text) {
+  async function speakViaServerProxy(text, meta = null) {
     // Ưu tiên 1: Cache RAM ở Client (0ms)
     const cached = voiceCacheRef.current.get(getTtsCacheKey(text));
-    if (cached) return await playMp3(cached);
+    if (cached) return await playMp3(cached, { meta });
     if (Date.now() < proxyCooldownUntilRef.current) return false;
     try {
       const ctrl = new AbortController();
@@ -518,7 +549,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       setVsStatusReady(true);
       setVsServerOffline(false);
       const blobUrl = setCachedVoiceBlobUrl(text, blob);
-      return blobUrl ? await playMp3(blobUrl) : false;
+      return blobUrl ? await playMp3(blobUrl, { meta }) : false;
     } catch {
       proxyCooldownUntilRef.current = Date.now() + 8000;
       probeVoiceServerStatus({ force: true });
@@ -561,6 +592,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   useEffect(() => {
     const activePhase = room?.game?.nightDayPhase;
     if (!activePhase) return;
+    // Khi bật Nhịp Đọc Trọn (Full-Read Pacing cho phòng Bot): KHÔNG cắt cụt câu dẫn MC ở 180ms để người mới nghe hiểu trọn vẹn!
+    if (mcPacingModeRef.current === "full" && hasBotsInRoom) {
+      return;
+    }
     const meta = currentAudioMetaRef.current;
     if (
       currentAudioRef.current &&
@@ -571,7 +606,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     ) {
       fadeOutCurrentMcAudio(180);
     }
-  }, [room?.game?.nightDayPhase, fadeOutCurrentMcAudio]);
+  }, [room?.game?.nightDayPhase, fadeOutCurrentMcAudio, hasBotsInRoom]);
 
   // Giữ nguyên Blob URL nằm trong voiceCacheRef xuyên suốt ván đấu (chỉ dọn khi về Lobby để phát lại không bao giờ lỗi 404)
   function playMp3(src, { revokeOnEnd = false, meta = null } = {}) {
@@ -606,12 +641,20 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   useEffect(() => {
     if (!mcVoiceEnabled) {
+      mcPlayQueueRef.current = [];
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+        } catch {}
+        currentAudioRef.current = null;
+      }
       setIsMcSpeakingNow(false);
       return;
     }
     if (mcLog.length === 0) return;
     // Khi đã kết thúc ván đấu (hoặc đang xem tiếp Phim Kể Chuyện cá nhân), tắt ngay luồng đọc chat thông báo của Room để nhường 100% Loa & GPU cho Bộ Phim!
     if (room?.phase === 'ended' || Boolean(room?.game?.winner) || isWatchingPersonalRecap) {
+      mcPlayQueueRef.current = [];
       if (currentAudioRef.current) {
         try {
           currentAudioRef.current.pause();
@@ -623,76 +666,92 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       return;
     }
     const newMessages = mcLog.slice(lastSpokenRef.current + 1).filter(m => m.type !== 'player');
-    if (newMessages.length === 0) { lastSpokenRef.current = mcLog.length - 1; return; }
+    lastSpokenRef.current = mcLog.length - 1;
+    if (newMessages.length === 0) return;
 
-    async function playAll() {
-      const vsOnline = await checkVoiceStudio();
-      const playerNames = (room?.players || []).map((p) => p?.name).filter(Boolean);
+    mcPlayQueueRef.current.push(...newMessages);
+    // Chống ứ đọng vô hạn nếu tồn quá 3 câu cũ khi mạng lag đột biến
+    while (mcPlayQueueRef.current.length > 3) {
+      const staleIdx = mcPlayQueueRef.current.findIndex((m) => !m?.isImportant);
+      if (staleIdx >= 0) mcPlayQueueRef.current.splice(staleIdx, 1);
+      else break;
+    }
 
-      for (const msg of newMessages) {
-        const text = msg.text || msg;
-        if (!text) continue;
-        const msgMeta = {
-          phaseTag: msg.phaseTag || currentPhaseRef.current,
-          isImportant: Boolean(msg.isImportant),
-        };
-        // Bỏ qua câu gọi dậy cũ nếu mạch game đã chuyển sang pha mới trước khi tới lượt đọc
-        if (
-          !msgMeta.isImportant &&
-          msg.phaseTag &&
-          currentPhaseRef.current &&
-          msg.phaseTag !== currentPhaseRef.current
-        ) {
-          continue;
-        }
+    if (mcWorkerRunningRef.current) return;
+    mcWorkerRunningRef.current = true;
 
-        // Ưu tiên 1: Nếu câu đã có sẵn bản Voice Clone cá nhân hóa trong Cache RAM -> Phát ngay 0ms!
-        const cachedBlobUrl = voiceCacheRef.current.get(getTtsCacheKey(text));
-        if (cachedBlobUrl) {
-          const cachedOk = await playMp3(cachedBlobUrl, { meta: msgMeta });
-          if (cachedOk) continue;
-        }
-
-        const isPersonalized =
-          text.includes('AI Bot') || playerNames.some((n) => text.includes(n));
-
-        // Ưu tiên 2A (Câu chuyển pha chung không chứa tên riêng): Phát ngay 27 file MP3 tĩnh trên Vercel (0ms)
-        if (!isPersonalized) {
-          const staticSrc = findAudioFile(text);
-          if (staticSrc) {
-            const mp3Played = await playMp3(staticSrc, { meta: msgMeta });
-            if (mp3Played) continue;
+    async function drainMcQueue() {
+      try {
+        while (mcPlayQueueRef.current.length > 0) {
+          const msg = mcPlayQueueRef.current.shift();
+          const text = msg?.text || msg;
+          if (!text) continue;
+          const msgMeta = {
+            phaseTag: msg?.phaseTag || currentPhaseRef.current,
+            isImportant: Boolean(msg?.isImportant),
+          };
+          const allowFullRead = mcPacingModeRef.current === "full";
+          // Ở chế độ Nhanh: bỏ qua câu gọi dậy cũ nếu mạch game đã chuyển sang pha mới trước khi tới lượt đọc
+          if (
+            !allowFullRead &&
+            !msgMeta.isImportant &&
+            msg?.phaseTag &&
+            currentPhaseRef.current &&
+            msg.phaseTag !== currentPhaseRef.current
+          ) {
+            continue;
           }
-        }
 
-        // Ưu tiên 2B (Câu có tên người chơi hoặc chưa có MP3 tĩnh): Gọi VoiceStudio / Server RAM Cache (~5ms nếu Server đã tạo trước!)
-        let dynamicPlayed = false;
-        if (VOICESTUDIO_URL) {
-          if (vsOnline) {
-            dynamicPlayed = await speakVoiceStudio(text);
+          // Ưu tiên 1: Nếu câu đã có sẵn bản Voice Clone cá nhân hóa trong Cache RAM -> Phát ngay 0ms!
+          const cachedBlobUrl = voiceCacheRef.current.get(getTtsCacheKey(text));
+          if (cachedBlobUrl) {
+            const cachedOk = await playMp3(cachedBlobUrl, { meta: msgMeta });
+            if (cachedOk) continue;
+          }
+
+          const playerNames = (room?.players || []).map((p) => p?.name).filter(Boolean);
+          const isPersonalized =
+            text.includes('AI Bot') || playerNames.some((n) => text.includes(n));
+
+          // Ưu tiên 2A (Câu chuyển pha chung không chứa tên riêng): Phát ngay 27 file MP3 tĩnh trên Vercel (0ms)
+          if (!isPersonalized) {
+            const staticSrc = findAudioFile(text);
+            if (staticSrc) {
+              const mp3Played = await playMp3(staticSrc, { meta: msgMeta });
+              if (mp3Played) continue;
+            }
+          }
+
+          // Ưu tiên 2B (Câu có tên người chơi hoặc chưa có MP3 tĩnh): Gọi VoiceStudio / Server RAM Cache (~5ms nếu Server đã tạo trước!)
+          const vsOnline = await checkVoiceStudio();
+          let dynamicPlayed = false;
+          if (VOICESTUDIO_URL) {
+            if (vsOnline) {
+              dynamicPlayed = await speakVoiceStudio(text, msgMeta);
+            } else {
+              dynamicPlayed = await speakViaServerProxy(text, msgMeta);
+            }
           } else {
-            dynamicPlayed = await speakViaServerProxy(text);
+            dynamicPlayed = await speakViaServerProxy(text, msgMeta);
           }
-        } else {
-          dynamicPlayed = await speakViaServerProxy(text);
-        }
-        if (dynamicPlayed) continue;
+          if (dynamicPlayed) continue;
 
-        // Ưu tiên 3 (Khi PC cá nhân tắt / Offline): Nếu câu trùng mẫu MP3 tĩnh chung (begin_vote, hang_announce, spare_announce) thì phát MP3 tiếng Việt
-        if (isPersonalized) {
-          const fallbackStaticSrc = findAudioFile(text);
-          if (fallbackStaticSrc) {
-            await playMp3(fallbackStaticSrc);
+          // Ưu tiên 3 (Khi PC cá nhân tắt / Offline): Nếu câu trùng mẫu MP3 tĩnh chung thì phát MP3 tiếng Việt
+          if (isPersonalized) {
+            const fallbackStaticSrc = findAudioFile(text);
+            if (fallbackStaticSrc) {
+              await playMp3(fallbackStaticSrc, { meta: msgMeta });
+            }
           }
+          // Tuyệt đối 0% window.speechSynthesis — giữ im lặng sạch sẽ thay vì đọc giọng Tiếng Anh!
         }
-        // Tuyệt đối 0% window.speechSynthesis — giữ im lặng sạch sẽ thay vì đọc giọng Tiếng Anh!
+      } finally {
+        mcWorkerRunningRef.current = false;
       }
     }
 
-    playAll();
-
-    lastSpokenRef.current = mcLog.length - 1;
-  }, [mcLog, mcVoiceEnabled]);
+    drainMcQueue();
+  }, [mcLog, mcVoiceEnabled, room?.phase, room?.game?.winner, isWatchingPersonalRecap]);
 
   function copyRoomCode() {
     navigator.clipboard?.writeText(roomCode);
@@ -964,6 +1023,12 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         onRecheckVoice={handleManualRecheckVoice}
         voiceRecheckTick={voiceRecheckTick}
         voiceSpeakingIds={speakingIds}
+        isMcSpeakingNow={isMcSpeakingNow}
+        botVoiceEnabled={botVoiceEnabled}
+        onToggleBotVoice={handleToggleBotVoice}
+        mcPacingMode={effectiveMcPacingMode}
+        canToggleMcPacing={Boolean(effectivePlayingRoom?.canToggleMcPacing)}
+        onToggleMcPacing={handleToggleMcPacing}
       />
     );
   } else {
@@ -1153,6 +1218,56 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
         <div className="lobby-header-actions">
           <VoiceQuickMicPill />
+          {(botCount > 0 || missingBotsToFill > 0) && room.canToggleMcPacing && (
+            <button
+              type="button"
+              className="btn-lobby-pill"
+              onClick={handleToggleMcPacing}
+              title={
+                effectiveMcPacingMode === "full"
+                  ? "Đang bật Nhịp Đọc Trọn (Thân thiện người mới): MC đọc hết từng câu dẫn mới chuyển pha. Bấm để sang Nhịp Nhanh!"
+                  : "Đang bật Nhịp Nhanh: Lướt nhanh qua các pha Bot. Bấm để bật Nhịp Đọc Trọn cho người mới!"
+              }
+              style={{
+                borderColor:
+                  effectiveMcPacingMode === "full"
+                    ? "rgba(56, 189, 248, 0.62)"
+                    : "rgba(251, 191, 36, 0.58)",
+                background:
+                  effectiveMcPacingMode === "full"
+                    ? "rgba(12, 74, 110, 0.44)"
+                    : "rgba(120, 53, 15, 0.36)",
+                color: effectiveMcPacingMode === "full" ? "#bae6fd" : "#fef08a",
+                fontWeight: 700,
+              }}
+            >
+              {effectiveMcPacingMode === "full" ? "🐢 Đọc Trọn" : "⚡ Nhịp Nhanh"}
+            </button>
+          )}
+          {(botCount > 0 || missingBotsToFill > 0) && (
+            <button
+              type="button"
+              className="btn-lobby-pill"
+              onClick={handleToggleBotVoice}
+              title={
+                botVoiceEnabled
+                  ? "Giọng nói riêng của 4 AI Bot đang BẬT (không trùng giọng MC) — Bấm để tắt tiếng Bot"
+                  : "Giọng nói riêng của AI Bot đang TẮT — Bấm để bật lại"
+              }
+              style={{
+                borderColor: botVoiceEnabled
+                  ? "rgba(167, 139, 250, 0.58)"
+                  : "rgba(148, 163, 184, 0.35)",
+                background: botVoiceEnabled
+                  ? "rgba(76, 29, 149, 0.38)"
+                  : "rgba(30, 41, 59, 0.45)",
+                color: botVoiceEnabled ? "#ddd6fe" : "#94a3b8",
+                fontWeight: 700,
+              }}
+            >
+              {botVoiceEnabled ? "🤖🔊 Voice Bot" : "🤖🔇 Tắt Bot"}
+            </button>
+          )}
           <button
             type="button"
             className="btn-lobby-pill"

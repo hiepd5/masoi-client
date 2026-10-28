@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import PlayerCircle from "./PlayerCircle.jsx";
 import RolePortrait from "./RolePortrait.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
@@ -10,6 +10,7 @@ import { SFX } from "./SFX.js";
 import EmojiReactions from "./EmojiReactions.jsx";
 import { HudGameClock, HudPhaseCountdown, HudPhaseProgressBar } from "./HudTimer.jsx";
 import { safeHaptic } from "../utils/hapticsAndSound.js";
+import { useBotVoicePlayer } from "../utils/botVoicePlayer.js";
 import { SUSPECT_TAG_META } from "../3d/components/SeatHudBatchOverlay.jsx";
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS, isWolfTeamRole } from '../config/roles.config.js';
@@ -81,6 +82,12 @@ export default function PlayingView({
   onRecheckVoice = null,
   voiceRecheckTick = 0,
   voiceSpeakingIds = EMPTY_ARRAY,
+  isMcSpeakingNow = false,
+  botVoiceEnabled = true,
+  onToggleBotVoice = null,
+  mcPacingMode = "full",
+  canToggleMcPacing = false,
+  onToggleMcPacing = null,
 }) {
   const g = room.game;
   const isSpectator = Boolean(room.isSpectator);
@@ -154,11 +161,30 @@ export default function PlayingView({
       return nextIds;
     });
   }, []);
-  const effectiveSpeakingIds = g.winner
-    ? EMPTY_ARRAY
-    : voiceSpeakingIds.length > 0
-      ? voiceSpeakingIds
-      : speakingIds;
+
+  const hasBotsInMatch = useMemo(
+    () => Boolean((room?.players || []).some((p) => p.isBot)),
+    [room?.players]
+  );
+  const currentPhaseTagRef = useRef(g.nightDayPhase);
+  currentPhaseTagRef.current = g.nightDayPhase;
+
+  const { enqueueBotVoice, activeBotSpeakingId } = useBotVoicePlayer({
+    enabled: botVoiceEnabled && hasBotsInMatch,
+    isMcSpeakingNow,
+    humanSpeakingIds: voiceSpeakingIds,
+    activePhase: g.nightDayPhase,
+    hasWinner: Boolean(g.winner),
+    mutedSenderIds,
+  });
+
+  const effectiveSpeakingIds = useMemo(() => {
+    if (g.winner) return EMPTY_ARRAY;
+    const base = voiceSpeakingIds.length > 0 ? voiceSpeakingIds : speakingIds;
+    if (!activeBotSpeakingId) return base;
+    if (base.includes(activeBotSpeakingId)) return base;
+    return [...base, activeBotSpeakingId];
+  }, [g.winner, voiceSpeakingIds, speakingIds, activeBotSpeakingId]);
   // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialSeconds, setTutorialSeconds] = useState(7);
@@ -343,45 +369,81 @@ export default function PlayingView({
   }, [isNight]);
 
   useEffect(() => {
-    const handleVillageChat = ({ senderId, senderName, message }) => {
-      // Speech bubble overlay on player avatar
-      setLocalBubbleChatLog(prev => ({ ...prev, [senderId]: message }));
+    const handleVillageChat = ({
+      senderId,
+      senderName,
+      message,
+      botAudioUrl,
+      durationMs,
+    }) => {
+      // Speech bubble overlay on player avatar (giữ lâu khớp thời lượng giọng đọc của AI Bot nếu có)
+      const bubbleDuration = botAudioUrl
+        ? Math.min(9500, Math.max(5200, (Number(durationMs) || 6000) + 1200))
+        : 4000;
+      setLocalBubbleChatLog((prev) => ({ ...prev, [senderId]: message }));
       setTimeout(() => {
-        setLocalBubbleChatLog(prev => {
+        setLocalBubbleChatLog((prev) => {
+          if (prev[senderId] !== message) return prev;
           const next = { ...prev };
           delete next[senderId];
           return next;
         });
-      }, 4000);
+      }, bubbleDuration);
+      if (botAudioUrl) {
+        enqueueBotVoice({
+          senderId,
+          botAudioUrl,
+          phaseTag: currentPhaseTagRef.current,
+          isWhisper: false,
+        });
+      }
       // Push to unified chat log
-      setChatLog(prev => [...prev, {
-        type: 'village',
-        senderId,
-        senderName,
-        text: message,
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-      }]);
+      setChatLog((prev) => [
+        ...prev,
+        {
+          type: "village",
+          senderId,
+          senderName,
+          text: message,
+          time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
     };
 
-    const handleWolfChat = ({ senderId, message }) => {
+    const handleWolfChat = ({ senderId, senderName, message, botAudioUrl, durationMs }) => {
+      const bubbleDuration = botAudioUrl
+        ? Math.min(8500, Math.max(4800, (Number(durationMs) || 4800) + 1000))
+        : 4000;
       // Speech bubble overlay on player avatar
-      setLocalBubbleChatLog(prev => ({ ...prev, [senderId]: message }));
+      setLocalBubbleChatLog((prev) => ({ ...prev, [senderId]: message }));
       setTimeout(() => {
-        setLocalBubbleChatLog(prev => {
+        setLocalBubbleChatLog((prev) => {
+          if (prev[senderId] !== message) return prev;
           const next = { ...prev };
           delete next[senderId];
           return next;
         });
-      }, 4000);
+      }, bubbleDuration);
+      if (botAudioUrl) {
+        enqueueBotVoice({
+          senderId,
+          botAudioUrl,
+          phaseTag: currentPhaseTagRef.current,
+          isWhisper: true,
+        });
+      }
       // Push to unified chat log
-      const sender = room.players.find(p => p.id === senderId);
-      setChatLog(prev => [...prev, {
-        type: 'wolf',
-        senderId,
-        senderName: sender?.name || 'Sói',
-        text: message,
-        time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-      }]);
+      const sender = room.players.find((p) => p.id === senderId);
+      setChatLog((prev) => [
+        ...prev,
+        {
+          type: "wolf",
+          senderId,
+          senderName: senderName || sender?.name || "Sói",
+          text: message,
+          time: new Date().toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
     };
 
     const handleGhostChat = ({ senderId, senderName, message }) => {
@@ -406,7 +468,7 @@ export default function PlayingView({
       socketRef.current.off("village:chat", handleVillageChat);
       socketRef.current.off("ghost:chat", handleGhostChat);
     };
-  }, [socketRef, room.players]);
+  }, [socketRef, room.players, enqueueBotVoice]);
 
   // Sync mcLog messages into unified chatLog
   useEffect(() => {
@@ -1003,6 +1065,64 @@ export default function PlayingView({
             <span className="hud-vs">vs</span>
             <span className="hud-village">👥 {aliveVillageCount}</span>
           </div>
+          {hasBotsInMatch && canToggleMcPacing && onToggleMcPacing && !g.winner && (
+            <button
+              type="button"
+              className="btn-mc-voice"
+              onClick={onToggleMcPacing}
+              title={
+                mcPacingMode === 'full'
+                  ? 'Nhịp Đọc Trọn đang BẬT: MC đọc hết từng câu dẫn mới chuyển pha (Thân thiện người mới). Bấm để sang Nhịp Nhanh!'
+                  : 'Nhịp Nhanh đang BẬT: Lướt nhanh qua các pha Bot. Bấm để quay về Nhịp Đọc Trọn!'
+              }
+              style={{
+                width: 'auto',
+                margin: 0,
+                padding: '0 8px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                background:
+                  mcPacingMode === 'full'
+                    ? 'rgba(14, 116, 144, 0.36)'
+                    : 'rgba(180, 83, 9, 0.36)',
+                borderColor:
+                  mcPacingMode === 'full'
+                    ? 'rgba(56, 189, 248, 0.65)'
+                    : 'rgba(251, 191, 36, 0.65)',
+                color: mcPacingMode === 'full' ? '#bae6fd' : '#fef08a',
+              }}
+            >
+              {mcPacingMode === 'full' ? '🐢 Đọc Trọn' : '⚡ Nhanh'}
+            </button>
+          )}
+          {hasBotsInMatch && onToggleBotVoice && !g.winner && (
+            <button
+              type="button"
+              className="btn-mc-voice"
+              onClick={onToggleBotVoice}
+              title={
+                botVoiceEnabled
+                  ? 'Tắt giọng nói riêng của AI Bot (giữ nguyên giọng MC)'
+                  : 'Bật giọng nói riêng của 4 AI Bot (không trùng giọng MC)'
+              }
+              style={{
+                width: 'auto',
+                margin: 0,
+                padding: '0 7px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                background: botVoiceEnabled
+                  ? 'rgba(91, 33, 182, 0.35)'
+                  : 'rgba(30, 41, 59, 0.45)',
+                borderColor: botVoiceEnabled
+                  ? 'rgba(167, 139, 250, 0.6)'
+                  : 'rgba(148, 163, 184, 0.3)',
+                color: botVoiceEnabled ? '#ddd6fe' : '#94a3b8',
+              }}
+            >
+              {botVoiceEnabled ? '🤖🔊' : '🤖🔇'}
+            </button>
+          )}
           {setMcVoiceEnabled && (
             <button
               className="btn-mc-voice"
