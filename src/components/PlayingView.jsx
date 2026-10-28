@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react"
 import PlayerCircle from "./PlayerCircle.jsx";
 import RolePortrait from "./RolePortrait.jsx";
 import EndGameRecap from "./EndGameRecap.jsx";
-import VoiceRoom from "./VoiceRoom.jsx";
+import VoiceRoom, { VoiceQuickMicPill } from "./VoiceRoom.jsx";
 import FullscreenButton from "./FullscreenButton.jsx";
 import ParticleBackground from "./ParticleBackground.jsx";
 import AmbientSound from "./AmbientSound.jsx";
@@ -80,6 +80,7 @@ export default function PlayingView({
   vsStatusChecking = false,
   onRecheckVoice = null,
   voiceRecheckTick = 0,
+  voiceSpeakingIds = EMPTY_ARRAY,
 }) {
   const g = room.game;
   const isSpectator = Boolean(room.isSpectator);
@@ -153,6 +154,11 @@ export default function PlayingView({
       return nextIds;
     });
   }, []);
+  const effectiveSpeakingIds = g.winner
+    ? EMPTY_ARRAY
+    : voiceSpeakingIds.length > 0
+      ? voiceSpeakingIds
+      : speakingIds;
   // Tutorial 3 bước: 0=ẩn, 1/2/3=bước đang hiện
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialSeconds, setTutorialSeconds] = useState(7);
@@ -1174,7 +1180,7 @@ export default function PlayingView({
                     myLoverPartnerId={g.myLoverPartnerId || null}
                     hunterPendingId={g.hunterPendingId || null}
                     cupidSelectedIds={cupidTargets}
-                    speakingIds={speakingIds}
+                    speakingIds={effectiveSpeakingIds}
                     reactions={reactions}
                     suspectTags={suspectTags}
                     recapStageState={recapStageState}
@@ -1214,11 +1220,18 @@ export default function PlayingView({
                 myLoverPartnerId={g.myLoverPartnerId || null}
                 hunterPendingId={g.hunterPendingId || null}
                 alphaWolfId={g.alphaWolfInfo?.alphaWolfId || null}
-                speakingIds={speakingIds}
+                speakingIds={effectiveSpeakingIds}
                 reactions={reactions}
                 suspectTags={suspectTags}
               />
             </>
+          )}
+
+          {/* Nút Mic nổi 1-Chạm góc trên phải Sân Khấu 3D/2D (Bật/Tắt/Giữ nói ngay trên Mobile & PC) */}
+          {!g.winner && (
+            <div className="voice-stage-floating-anchor">
+              <VoiceQuickMicPill />
+            </div>
           )}
 
           {/* Spotlight Tarot 3D Mở Màn (Pha role_reveal 6s): Kính mờ gọn trên đỉnh sân khấu, không che khuất nhân vật 3D bên dưới! */}
@@ -1706,10 +1719,14 @@ export default function PlayingView({
           {!g.winner && (
             <VoiceRoom 
               socketRef={socketRef} 
+              roomCode={room.code}
+              nightDayPhase={g.nightDayPhase}
               isNight={isNight} 
-              myRole={isSpectator ? null : (isWolfTeamRole(me?.role) ? "wolf" : me?.role)} 
+              myRole={isSpectator ? null : me?.role} 
               isAlive={Boolean(me?.alive) && !isSpectator}
+              isSpectator={isSpectator}
               myId={isSpectator ? room.mySpectatorId : me?.id}
+              myName={isSpectator ? "Khán Giả" : me?.name}
               wolfTeammates={g.wolfTeammates || []} 
               onSpeakingChange={handleSpeakingChange}
             />

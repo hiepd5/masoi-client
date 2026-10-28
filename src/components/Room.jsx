@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import PlayingView from "./PlayingView.jsx";
+import VoiceRoom, { VoiceSessionProvider, VoiceQuickMicPill } from "./VoiceRoom.jsx";
 import RolePortrait from "./RolePortrait.jsx";
 import CitizenAvatarVaultModal from "./CitizenAvatarVaultModal.jsx";
 import Scene3DErrorBoundary from "../3d/components/Scene3DErrorBoundary.jsx";
@@ -61,13 +62,24 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [lobbyMessages, setLobbyMessages] = useState(room?.lobbyMessages || []);
   const chatEndRef = useRef(null);
 
-  // MC audio / Voice
+  // MC audio / Voice + Auto-Ducking (-40%) cho kênh đàm thoại người chơi
   const [mcLog, setMcLog] = useState([]);
   const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
+  const [isMcSpeakingNow, setIsMcSpeakingNow] = useState(false);
+  const [speakingIds, setSpeakingIds] = useState([]);
   const lastSpokenRef = useRef(-1);
   const currentAudioRef = useRef(null);
   const currentAudioMetaRef = useRef(null);
   const currentPhaseRef = useRef(room?.game?.nightDayPhase || room?.phase || "lobby");
+
+  const handleVoiceSpeakingChange = useCallback((nextIds) => {
+    setSpeakingIds((prev) => {
+      if (prev.length === nextIds.length && prev.every((id, idx) => id === nextIds[idx])) {
+        return prev;
+      }
+      return nextIds;
+    });
+  }, []);
 
   useEffect(() => {
     currentPhaseRef.current = room?.game?.nightDayPhase || room?.phase || "lobby";
@@ -399,6 +411,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         } catch {}
         currentAudioRef.current = null;
       }
+      setIsMcSpeakingNow(false);
       setVoicePregening(false);
     }
     return undefined;
@@ -526,6 +539,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     if (!audio) return;
     currentAudioRef.current = null;
     currentAudioMetaRef.current = null;
+    setIsMcSpeakingNow(false);
     const startVol = audio.volume || 0.92;
     const steps = 6;
     const stepMs = Math.max(16, Math.round(durationMs / steps));
@@ -571,6 +585,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         if (currentAudioRef.current === audio) {
           currentAudioRef.current = null;
           currentAudioMetaRef.current = null;
+          setIsMcSpeakingNow(false);
+        } else if (!currentAudioRef.current) {
+          setIsMcSpeakingNow(false);
         }
         if (revokeOnEnd && typeof src === 'string' && src.startsWith('blob:')) {
           try { URL.revokeObjectURL(src); } catch {}
@@ -580,6 +597,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const audio = new Audio(src);
       audio.volume = 0.92;
       currentAudioRef.current = audio;
+      setIsMcSpeakingNow(true);
       audio.onended = () => cleanup(true);
       audio.onerror = () => cleanup(false);
       audio.play().catch(() => cleanup(false));
@@ -587,7 +605,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   }
 
   useEffect(() => {
-    if (!mcVoiceEnabled) return;
+    if (!mcVoiceEnabled) {
+      setIsMcSpeakingNow(false);
+      return;
+    }
     if (mcLog.length === 0) return;
     // Khi đã kết thúc ván đấu (hoặc đang xem tiếp Phim Kể Chuyện cá nhân), tắt ngay luồng đọc chat thông báo của Room để nhường 100% Loa & GPU cho Bộ Phim!
     if (room?.phase === 'ended' || Boolean(room?.game?.winner) || isWatchingPersonalRecap) {
@@ -597,6 +618,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         } catch {}
         currentAudioRef.current = null;
       }
+      setIsMcSpeakingNow(false);
       lastSpokenRef.current = mcLog.length - 1;
       return;
     }
@@ -886,11 +908,34 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     );
   }
 
-  // Chuyển sang màn hình chơi game hoặc giữ Rạp Chiếu Cá Nhân cho tới khi người xem xem hết truyện / bấm Về Sảnh Chờ
+  // Thông số phiên Voice liên thông Sảnh Chờ 3D <-> Trong Trận <-> Ván Mới (0ms rớt kết nối)
+  const liveIsSpectator = Boolean(room.isSpectator);
+  const liveMe = liveIsSpectator
+    ? null
+    : room.players?.find((p) => p.id === myId) ||
+      room.players?.find((p) => p.sessionToken) ||
+      null;
+  const isLobbyNow =
+    room.phase === "lobby" || (room.phase === "ended" && !isWatchingPersonalRecap);
+  const voiceMyId = liveIsSpectator
+    ? room.mySpectatorId
+      ? `spec_${room.mySpectatorId}`
+      : myId
+    : liveMe?.id || myId;
+  const voiceMyName = liveIsSpectator ? "Khán Giả" : liveMe?.name || "Bạn";
+  const voiceMyRole = liveIsSpectator || isLobbyNow ? null : liveMe?.role || null;
+  const voiceIsAlive = isLobbyNow
+    ? !liveIsSpectator
+    : Boolean(liveMe?.alive !== false && !liveIsSpectator);
+  const voiceNightDayPhase = isLobbyNow ? "lobby" : room.game?.nightDayPhase || null;
+  const voiceHasWinner = !isLobbyNow && Boolean(room.game?.winner);
+  const voiceWolfTeammates = isLobbyNow ? [] : room.game?.wolfTeammates || [];
+
+  // Chuyển sang màn hình chơi game hoặc giữ Rạp Chiếu Cá Nhân (vẫn nằm trong cùng VoiceSessionProvider gốc!)
+  let roomScreenBody = null;
   if (room.phase === "playing" || isWatchingPersonalRecap) {
-    const liveMeInRoom = room.players?.find((p) => p.id === myId);
     const liveFreshToken =
-      liveMeInRoom?.sessionToken ||
+      liveMe?.sessionToken ||
       room.spectatorSessionToken ||
       getSession()?.sessionToken ||
       "";
@@ -902,10 +947,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       ? { ...baseRecapRoom, freshSessionToken: liveFreshToken }
       : baseRecapRoom;
 
-    return (
-      <PlayingView 
-        room={effectivePlayingRoom} 
-        socketRef={socketRef} 
+    roomScreenBody = (
+      <PlayingView
+        room={effectivePlayingRoom}
+        socketRef={socketRef}
         mcLog={mcLog}
         mcVoiceEnabled={mcVoiceEnabled}
         setMcVoiceEnabled={setMcVoiceEnabled}
@@ -918,48 +963,48 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         vsStatusChecking={vsStatusChecking}
         onRecheckVoice={handleManualRecheckVoice}
         voiceRecheckTick={voiceRecheckTick}
+        voiceSpeakingIds={speakingIds}
       />
     );
-  }
+  } else {
+    const me = room.players.find((p) => p.id === myId);
+    const rolesConfig = room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
+    const totalRoles = Object.values(rolesConfig).reduce((s, v) => s + (Number(v) || 0), 0);
 
-  const me = room.players.find((p) => p.id === myId);
-  const rolesConfig = room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
-  const totalRoles = Object.values(rolesConfig).reduce((s, v) => s + (Number(v) || 0), 0);
+    const activeScenePresetId = room.scenePresetId || DEFAULT_SCENE_PRESET_ID;
+    const effectivePresets =
+      scenePresets.length > 0
+        ? scenePresets
+        : [
+            {
+              id: DEFAULT_SCENE_PRESET_ID,
+              name: "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
+              nodeCount: 141,
+            },
+          ];
+    const activeSceneMeta =
+      effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
 
-  const activeScenePresetId = room.scenePresetId || DEFAULT_SCENE_PRESET_ID;
-  const effectivePresets =
-    scenePresets.length > 0
-      ? scenePresets
-      : [
-          {
-            id: DEFAULT_SCENE_PRESET_ID,
-            name: "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
-            nodeCount: 141,
-          },
-        ];
-  const activeSceneMeta =
-    effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
+    // Điều kiện bắt đầu game (Hỗ trợ cả Đủ Người lẫn Chơi 1 Mình Tự Bù AI Bot!)
+    const totalPlayers = room.players.length;
+    const realHumansCount = room.players.filter((p) => !p.isBot).length;
+    const botCount = totalPlayers - realHumansCount;
+    const unreadyPlayers = room.players.filter((p) => !p.isBot && !p.isHost && !p.ready);
+    const readyCount = room.players.filter((p) => p.ready).length;
+    const isAllReady = unreadyPlayers.length === 0;
+    const missingBotsToFill = Math.max(0, totalRoles - totalPlayers);
+    const isRolesMatched = totalRoles === totalPlayers;
+    const isRolesValidForStart = totalRoles >= 6 && totalPlayers <= totalRoles;
+    const totalWolfTeam =
+      (Number(rolesConfig.wolf) || 0) + (Number(rolesConfig.alpha_wolf) || 0);
+    const hasWolf = totalWolfTeam >= 1;
+    const canStartGame = realHumansCount >= 1 && isAllReady && isRolesValidForStart && hasWolf;
+    const seatRingTarget = Math.min(18, Math.max(totalRoles || 6, totalPlayers, 6));
+    const roomAccessMode = room.accessMode || "public";
+    const activeSoloRole = realHumansCount === 1 ? room.soloPracticeRole || null : null;
 
-  // Điều kiện bắt đầu game (Hỗ trợ cả Đủ Người lẫn Chơi 1 Mình Tự Bù AI Bot!)
-  const totalPlayers = room.players.length;
-  const realHumansCount = room.players.filter((p) => !p.isBot).length;
-  const botCount = totalPlayers - realHumansCount;
-  const unreadyPlayers = room.players.filter((p) => !p.isBot && !p.isHost && !p.ready);
-  const readyCount = room.players.filter((p) => p.ready).length;
-  const isAllReady = unreadyPlayers.length === 0;
-  const missingBotsToFill = Math.max(0, totalRoles - totalPlayers);
-  const isRolesMatched = totalRoles === totalPlayers;
-  const isRolesValidForStart = totalRoles >= 6 && totalPlayers <= totalRoles;
-  const totalWolfTeam =
-    (Number(rolesConfig.wolf) || 0) + (Number(rolesConfig.alpha_wolf) || 0);
-  const hasWolf = totalWolfTeam >= 1;
-  const canStartGame = realHumansCount >= 1 && isAllReady && isRolesValidForStart && hasWolf;
-  const seatRingTarget = Math.min(18, Math.max(totalRoles || 6, totalPlayers, 6));
-  const roomAccessMode = room.accessMode || "public";
-  const activeSoloRole = realHumansCount === 1 ? room.soloPracticeRole || null : null;
-
-  return (
-    <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
+    roomScreenBody = (
+      <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
       <CitizenAvatarVaultModal
         open={showAvatarVault}
         onClose={() => setShowAvatarVault(false)}
@@ -994,6 +1039,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 lobbyTargetSeatCount={seatRingTarget}
                 onLobbyKickPlayer={handleKickPlayer}
                 wolfChatLog={lobbyBubbleLog}
+                speakingIds={speakingIds}
                 scenePresetId={activeScenePresetId}
               />
             </Suspense>
@@ -1106,6 +1152,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         </div>
 
         <div className="lobby-header-actions">
+          <VoiceQuickMicPill />
           <button
             type="button"
             className="btn-lobby-pill"
@@ -1583,6 +1630,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 </div>
               </div>
 
+              <div style={{ marginBottom: 8 }}>
+                <VoiceRoom />
+              </div>
+
               <div className="lobby-chat-messages">
                 {lobbyMessages.length === 0 ? (
                   <div style={{ textAlign: "center", color: "#94a3b8", margin: "auto", fontSize: "0.82rem" }}>
@@ -1701,5 +1752,27 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         )}
       </footer>
     </div>
+    );
+  }
+
+  return (
+    <VoiceSessionProvider
+      socketRef={socketRef}
+      roomCode={room.code}
+      isLobby={isLobbyNow}
+      nightDayPhase={voiceNightDayPhase}
+      hasWinner={voiceHasWinner}
+      isSpectator={liveIsSpectator}
+      myId={voiceMyId}
+      myName={voiceMyName}
+      myRole={voiceMyRole}
+      isAlive={voiceIsAlive}
+      wolfTeammates={voiceWolfTeammates}
+      mcDuckingActive={isMcSpeakingNow}
+      isSuppressedForRecap={isWatchingPersonalRecap}
+      onSpeakingChange={handleVoiceSpeakingChange}
+    >
+      {roomScreenBody}
+    </VoiceSessionProvider>
   );
 }

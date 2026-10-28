@@ -1,4 +1,12 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   LiveKitRoom,
   useTracks,
@@ -9,22 +17,13 @@ import {
 import { DisconnectReason, RoomEvent, Track } from "livekit-client";
 import "@livekit/components-styles";
 import { isWolfTeamRole } from "../config/roles.config.js";
+import { VOICE_CAPTURE_OPTIONS, useP2PVoiceMesh } from "../utils/p2pVoiceEngine.js";
 import "./VoiceRoom.css";
 
 const VOICE_INPUT_MODE_KEY = "ws_voice_input_mode";
-const MAX_AUTO_RECONNECT_ATTEMPTS = 3;
-const RECONNECT_DELAYS_MS = [1500, 4000, 8000];
+const LIVEKIT_TOKEN_TIMEOUT_MS = 5500;
 
-// Cấu hình thu âm Mono 24kHz nhẹ CPU + lọc ồn phần cứng
-const VOICE_CAPTURE_OPTIONS = {
-  channelCount: 1,
-  sampleRate: 24000,
-  echoCancellation: true,
-  noiseSuppression: true,
-  autoGainControl: true,
-};
-
-// Cấu hình phòng LiveKit chuyên Thoại Game (giảm ~67-75% băng thông so với mặc định 48kbps Music)
+// Cấu hình phòng LiveKit chuyên Thoại Game (Opus 16kbps + DTX 0 kbps khi im lặng)
 const VOICE_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
@@ -34,11 +33,10 @@ const VOICE_ROOM_OPTIONS = {
   audioCaptureDefaults: VOICE_CAPTURE_OPTIONS,
   publishDefaults: {
     audioPreset: { maxBitrate: 16_000, priority: "high" },
-    dtx: true, // Ngắt truyền gói tin (0 kbps upload) khi người chơi im lặng
-    red: true, // Chống mất chữ trên mạng 4G/WiFi yếu
+    dtx: true,
+    red: true,
     forceStereo: false,
     simulcast: false,
-    // Giữ false cho người còn sống để bấm nhả Push-to-Talk nhạy 0ms, không ngắt tai nghe Bluetooth AirPods
     stopMicTrackOnMute: false,
   },
 };
@@ -46,7 +44,7 @@ const VOICE_ROOM_OPTIONS = {
 // KHÓA KÉP ZERO-LEAK: Không tự động subscribe bất kỳ luồng âm thanh nào cho đến khi qua bộ lọc vai trò/ban đêm
 const VOICE_CONNECT_OPTIONS = {
   autoSubscribe: false,
-  maxRetries: 2,
+  maxRetries: 1,
 };
 
 const AUDIO_RENDER_EVENTS = [
@@ -57,17 +55,25 @@ const AUDIO_RENDER_EVENTS = [
   RoomEvent.ParticipantDisconnected,
 ];
 
-const PANEL_TRACK_EVENTS = [
+const PANEL_SYNC_EVENTS = [
+  RoomEvent.Connected,
+  RoomEvent.Reconnected,
+  RoomEvent.ParticipantConnected,
+  RoomEvent.ParticipantDisconnected,
   RoomEvent.TrackPublished,
   RoomEvent.TrackUnpublished,
   RoomEvent.TrackMuted,
   RoomEvent.TrackUnmuted,
   RoomEvent.TrackSubscribed,
   RoomEvent.TrackUnsubscribed,
-  RoomEvent.ParticipantConnected,
-  RoomEvent.ParticipantDisconnected,
   RoomEvent.ActiveSpeakersChanged,
 ];
+
+const VoiceSessionContext = createContext(null);
+
+export function useVoiceSession() {
+  return useContext(VoiceSessionContext);
+}
 
 function isTypingInTextField(target) {
   const el = target || (typeof document !== "undefined" ? document.activeElement : null);
@@ -81,29 +87,15 @@ function isTypingInTextField(target) {
   );
 }
 
-function canHearRemoteIdentity(identity, { isNight, myRole, isAlive, wolfTeammates, volumeMap }) {
-  if (!identity) return false;
-  if (volumeMap?.[identity] === 0) return false;
-  if (isNight) {
-    return Boolean(isWolfTeamRole(myRole) && isAlive && wolfTeammates.includes(identity));
-  }
-  return true;
-}
-
-// Điều phối thuê bao SFU chủ động: Cắt 100% gói tin chiều về (0 kbps) vào ban đêm cho Dân Làng & khi Mute cá nhân
-function SelectiveSubscriptionManager({ isNight, myRole, isAlive, wolfTeammates, volumeMap }) {
+// Điều phối thuê bao SFU chủ động: Cắt 100% gói tin chiều về (0 kbps) vào ban đêm cho Dân Làng, lúc lật bài 6s & khi Mute cá nhân
+function SelectiveSubscriptionManager({ shouldHearIdentity, isSuppressedForRecap }) {
   const room = useRoomContext();
 
   const syncSubscriptions = useCallback(() => {
     if (!room?.remoteParticipants) return;
     room.remoteParticipants.forEach((participant) => {
-      const shouldSubAudio = canHearRemoteIdentity(participant.identity, {
-        isNight,
-        myRole,
-        isAlive,
-        wolfTeammates,
-        volumeMap,
-      });
+      const shouldSubAudio =
+        !isSuppressedForRecap && Boolean(shouldHearIdentity(participant.identity));
 
       participant.audioTrackPublications.forEach((pub) => {
         try {
@@ -125,14 +117,14 @@ function SelectiveSubscriptionManager({ isNight, myRole, isAlive, wolfTeammates,
         }
       });
     });
-  }, [room, isNight, myRole, isAlive, wolfTeammates, volumeMap]);
+  }, [room, shouldHearIdentity, isSuppressedForRecap]);
 
   useEffect(() => {
     syncSubscriptions();
   }, [syncSubscriptions]);
 
   useEffect(() => {
-    if (!room) return;
+    if (!room) return undefined;
     room.on(RoomEvent.Connected, syncSubscriptions);
     room.on(RoomEvent.Reconnected, syncSubscriptions);
     room.on(RoomEvent.ParticipantConnected, syncSubscriptions);
@@ -148,22 +140,29 @@ function SelectiveSubscriptionManager({ isNight, myRole, isAlive, wolfTeammates,
   return null;
 }
 
-// Quản lý trạng thái Micro theo Phase, Tình trạng Sống/Chết & Chế độ Rảnh tay / Giữ nói (Push-to-Talk)
+// Quản lý trạng thái Micro phần cứng an toàn (Không văng kênh khi máy thiếu Mic -> tự giữ chế độ Chỉ Nghe!)
 function VoiceParticipantManager({
-  isNight,
-  myRole,
-  isAlive,
-  inputMode,
-  userMicPreference,
-  isPttPressed,
+  canPublish,
+  wantTransmitNow,
+  micRetryNonce,
+  onMicWarning,
 }) {
   const { localParticipant } = useLocalParticipant();
+  const micBlockedRef = useRef(false);
+  const lastNonceRef = useRef(micRetryNonce);
+
+  useEffect(() => {
+    if (lastNonceRef.current !== micRetryNonce) {
+      lastNonceRef.current = micRetryNonce;
+      micBlockedRef.current = false;
+    }
+  }, [micRetryNonce]);
 
   useEffect(() => {
     if (!localParticipant) return;
 
-    // Khán giả đã chết: ngắt hẳn track thu âm phần cứng để giải phóng pin & tai nghe Bluetooth Stereo
-    if (!isAlive) {
+    // Người đã chết hoặc Khán giả: ngắt hẳn track thu âm phần cứng (0% hao pin & giữ nguyên phiên Chỉ Nghe)
+    if (!canPublish) {
       localParticipant.setMicrophoneEnabled(false).catch(() => {});
       localParticipant.audioTrackPublications?.forEach((pub) => {
         try {
@@ -177,107 +176,113 @@ function VoiceParticipantManager({
       return;
     }
 
-    const canSpeak = !isNight || isWolfTeamRole(myRole);
-    const wantMicOn = canSpeak && (inputMode === "ptt" ? isPttPressed : userMicPreference);
-
-    if (localParticipant.isMicrophoneEnabled !== wantMicOn) {
-      localParticipant.setMicrophoneEnabled(wantMicOn).catch(() => {});
+    if (wantTransmitNow && micBlockedRef.current) {
+      return;
     }
-  }, [isNight, myRole, isAlive, inputMode, userMicPreference, isPttPressed, localParticipant]);
+
+    if (localParticipant.isMicrophoneEnabled !== wantTransmitNow) {
+      localParticipant
+        .setMicrophoneEnabled(wantTransmitNow, VOICE_CAPTURE_OPTIONS)
+        .then(() => {
+          if (wantTransmitNow) {
+            micBlockedRef.current = false;
+            onMicWarning?.(null);
+          }
+        })
+        .catch((err) => {
+          micBlockedRef.current = true;
+          const errName = String(err?.name || err?.message || "");
+          if (/NotAllowed|Permission/i.test(errName)) {
+            onMicWarning?.("Bạn đang chặn quyền Micro — vẫn nghe mọi người bình thường (Chỉ Nghe).");
+          } else if (/NotFound|Device/i.test(errName)) {
+            onMicWarning?.("Không tìm thấy thiết bị Micro — đang ở chế độ Chỉ Nghe.");
+          } else {
+            onMicWarning?.("Không mở được Micro — bạn vẫn nghe mọi người bình thường.");
+          }
+        });
+    }
+  }, [canPublish, wantTransmitNow, micRetryNonce, localParticipant, onMicWarning]);
 
   return null;
 }
 
-// Đồng bộ danh sách người đang nói lên sân khấu 3D bằng sự kiện debounce chuẩn (Chống bão re-render 20Hz & Chống lộ Sói ban đêm)
-function ActiveSpeakersSync({
-  isNight,
-  myRole,
-  isAlive,
+// Đồng bộ danh sách Thành viên & Người đang nói từ LiveKit SFU ra Context chung (Hiện cả Bạn & người tắt Mic)
+function LiveKitRosterAndSpeakersSync({
   myId,
-  wolfTeammates,
-  volumeMap,
-  onSpeakingChange,
+  canSpeak,
+  wantTransmitNow,
+  shouldHearIdentity,
+  isSuppressedForRecap,
+  onPeersSync,
+  onSpeakingSync,
+  onAutoplayStateChange,
 }) {
   const room = useRoomContext();
-  const lastKeyRef = useRef("");
 
-  const pushSpeakers = useCallback(() => {
-    if (!room || !onSpeakingChange) return;
+  const syncState = useCallback(() => {
+    if (!room) return;
 
-    const canLocalSpeak = Boolean(isAlive && (!isNight || isWolfTeamRole(myRole)));
+    // 1. Danh sách tất cả người tham gia kênh thoại từ xa
+    const peers = [];
+    room.remoteParticipants?.forEach((p) => {
+      if (!p?.identity) return;
+      peers.push({
+        identity: p.identity,
+        displayName: p.name || p.identity.slice(0, 8),
+        canPublish: !String(p.identity).startsWith("spec_"),
+        isSpectator: String(p.identity).startsWith("spec_"),
+        isMicEnabled: Boolean(p.isMicrophoneEnabled),
+      });
+    });
+    onPeersSync(peers);
+
+    // 2. Danh sách người đang phát sóng âm (Zero-Leak)
     const active = Array.isArray(room.activeSpeakers) ? room.activeSpeakers : [];
     const allowedIds = [];
-
-    for (const p of active) {
-      if (!p) continue;
-      if (p.isLocal) {
-        if (canLocalSpeak && p.isMicrophoneEnabled) {
-          const selfId = myId || p.identity;
-          if (selfId && !allowedIds.includes(selfId)) allowedIds.push(selfId);
-        }
-      } else if (
-        canHearRemoteIdentity(p.identity, {
-          isNight,
-          myRole,
-          isAlive,
-          wolfTeammates,
-          volumeMap,
-        })
-      ) {
-        if (!allowedIds.includes(p.identity)) {
-          allowedIds.push(p.identity);
+    if (!isSuppressedForRecap) {
+      for (const p of active) {
+        if (!p) continue;
+        if (p.isLocal) {
+          if (canSpeak && wantTransmitNow && p.isMicrophoneEnabled) {
+            const selfId = myId || p.identity;
+            if (selfId && !allowedIds.includes(selfId)) allowedIds.push(selfId);
+          }
+        } else if (shouldHearIdentity(p.identity)) {
+          if (!allowedIds.includes(p.identity)) {
+            allowedIds.push(p.identity);
+          }
         }
       }
     }
-
     allowedIds.sort();
-    const nextKey = allowedIds.join("|");
-    if (nextKey !== lastKeyRef.current) {
-      lastKeyRef.current = nextKey;
-      onSpeakingChange(allowedIds);
-    }
-  }, [room, isNight, myRole, isAlive, myId, wolfTeammates, volumeMap, onSpeakingChange]);
+    onSpeakingSync(allowedIds);
+  }, [
+    room,
+    myId,
+    canSpeak,
+    wantTransmitNow,
+    shouldHearIdentity,
+    isSuppressedForRecap,
+    onPeersSync,
+    onSpeakingSync,
+  ]);
 
   useEffect(() => {
-    pushSpeakers();
-  }, [pushSpeakers]);
+    syncState();
+  }, [syncState]);
 
   useEffect(() => {
-    if (!room) return;
-    room.on(RoomEvent.ActiveSpeakersChanged, pushSpeakers);
-    room.on(RoomEvent.TrackMuted, pushSpeakers);
-    room.on(RoomEvent.ParticipantDisconnected, pushSpeakers);
-    room.on(RoomEvent.Connected, pushSpeakers);
-    return () => {
-      room.off(RoomEvent.ActiveSpeakersChanged, pushSpeakers);
-      room.off(RoomEvent.TrackMuted, pushSpeakers);
-      room.off(RoomEvent.ParticipantDisconnected, pushSpeakers);
-      room.off(RoomEvent.Connected, pushSpeakers);
+    if (!room) return undefined;
+    PANEL_SYNC_EVENTS.forEach((ev) => room.on(ev, syncState));
+
+    const checkPlayback = () => {
+      onAutoplayStateChange(!room.canPlaybackAudio, () => {
+        room.startAudio?.().catch(() => {});
+      });
     };
-  }, [room, pushSpeakers]);
-
-  useEffect(() => {
-    return () => {
-      if (lastKeyRef.current !== "") {
-        lastKeyRef.current = "";
-        onSpeakingChange?.([]);
-      }
-    };
-  }, [onSpeakingChange]);
-
-  return null;
-}
-
-// Xử lý chặn âm thanh tự phát (Autoplay Policy) + tự nối lại tiếng sau cuộc gọi Zalo/Điện thoại (Chốt #12)
-function AutoplayBlockNotice() {
-  const room = useRoomContext();
-  const [blocked, setBlocked] = useState(false);
-
-  useEffect(() => {
-    if (!room) return;
-    const checkPlayback = () => setBlocked(!room.canPlaybackAudio);
     checkPlayback();
     room.on(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
+
     const onVis = () => {
       if (document.visibilityState === "visible") {
         room.startAudio?.().catch(() => {});
@@ -285,102 +290,254 @@ function AutoplayBlockNotice() {
       }
     };
     document.addEventListener("visibilitychange", onVis);
+
     return () => {
+      PANEL_SYNC_EVENTS.forEach((ev) => room.off(ev, syncState));
       room.off(RoomEvent.AudioPlaybackStatusChanged, checkPlayback);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [room]);
+  }, [room, syncState, onAutoplayStateChange]);
 
-  if (!blocked) return null;
-
-  return (
-    <div className="voice-autoplay-notice" onClick={() => room.startAudio()}>
-      <span>
-        🔊 Trình duyệt đang chặn âm thanh. <b>Bấm vào đây để nghe</b>
-      </span>
-    </div>
-  );
+  return null;
 }
 
-// Bộ phát âm thanh đã lọc qua SFU Subscription (chỉ mount các track đã thực sự subscribe)
-function CustomAudioRenderer({ isNight, myRole, isAlive, wolfTeammates, volumeMap }) {
+// Bộ phát âm thanh LiveKit kèm Auto-Ducking (-40% -> 0.6x khi MC đọc) & Tạm ngắt khi xem Phim Kể Chuyện
+function CustomAudioRenderer({
+  shouldHearIdentity,
+  volumeMap,
+  mcDuckingActive,
+  isSuppressedForRecap,
+}) {
   const tracks = useTracks([Track.Source.Microphone], {
     onlySubscribed: true,
     updateOnlyOn: AUDIO_RENDER_EVENTS,
   });
+
+  const duckFactor = isSuppressedForRecap ? 0 : mcDuckingActive ? 0.6 : 1;
 
   return (
     <>
       {tracks.map((trackRef) => {
         const identity = trackRef.participant.identity;
         if (trackRef.participant.isLocal) return null;
+        if (duckFactor <= 0 || !shouldHearIdentity(identity)) return null;
 
-        const allowed = canHearRemoteIdentity(identity, {
-          isNight,
-          myRole,
-          isAlive,
-          wolfTeammates,
-          volumeMap,
-        });
-        if (!allowed) return null;
-
-        const vol = volumeMap[identity] ?? 1;
-        return <AudioTrack key={identity} trackRef={trackRef} volume={vol} />;
+        const baseVol = volumeMap[identity] ?? 1;
+        const effectiveVol = Math.max(0, Math.min(1, baseVol * duckFactor));
+        return <AudioTrack key={identity} trackRef={trackRef} volume={effectiveVol} />;
       })}
     </>
   );
 }
 
-// Bảng điều khiển giao diện Voice
-function VoicePanel({
-  isNight,
-  myRole,
-  isAlive,
-  inputMode,
-  setInputMode,
-  userMicPreference,
-  setUserMicPreference,
-  isPttPressed,
-  setIsPttPressed,
-  volumeMap,
-  setVolumeMap,
-  onLeaveVoice,
+// =============================================================================
+// PROVIDER GỐC CẤP PHÒNG (Giữ kết nối WebRTC xuyên suốt Sảnh Chờ <-> Trong Trận <-> Ván Mới)
+// =============================================================================
+export function VoiceSessionProvider({
+  socketRef,
+  roomCode,
+  isLobby = false,
+  nightDayPhase = null,
+  hasWinner = false,
+  isSpectator = false,
+  myId = null,
+  myName = "Bạn",
+  myRole = null,
+  isAlive = true,
+  wolfTeammates = [],
+  mcDuckingActive = false,
+  isSuppressedForRecap = false,
+  onSpeakingChange,
+  children,
 }) {
-  const tracks = useTracks([Track.Source.Microphone], {
-    onlySubscribed: false,
-    updateOnlyOn: PANEL_TRACK_EVENTS,
+  const [hasJoined, setHasJoined] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [engineMode, setEngineMode] = useState("idle"); // 'idle' | 'livekit' | 'p2p'
+  const [lkToken, setLkToken] = useState(null);
+  const [lkUrl, setLkUrl] = useState(null);
+  const [lkConnected, setLkConnected] = useState(false);
+  const [lkRemotePeers, setLkRemotePeers] = useState([]);
+  const [lkSpeakingIds, setLkSpeakingIds] = useState([]);
+  const [lkMicWarning, setLkMicWarning] = useState(null);
+  const [lkAutoplayBlocked, setLkAutoplayBlocked] = useState(false);
+
+  const [volumeMap, setVolumeMap] = useState({});
+  const [userMicPreference, setUserMicPreference] = useState(true);
+  const [micRetryNonce, setMicRetryNonce] = useState(0);
+  const [inputMode, setInputMode] = useState(() => {
+    try {
+      return localStorage.getItem(VOICE_INPUT_MODE_KEY) === "ptt" ? "ptt" : "vad";
+    } catch {
+      return "vad";
+    }
+  });
+  const [isPttPressed, setIsPttPressed] = useState(false);
+
+  const tokenCanPublishRef = useRef(false);
+  const lkStartAudioFnRef = useRef(null);
+  const lkSignalFailuresRef = useRef(0);
+  const tokenTimeoutRef = useRef(null);
+  const lastBroadcastSpeakersKeyRef = useRef("");
+
+  // Phân loại chính xác trạng thái Zero-Leak theo từng giây của ván đấu
+  const isRoleReveal = Boolean(!isLobby && !hasWinner && nightDayPhase === "role_reveal");
+  const isNightPhase = Boolean(
+    !isLobby && !hasWinner && String(nightDayPhase || "").startsWith("night_")
+  );
+  const canPublish = Boolean(isAlive && !isSpectator);
+
+  const canSpeak = useMemo(() => {
+    if (!canPublish || isSuppressedForRecap) return false;
+    if (isLobby || hasWinner) return true;
+    if (isRoleReveal) return false; // Khóa cứng 6s Nhận Vai Định Mệnh chống lộ cảm thán!
+    if (isNightPhase) return Boolean(isWolfTeamRole(myRole));
+    return true;
+  }, [canPublish, isSuppressedForRecap, isLobby, hasWinner, isRoleReveal, isNightPhase, myRole]);
+
+  const isNightSilentShield = Boolean(
+    (isRoleReveal || (isNightPhase && !(isWolfTeamRole(myRole) && canPublish))) && !isLobby
+  );
+
+  const wantTransmitNow = Boolean(
+    hasJoined &&
+      canSpeak &&
+      !isSuppressedForRecap &&
+      (inputMode === "ptt" ? isPttPressed : userMicPreference)
+  );
+
+  const shouldHearIdentity = useCallback(
+    (identity) => {
+      if (!identity || String(identity).startsWith("spec_")) return false;
+      if (isSuppressedForRecap) return false;
+      if (volumeMap?.[identity] === 0) return false;
+      if (isLobby || hasWinner) return true;
+      if (isRoleReveal) return false;
+      if (isNightPhase) {
+        return Boolean(
+          isWolfTeamRole(myRole) && isAlive && !isSpectator && wolfTeammates.includes(identity)
+        );
+      }
+      return true;
+    },
+    [
+      isSuppressedForRecap,
+      volumeMap,
+      isLobby,
+      hasWinner,
+      isRoleReveal,
+      isNightPhase,
+      myRole,
+      isAlive,
+      isSpectator,
+      wolfTeammates,
+    ]
+  );
+
+  const clearTokenTimeout = useCallback(() => {
+    if (tokenTimeoutRef.current) {
+      clearTimeout(tokenTimeoutRef.current);
+      tokenTimeoutRef.current = null;
+    }
+  }, []);
+
+  const switchToP2PFallback = useCallback(() => {
+    clearTokenTimeout();
+    setLkToken(null);
+    setLkUrl(null);
+    setLkConnected(false);
+    setLkRemotePeers([]);
+    setLkSpeakingIds([]);
+    setLkAutoplayBlocked(false);
+    setConnecting(false);
+    setEngineMode("p2p");
+  }, [clearTokenTimeout]);
+
+  const requestVoiceSession = useCallback(
+    ({ forceRefresh = false } = {}) => {
+      const socket = socketRef?.current;
+      if (!socket || !roomCode) return;
+      if (!forceRefresh && engineMode === "livekit" && lkToken && lkUrl) return;
+
+      clearTokenTimeout();
+      setConnecting(true);
+
+      let settled = false;
+      tokenTimeoutRef.current = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        switchToP2PFallback();
+      }, LIVEKIT_TOKEN_TIMEOUT_MS);
+
+      socket.emit("livekit:token", {}, (res) => {
+        if (settled) return;
+        settled = true;
+        clearTokenTimeout();
+
+        if (res?.mode === "livekit" && res?.token && res?.url) {
+          tokenCanPublishRef.current = Boolean(res.canPublish);
+          lkSignalFailuresRef.current = 0;
+          setLkToken(res.token);
+          setLkUrl(res.url);
+          setEngineMode("livekit");
+          setConnecting(false);
+          return;
+        }
+
+        // Bất kỳ trường hợp hết hạn mức 429 / chưa cấu hình LiveKit -> nhảy sang P2P Mesh 0đ ngay lập tức!
+        switchToP2PFallback();
+      });
+    },
+    [socketRef, roomCode, engineMode, lkToken, lkUrl, clearTokenTimeout, switchToP2PFallback]
+  );
+
+  // Tự động cấp lại Token có quyền nói (canPublish: true) khi người chết ván trước quay về Sảnh / sang ván mới!
+  useEffect(() => {
+    if (!hasJoined) return;
+    if (engineMode === "idle") {
+      requestVoiceSession({ forceRefresh: true });
+      return;
+    }
+    if (engineMode === "livekit" && canPublish && !tokenCanPublishRef.current) {
+      requestVoiceSession({ forceRefresh: true });
+    }
+  }, [hasJoined, engineMode, canPublish, requestVoiceSession]);
+
+  // Nếu đổi sang mã phòng khác -> reset sạch
+  const prevRoomCodeRef = useRef(roomCode);
+  useEffect(() => {
+    if (prevRoomCodeRef.current && roomCode && prevRoomCodeRef.current !== roomCode) {
+      clearTokenTimeout();
+      setHasJoined(false);
+      setEngineMode("idle");
+      setLkToken(null);
+      setLkUrl(null);
+      setLkConnected(false);
+      setLkRemotePeers([]);
+      setLkSpeakingIds([]);
+    }
+    prevRoomCodeRef.current = roomCode;
+  }, [roomCode, clearTokenTimeout]);
+
+  // Động cơ dự phòng P2P Mesh ($0/tháng — chỉ chạy khi engineMode === 'p2p')
+  const p2p = useP2PVoiceMesh({
+    active: Boolean(hasJoined && engineMode === "p2p"),
+    socketRef,
+    roomCode,
+    myFallbackId: myId,
+    myFallbackName: myName,
+    canPublish,
+    wantTransmitNow,
+    volumeMap,
+    mcDuckingActive,
+    isSuppressedForRecap,
+    shouldHearIdentity,
   });
 
-  const canSpeak = Boolean(isAlive && (!isNight || isWolfTeamRole(myRole)));
-  const isNightSilentShield = Boolean(isNight && !(isWolfTeamRole(myRole) && isAlive));
-
-  function toggleMic() {
-    if (!canSpeak) return;
-    setUserMicPreference((prev) => !prev);
-  }
-
-  function toggleMute(identity) {
-    setVolumeMap((prev) => ({
-      ...prev,
-      [identity]: prev[identity] === 0 ? 1 : 0,
-    }));
-  }
-
-  function switchInputMode(nextMode) {
-    setInputMode(nextMode);
-    setIsPttPressed(false);
-    try {
-      localStorage.setItem(VOICE_INPUT_MODE_KEY, nextMode);
-    } catch {
-      // ignore storage quota
-    }
-  }
-
-  // Phím Space giữ để nói (tự nhường phím khi đang gõ ô Chat & tự nhả Mic khi ẩn tab)
+  // Phím Space giữ để nói toàn cục (hoạt động ngay cả khi đang mở tab Sân Khấu 3D!)
   useEffect(() => {
-    if (inputMode !== "ptt" || !canSpeak) {
+    if (!hasJoined || inputMode !== "ptt" || !canSpeak) {
       setIsPttPressed(false);
-      return;
+      return undefined;
     }
 
     const handleKeyDown = (e) => {
@@ -388,6 +545,7 @@ function VoicePanel({
       if (isTypingInTextField(e.target)) return;
       e.preventDefault();
       if (!e.repeat) {
+        setMicRetryNonce((n) => n + 1);
         setIsPttPressed(true);
       }
     };
@@ -415,381 +573,239 @@ function VoicePanel({
       window.removeEventListener("blur", releaseMic);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [inputMode, canSpeak, setIsPttPressed]);
+  }, [hasJoined, inputMode, canSpeak]);
 
-  let channelLabel = "☀️ Kênh Chung";
-  if (!isAlive) {
-    channelLabel = "💀 Khán Giả (Chỉ nghe)";
-  } else if (isNight) {
-    channelLabel = isWolfTeamRole(myRole) ? "🐺 Kênh Bầy Sói" : "🌙 Đêm Ngủ (0 kbps)";
-  }
+  // Hợp nhất danh sách người đang nói (LiveKit hoặc P2P) và báo lên Sân khấu 3D
+  const activeSpeakingIds = useMemo(() => {
+    if (!hasJoined || isSuppressedForRecap) return [];
+    return engineMode === "p2p" ? p2p.speakingIds : lkSpeakingIds;
+  }, [hasJoined, isSuppressedForRecap, engineMode, p2p.speakingIds, lkSpeakingIds]);
 
-  const visibleRemoteTracks = useMemo(() => {
-    if (isNightSilentShield) return [];
-    return tracks.filter((t) => {
-      if (t.participant.isLocal) return false;
-      if (isNight) {
-        return wolfTeammates.includes(t.participant.identity);
-      }
-      return true;
-    });
-  }, [tracks, isNightSilentShield, isNight, wolfTeammates]);
-
-  const isLocalTransmitting =
-    canSpeak && (inputMode === "ptt" ? isPttPressed : userMicPreference);
-
-  return (
-    <div className="voice-panel">
-      <AutoplayBlockNotice />
-
-      <div className="voice-header">
-        <span className="voice-status-label" title="Nén Thoại Opus 16kbps + DTX tự ngắt băng thông khi im lặng">
-          {channelLabel}
-        </span>
-        <div className="voice-header-actions">
-          {isAlive && (
-            <div className="voice-mode-switch" role="group" aria-label="Chế độ thu âm">
-              <button
-                type="button"
-                className={`voice-mode-btn ${inputMode === "vad" ? "active" : ""}`}
-                onClick={() => switchInputMode("vad")}
-                title="Rảnh tay thông minh (DTX: tự hạ về 0 kbps khi bạn im lặng)"
-              >
-                Rảnh tay
-              </button>
-              <button
-                type="button"
-                className={`voice-mode-btn ${inputMode === "ptt" ? "active" : ""}`}
-                onClick={() => switchInputMode("ptt")}
-                title="Giữ phím Space (máy tính) hoặc giữ nút Mic (điện thoại) để nói — phù hợp nơi ồn ào"
-              >
-                Giữ nói
-              </button>
-            </div>
-          )}
-
-          {inputMode === "ptt" && isAlive ? (
-            <button
-              type="button"
-              className={`btn-mic btn-ptt-hold ${
-                !canSpeak ? "mic-disabled" : isPttPressed ? "mic-on ptt-holding" : "mic-off"
-              }`}
-              disabled={!canSpeak}
-              onPointerDown={(e) => {
-                if (!canSpeak) return;
-                e.preventDefault();
-                setIsPttPressed(true);
-              }}
-              onPointerUp={() => setIsPttPressed(false)}
-              onPointerLeave={() => setIsPttPressed(false)}
-              onPointerCancel={() => setIsPttPressed(false)}
-              title={
-                !canSpeak
-                  ? "Ban đêm dân làng phải giữ im lặng"
-                  : "Nhấn giữ nút này hoặc giữ phím Space để nói"
-              }
-            >
-              {!canSpeak ? "🔒" : isPttPressed ? "🎙️" : "⌨️"}
-              <span className="mic-btn-text">
-                {!canSpeak ? "Khóa mic" : isPttPressed ? "Đang nói..." : "Giữ nói"}
-              </span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`btn-mic ${
-                !canSpeak ? "mic-disabled" : isLocalTransmitting ? "mic-on" : "mic-off"
-              }`}
-              onClick={toggleMic}
-              disabled={!canSpeak}
-              title={
-                !isAlive
-                  ? "Khán giả chỉ nghe, không mở phần cứng Micro"
-                  : isNight && !isWolfTeamRole(myRole)
-                  ? "Ban đêm dân làng phải ngủ"
-                  : userMicPreference
-                  ? "Tắt mic của bạn"
-                  : "Bật mic của bạn"
-              }
-            >
-              {!canSpeak ? "🔒" : isLocalTransmitting ? "🎤" : "🔇"}
-              <span className="mic-btn-text">
-                {!canSpeak ? "Khóa mic" : isLocalTransmitting ? "Đang bật" : "Bật mic"}
-              </span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="btn-leave-voice"
-            onClick={onLeaveVoice}
-            title="Rời kênh voice (ngắt kết nối WebRTC ngay lập tức)"
-          >
-            📵
-          </button>
-        </div>
-      </div>
-
-      <div className="voice-participants">
-        {isNightSilentShield ? (
-          <span className="voice-empty-hint">
-            🌙 Kênh thoại đang khóa ngủ đêm — 0 kbps (bảo mật & tiết kiệm)
-          </span>
-        ) : (
-          <>
-            {visibleRemoteTracks.map((trackRef) => {
-              const participant = trackRef.participant;
-              const identity = participant.identity;
-              const displayName = participant.name || identity.slice(0, 8);
-              const isMuted = volumeMap[identity] === 0;
-              const isSpeaking = !isMuted && Boolean(participant.isSpeaking);
-
-              return (
-                <div
-                  key={identity}
-                  className={`voice-participant ${isSpeaking ? "speaking" : ""} ${
-                    isMuted ? "participant-muted" : ""
-                  }`}
-                >
-                  <span className="voice-participant-name" title={displayName}>
-                    {isMuted ? "🔇 " : isSpeaking ? "🔊 " : "🎙️ "}
-                    {displayName}
-                  </span>
-                  <button
-                    type="button"
-                    className={`btn-mute-player ${isMuted ? "muted" : ""}`}
-                    onClick={() => toggleMute(identity)}
-                    title={
-                      isMuted
-                        ? "Bỏ tắt tiếng (nối lại luồng âm thanh người này)"
-                        : "Tắt tiếng & ngắt tải gói tin âm thanh từ người này (0 kbps)"
-                    }
-                  >
-                    {isMuted ? "🔇" : "🔉"}
-                  </button>
-                </div>
-              );
-            })}
-            {visibleRemoteTracks.length === 0 && (
-              <span className="voice-empty-hint">
-                {isNight ? "Chưa có Sói nào khác bật kênh thoại" : "Chưa có ai khác bật mic"}
-              </span>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// MAIN COMPONENT — VoiceRoom Eco + Zero-Leak Architecture
-// ============================================================
-export default function VoiceRoom({
-  socketRef,
-  isNight,
-  myRole,
-  isAlive = true,
-  myId,
-  wolfTeammates = [],
-  onSpeakingChange,
-}) {
-  const [token, setToken] = useState(null);
-  const [url, setUrl] = useState(null);
-  const [error, setError] = useState(null);
-  const [volumeMap, setVolumeMap] = useState({});
-  const [userMicPreference, setUserMicPreference] = useState(true);
-  const [inputMode, setInputMode] = useState(() => {
-    try {
-      return localStorage.getItem(VOICE_INPUT_MODE_KEY) === "ptt" ? "ptt" : "vad";
-    } catch {
-      return "vad";
+  useEffect(() => {
+    const key = activeSpeakingIds.join("|");
+    if (key !== lastBroadcastSpeakersKeyRef.current) {
+      lastBroadcastSpeakersKeyRef.current = key;
+      onSpeakingChange?.(activeSpeakingIds);
     }
-  });
-  const [isPttPressed, setIsPttPressed] = useState(false);
-
-  // OPT 1: Lazy connect — mặc định chưa tham gia, chờ người dùng bấm nút
-  const [hasJoined, setHasJoined] = useState(false);
-  const tokenFetchedRef = useRef(false);
-  const reconnectAttemptsRef = useRef(0);
-  const reconnectTimerRef = useRef(null);
-
-  const clearReconnectTimer = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-  }, []);
+  }, [activeSpeakingIds, onSpeakingChange]);
 
   useEffect(() => {
     return () => {
-      clearReconnectTimer();
+      clearTokenTimeout();
       onSpeakingChange?.([]);
     };
-  }, [clearReconnectTimer, onSpeakingChange]);
+  }, [clearTokenTimeout, onSpeakingChange]);
 
-  // OPT 4: Chỉ fetch token khi chưa có token hợp lệ
-  const fetchToken = useCallback(() => {
-    if (!socketRef?.current) return;
-    if (tokenFetchedRef.current && token && !error) return;
+  const joinVoice = useCallback(() => {
+    setLkMicWarning(null);
+    p2p.clearMicWarning?.();
+    setMicRetryNonce((n) => n + 1);
+    setHasJoined(true);
+    setEngineMode("idle");
+  }, [p2p]);
 
-    socketRef.current.emit("livekit:token", {}, (res) => {
-      if (res?.error) {
-        setError(res.error);
-        tokenFetchedRef.current = false;
-      } else if (res?.token && res?.url) {
-        setToken(res.token);
-        setUrl(res.url);
-        setError(null);
-        tokenFetchedRef.current = true;
-      }
-    });
-  }, [socketRef, token, error]);
-
-  useEffect(() => {
-    if (!hasJoined) return;
-    fetchToken();
-
-    const socket = socketRef?.current;
-    if (socket) {
-      socket.on("connect", fetchToken);
-      return () => socket.off("connect", fetchToken);
-    }
-  }, [fetchToken, socketRef, hasJoined]);
-
-  // OPT 3: Người chết → tự động disconnect khỏi LiveKit ngay để tiết kiệm phút & nhả phần cứng Mic
-  const prevAliveRef = useRef(isAlive);
-  useEffect(() => {
-    if (prevAliveRef.current === true && isAlive === false) {
-      clearReconnectTimer();
-      reconnectAttemptsRef.current = 0;
-      setIsPttPressed(false);
-      if (hasJoined) {
-        setHasJoined(false);
-        setToken(null);
-        setUrl(null);
-        tokenFetchedRef.current = false;
-        onSpeakingChange?.([]);
-      }
-    }
-    prevAliveRef.current = isAlive;
-  }, [isAlive, hasJoined, clearReconnectTimer, onSpeakingChange]);
-
-  // OPT 2: Hàm rời voice thủ công (nút 📵 trong VoicePanel)
-  const handleLeaveVoice = useCallback(() => {
-    clearReconnectTimer();
-    reconnectAttemptsRef.current = 0;
+  const leaveVoice = useCallback(() => {
+    clearTokenTimeout();
     setIsPttPressed(false);
     setHasJoined(false);
-    setToken(null);
-    setUrl(null);
-    setError(null);
-    tokenFetchedRef.current = false;
+    setConnecting(false);
+    setEngineMode("idle");
+    setLkToken(null);
+    setLkUrl(null);
+    setLkConnected(false);
+    setLkRemotePeers([]);
+    setLkSpeakingIds([]);
+    setLkMicWarning(null);
+    setLkAutoplayBlocked(false);
     onSpeakingChange?.([]);
-  }, [clearReconnectTimer, onSpeakingChange]);
+  }, [clearTokenTimeout, onSpeakingChange]);
 
-  const friendlyError = useMemo(() => {
-    if (!error) return null;
-    if (
-      error === "LIVEKIT_QUOTA_EXCEEDED" ||
-      /429|quota|connection minutes/i.test(error) ||
-      /could not establish signal/i.test(error) ||
-      /websocket error/i.test(error)
-    ) {
-      return "🎙️ Kênh thoại tạm thời không khả dụng (hạn mức miễn phí tháng này đã hết). Bạn vẫn chat văn bản và nghe MC bình thường!";
+  const toggleMic = useCallback(() => {
+    if (!canSpeak) return;
+    setMicRetryNonce((n) => n + 1);
+    setUserMicPreference((prev) => !prev);
+  }, [canSpeak]);
+
+  const toggleMutePeer = useCallback((identity) => {
+    if (!identity) return;
+    setVolumeMap((prev) => ({
+      ...prev,
+      [identity]: prev[identity] === 0 ? 1 : 0,
+    }));
+  }, []);
+
+  const switchInputMode = useCallback((nextMode) => {
+    setInputMode(nextMode);
+    setIsPttPressed(false);
+    try {
+      localStorage.setItem(VOICE_INPUT_MODE_KEY, nextMode);
+    } catch {
+      // ignore storage quota
     }
-    return `🎤 Voice lỗi: ${error}`;
-  }, [error]);
+  }, []);
 
-  // OPT 1: Chưa join → hiển thị nút mời tham gia
-  if (!hasJoined) {
-    return (
-      <div className="voice-room-wrapper">
-        {friendlyError && (
-          <div className="voice-error-banner">
-            <span>{friendlyError}</span>
-            <button
-              type="button"
-              className="voice-error-close"
-              onClick={() => setError(null)}
-              title="Đóng"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        <div className="voice-join-prompt">
-          <div className="voice-join-icon">🎙️</div>
-          <div className="voice-join-text">
-            {!isAlive
-              ? "Bạn đã chết. Tham gia chế độ Chỉ Nghe (0% hao pin Micro)."
-              : "Tham gia kênh Voice tiết kiệm (Opus 16kbps · Tự ngắt 0 kbps khi im lặng)."}
-          </div>
-          <button
-            type="button"
-            className="btn-join-voice"
-            onClick={() => {
-              clearReconnectTimer();
-              reconnectAttemptsRef.current = 0;
-              setHasJoined(true);
-              setError(null);
-            }}
-          >
-            🎙️ Tham gia Voice
-          </button>
-          <span className="voice-join-hint">Không tham gia thì game vẫn chạy bình thường</span>
-        </div>
-      </div>
-    );
+  const handleLkAutoplayChange = useCallback((blocked, startFn) => {
+    lkStartAudioFnRef.current = startFn || null;
+    setLkAutoplayBlocked(Boolean(blocked));
+  }, []);
+
+  const resumeAudioPlayback = useCallback(() => {
+    if (engineMode === "p2p") {
+      p2p.resumePlayback();
+    } else {
+      lkStartAudioFnRef.current?.();
+      setLkAutoplayBlocked(false);
+    }
+  }, [engineMode, p2p]);
+
+  const rawRemotePeers = engineMode === "p2p" ? p2p.remotePeers : lkRemotePeers;
+  const visibleRemotePeers = useMemo(() => {
+    if (isNightSilentShield) return [];
+    return rawRemotePeers.filter((p) => {
+      if (!p?.identity || p.identity === myId) return false;
+      if (p.isSpectator || String(p.identity).startsWith("spec_")) return false;
+      if (isNightPhase) {
+        return wolfTeammates.includes(p.identity);
+      }
+      return true;
+    });
+  }, [rawRemotePeers, isNightSilentShield, myId, isNightPhase, wolfTeammates]);
+
+  let channelLabel = "☀️ Kênh Chung";
+  if (isSuppressedForRecap) {
+    channelLabel = "🎬 Tạm ngắt (Đang xem phim)";
+  } else if (isSpectator) {
+    channelLabel = "👀 Khán Giả (Chỉ nghe)";
+  } else if (!isAlive) {
+    channelLabel = "💀 Đã hy sinh (Chỉ nghe)";
+  } else if (isLobby) {
+    channelLabel = "🏡 Thoại Sảnh Chờ";
+  } else if (isRoleReveal) {
+    channelLabel = "🎭 Nhận Vai (Khóa Mic 6s)";
+  } else if (isNightPhase) {
+    channelLabel = isWolfTeamRole(myRole) ? "🐺 Kênh Bầy Sói" : "🌙 Đêm Ngủ (0 kbps)";
   }
 
-  return (
-    <div className="voice-room-wrapper">
-      {friendlyError && (
-        <div className="voice-error-banner">
-          <span>{friendlyError}</span>
-          <button
-            type="button"
-            className="voice-error-close"
-            onClick={() => {
-              clearReconnectTimer();
-              reconnectAttemptsRef.current = 0;
-              setError(null);
-              setHasJoined(false);
-            }}
-            title="Đóng"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+  const activeWarning = engineMode === "p2p" ? p2p.micWarning : lkMicWarning;
+  const clearActiveWarning = useCallback(() => {
+    setLkMicWarning(null);
+    p2p.clearMicWarning?.();
+  }, [p2p]);
 
-      {!token || !url ? (
-        !friendlyError && <div className="voice-loading">🎤 Đang kết nối kênh thoại...</div>
-      ) : (
+  const autoplayBlocked = engineMode === "p2p" ? p2p.autoplayBlocked : lkAutoplayBlocked;
+  const isEngineReady =
+    engineMode === "p2p" ? p2p.connected : Boolean(engineMode === "livekit" && lkConnected);
+
+  const sessionValue = useMemo(
+    () => ({
+      hasJoined,
+      connecting: connecting || (hasJoined && !isEngineReady),
+      isEngineReady,
+      engineMode,
+      isLobby,
+      isRoleReveal,
+      isNightPhase,
+      isNightSilentShield,
+      isSuppressedForRecap,
+      mcDuckingActive,
+      canPublish,
+      canSpeak,
+      wantTransmitNow,
+      myId,
+      myName,
+      myRole,
+      isAlive,
+      isSpectator,
+      inputMode,
+      switchInputMode,
+      userMicPreference,
+      toggleMic,
+      isPttPressed,
+      setIsPttPressed,
+      volumeMap,
+      toggleMutePeer,
+      visibleRemotePeers,
+      activeSpeakingIds,
+      channelLabel,
+      activeWarning,
+      clearActiveWarning,
+      autoplayBlocked,
+      resumeAudioPlayback,
+      joinVoice,
+      leaveVoice,
+    }),
+    [
+      hasJoined,
+      connecting,
+      isEngineReady,
+      engineMode,
+      isLobby,
+      isRoleReveal,
+      isNightPhase,
+      isNightSilentShield,
+      isSuppressedForRecap,
+      mcDuckingActive,
+      canPublish,
+      canSpeak,
+      wantTransmitNow,
+      myId,
+      myName,
+      myRole,
+      isAlive,
+      isSpectator,
+      inputMode,
+      switchInputMode,
+      userMicPreference,
+      toggleMic,
+      isPttPressed,
+      volumeMap,
+      toggleMutePeer,
+      visibleRemotePeers,
+      activeSpeakingIds,
+      channelLabel,
+      activeWarning,
+      clearActiveWarning,
+      autoplayBlocked,
+      resumeAudioPlayback,
+      joinVoice,
+      leaveVoice,
+    ]
+  );
+
+  return (
+    <VoiceSessionContext.Provider value={sessionValue}>
+      {/* Cầu âm thanh LiveKit chạy ngầm liên thông không bao giờ bị unmount khi đổi Tab / Sảnh <-> Trận */}
+      {hasJoined && engineMode === "livekit" && lkToken && lkUrl && (
         <LiveKitRoom
-          serverUrl={url}
-          token={token}
+          serverUrl={lkUrl}
+          token={lkToken}
           connect={true}
           video={false}
-          audio={isAlive ? VOICE_CAPTURE_OPTIONS : false}
+          audio={false}
           options={VOICE_ROOM_OPTIONS}
           connectOptions={VOICE_CONNECT_OPTIONS}
           className="livekit-custom"
           onConnected={() => {
-            clearReconnectTimer();
-            reconnectAttemptsRef.current = 0;
+            lkSignalFailuresRef.current = 0;
+            setLkConnected(true);
+            setConnecting(false);
           }}
           onError={(err) => {
-            setError(err?.message || "Không thể kết nối kênh thoại.");
-            tokenFetchedRef.current = false;
+            const msg = String(err?.message || "");
+            // Nếu chỉ là lỗi quyền Micro nội bộ thì giữ nguyên phòng SFU ở chế độ Chỉ Nghe
+            if (/NotAllowed|NotFound|Permission|microphone|device/i.test(msg)) {
+              setLkMicWarning("Không mở được Micro — đang giữ chế độ Chỉ Nghe.");
+              return;
+            }
+            // Lỗi kết nối WebSocket / hết hạn mức LiveKit -> nhảy êm sang P2P Mesh < 300ms!
+            switchToP2PFallback();
           }}
           onDisconnected={(reason) => {
-            onSpeakingChange?.([]);
+            setLkConnected(false);
+            setLkSpeakingIds([]);
             setIsPttPressed(false);
             if (!hasJoined) return;
 
-            // Nếu bị kick hoặc trùng phiên thì dừng ngay không loop
             if (
               reason === DisconnectReason.CLIENT_INITIATED ||
               reason === DisconnectReason.DUPLICATE_IDENTITY ||
@@ -797,83 +813,491 @@ export default function VoiceRoom({
               reason === DisconnectReason.ROOM_DELETED
             ) {
               setHasJoined(false);
-              setToken(null);
-              setUrl(null);
-              tokenFetchedRef.current = false;
+              setEngineMode("idle");
+              setLkToken(null);
+              setLkUrl(null);
               return;
             }
 
-            // Giới hạn tối đa 3 lần thử kết nối lại (Exponential Backoff: 1.5s -> 4s -> 8s)
-            if (reconnectAttemptsRef.current >= MAX_AUTO_RECONNECT_ATTEMPTS) {
-              setHasJoined(false);
-              setToken(null);
-              setUrl(null);
-              tokenFetchedRef.current = false;
-              setError("Mạng chập chờn — đã tạm ngắt Voice để tiết kiệm tài nguyên. Bấm Tham gia lại khi mạng ổn định.");
-              return;
+            lkSignalFailuresRef.current += 1;
+            if (lkSignalFailuresRef.current >= 1) {
+              switchToP2PFallback();
             }
-
-            const delayMs =
-              RECONNECT_DELAYS_MS[reconnectAttemptsRef.current] ||
-              RECONNECT_DELAYS_MS[RECONNECT_DELAYS_MS.length - 1];
-            reconnectAttemptsRef.current += 1;
-
-            clearReconnectTimer();
-            setToken(null);
-            setUrl(null);
-            tokenFetchedRef.current = false;
-            reconnectTimerRef.current = setTimeout(() => {
-              fetchToken();
-            }, delayMs);
           }}
         >
           <SelectiveSubscriptionManager
-            isNight={isNight}
-            myRole={myRole}
-            isAlive={isAlive}
-            wolfTeammates={wolfTeammates}
-            volumeMap={volumeMap}
+            shouldHearIdentity={shouldHearIdentity}
+            isSuppressedForRecap={isSuppressedForRecap}
           />
           <VoiceParticipantManager
-            isNight={isNight}
-            myRole={myRole}
-            isAlive={isAlive}
-            inputMode={inputMode}
-            userMicPreference={userMicPreference}
-            isPttPressed={isPttPressed}
+            canPublish={canPublish}
+            wantTransmitNow={wantTransmitNow}
+            micRetryNonce={micRetryNonce}
+            onMicWarning={setLkMicWarning}
           />
-          <ActiveSpeakersSync
-            isNight={isNight}
-            myRole={myRole}
-            isAlive={isAlive}
+          <LiveKitRosterAndSpeakersSync
             myId={myId}
-            wolfTeammates={wolfTeammates}
-            volumeMap={volumeMap}
-            onSpeakingChange={onSpeakingChange}
+            canSpeak={canSpeak}
+            wantTransmitNow={wantTransmitNow}
+            shouldHearIdentity={shouldHearIdentity}
+            isSuppressedForRecap={isSuppressedForRecap}
+            onPeersSync={setLkRemotePeers}
+            onSpeakingSync={setLkSpeakingIds}
+            onAutoplayStateChange={handleLkAutoplayChange}
           />
           <CustomAudioRenderer
-            isNight={isNight}
-            myRole={myRole}
-            isAlive={isAlive}
-            wolfTeammates={wolfTeammates}
+            shouldHearIdentity={shouldHearIdentity}
             volumeMap={volumeMap}
-          />
-          <VoicePanel
-            isNight={isNight}
-            myRole={myRole}
-            isAlive={isAlive}
-            inputMode={inputMode}
-            setInputMode={setInputMode}
-            userMicPreference={userMicPreference}
-            setUserMicPreference={setUserMicPreference}
-            isPttPressed={isPttPressed}
-            setIsPttPressed={setIsPttPressed}
-            volumeMap={volumeMap}
-            setVolumeMap={setVolumeMap}
-            onLeaveVoice={handleLeaveVoice}
+            mcDuckingActive={mcDuckingActive}
+            isSuppressedForRecap={isSuppressedForRecap}
           />
         </LiveKitRoom>
       )}
+      {children}
+    </VoiceSessionContext.Provider>
+  );
+}
+
+// =============================================================================
+// NÚT NỔI TRÊN SÂN KHẤU 3D (Cho cả Sảnh Chờ & Màn Hình Chơi Mobile/PC)
+// =============================================================================
+export function VoiceQuickMicPill({ className = "" }) {
+  const voice = useVoiceSession();
+  if (!voice) return null;
+
+  const {
+    hasJoined,
+    connecting,
+    engineMode,
+    canPublish,
+    canSpeak,
+    isRoleReveal,
+    isSuppressedForRecap,
+    wantTransmitNow,
+    inputMode,
+    isPttPressed,
+    setIsPttPressed,
+    toggleMic,
+    joinVoice,
+    visibleRemotePeers,
+    activeSpeakingIds,
+    myId,
+  } = voice;
+
+  if (!hasJoined) {
+    return (
+      <button
+        type="button"
+        className={`voice-quick-pill join-cta ${className}`.trim()}
+        onClick={joinVoice}
+        title="Tham gia kênh đàm thoại trực tiếp (giữ kết nối xuyên suốt Sảnh Chờ & Trong Trận)"
+      >
+        <span>🎙️</span>
+        <span>Bật Voice</span>
+      </button>
+    );
+  }
+
+  const isSelfSpeaking = Boolean(myId && activeSpeakingIds.includes(myId));
+  const remoteSpeaker = visibleRemotePeers.find((p) => activeSpeakingIds.includes(p.identity));
+  const peerCount = (canPublish ? 1 : 0) + visibleRemotePeers.length;
+  const modeTag = engineMode === "p2p" ? "⚡P2P" : "☁️SFU";
+
+  if (connecting) {
+    return (
+      <div className={`voice-quick-pill connecting ${className}`.trim()}>
+        <span>⏳ Đang nối Voice...</span>
+      </div>
+    );
+  }
+
+  if (isSuppressedForRecap) {
+    return (
+      <div
+        className={`voice-quick-pill locked ${className}`.trim()}
+        title="Tự động mở lại ngay khi bạn bấm Về Sảnh Chờ"
+      >
+        <span>🎬 Tạm ngắt thoại</span>
+      </div>
+    );
+  }
+
+  if (!canPublish) {
+    return (
+      <div
+        className={`voice-quick-pill listen-only ${remoteSpeaker ? "remote-speaking" : ""} ${className}`.trim()}
+        title={`Đang nghe kênh thoại (${modeTag}) — 0% tốn pin Micro`}
+      >
+        <span>{remoteSpeaker ? `🔊 ${remoteSpeaker.displayName}` : "👂 Chỉ nghe"}</span>
+        <span className="voice-pill-count">{peerCount}</span>
+      </div>
+    );
+  }
+
+  if (!canSpeak) {
+    return (
+      <div
+        className={`voice-quick-pill locked ${className}`.trim()}
+        title={
+          isRoleReveal
+            ? "Khóa Mic 6 giây nhận vai để tránh lộ cảm thán"
+            : "Ban đêm dân làng tự động khóa Mic (0 kbps)"
+        }
+      >
+        <span>🔒 {isRoleReveal ? "Nhận vai" : "Khóa đêm"}</span>
+      </div>
+    );
+  }
+
+  if (inputMode === "ptt") {
+    return (
+      <button
+        type="button"
+        className={`voice-quick-pill ${isPttPressed ? "mic-live" : "mic-ptt"} ${
+          isSelfSpeaking ? "self-speaking" : ""
+        } ${className}`.trim()}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          setIsPttPressed(true);
+        }}
+        onPointerUp={() => setIsPttPressed(false)}
+        onPointerLeave={() => setIsPttPressed(false)}
+        onPointerCancel={() => setIsPttPressed(false)}
+        title="Nhấn giữ nút này (hoặc phím Space) để nói"
+      >
+        <span>{isPttPressed ? "🎙️ Đang nói" : "⌨️ Giữ nói"}</span>
+        <span className="voice-pill-count">{peerCount}</span>
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className={`voice-quick-pill ${wantTransmitNow ? "mic-live" : "mic-muted"} ${
+        isSelfSpeaking ? "self-speaking" : remoteSpeaker ? "remote-speaking" : ""
+      } ${className}`.trim()}
+      onClick={toggleMic}
+      title={
+        wantTransmitNow
+          ? `Đang bật Mic (${modeTag}) — Nhấn để tắt Mic`
+          : `Đang tắt Mic (${modeTag}) — Nhấn để bật Mic`
+      }
+    >
+      <span>
+        {wantTransmitNow ? (isSelfSpeaking ? "🔊 Đang nói" : "🎤 Mic bật") : "🔇 Mic tắt"}
+      </span>
+      <span className="voice-pill-count">{peerCount}</span>
+    </button>
+  );
+}
+
+// =============================================================================
+// BẢNG ĐIỀU KHIỂN CHI TIẾT TRONG CỘT PHẢI (SẢNH CHỜ & TRONG TRẬN)
+// =============================================================================
+function VoiceRoomConsumerView() {
+  const voice = useVoiceSession();
+  if (!voice) return null;
+
+  const {
+    hasJoined,
+    connecting,
+    engineMode,
+    isNightPhase,
+    isNightSilentShield,
+    mcDuckingActive,
+    canPublish,
+    canSpeak,
+    wantTransmitNow,
+    myId,
+    myName,
+    myRole,
+    inputMode,
+    switchInputMode,
+    userMicPreference,
+    toggleMic,
+    isPttPressed,
+    setIsPttPressed,
+    volumeMap,
+    toggleMutePeer,
+    visibleRemotePeers,
+    activeSpeakingIds,
+    channelLabel,
+    activeWarning,
+    clearActiveWarning,
+    autoplayBlocked,
+    resumeAudioPlayback,
+    joinVoice,
+    leaveVoice,
+  } = voice;
+
+  if (!hasJoined) {
+    return (
+      <div className="voice-room-wrapper">
+        <div className="voice-join-prompt">
+          <div className="voice-join-row">
+            <span className="voice-join-icon">🎙️</span>
+            <div className="voice-join-text">
+              {!canPublish
+                ? "Chế độ Chỉ Nghe (0% hao pin Micro — nghe trực tiếp bàn thảo luận)."
+                : "Thoại trực tiếp liên thông Sảnh & Trận (Opus 16kbps · Tự ngắt 0 kbps khi im lặng)."}
+            </div>
+          </div>
+          <button type="button" className="btn-join-voice" onClick={joinVoice}>
+            🎙️ Tham gia Voice
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isSelfSpeaking = Boolean(myId && activeSpeakingIds.includes(myId));
+
+  return (
+    <div className="voice-room-wrapper">
+      <div className="voice-panel">
+        {autoplayBlocked && (
+          <div className="voice-autoplay-notice" onClick={resumeAudioPlayback}>
+            <span>
+              🔊 Trình duyệt đang tạm chặn tiếng thoại. <b>Bấm vào đây để nghe ngay</b>
+            </span>
+          </div>
+        )}
+
+        {activeWarning && (
+          <div className="voice-soft-warning">
+            <span>ℹ️ {activeWarning}</span>
+            <button
+              type="button"
+              className="voice-error-close"
+              onClick={clearActiveWarning}
+              title="Ẩn thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="voice-header">
+          <div className="voice-title-group">
+            <span
+              className="voice-status-label"
+              title="Nén Thoại Opus 16kbps + Tự giảm 40% âm lượng khi MC đọc truyện"
+            >
+              {channelLabel}
+            </span>
+            <span
+              className={`voice-engine-badge ${engineMode === "p2p" ? "p2p" : "sfu"}`}
+              title={
+                engineMode === "p2p"
+                  ? "Đang chạy WebRTC P2P Mesh trực tiếp ($0 không giới hạn)"
+                  : "Đang chạy máy chủ LiveKit Cloud SFU"
+              }
+            >
+              {connecting ? "⏳..." : engineMode === "p2p" ? "⚡ P2P" : "☁️ SFU"}
+            </span>
+            {mcDuckingActive && (
+              <span
+                className="voice-duck-badge"
+                title="Đang tự động hạ 40% âm lượng thoại để nghe rõ lời dẫn của MC"
+              >
+                🔉 MC
+              </span>
+            )}
+          </div>
+
+          <div className="voice-header-actions">
+            {canPublish && (
+              <div className="voice-mode-switch" role="group" aria-label="Chế độ thu âm">
+                <button
+                  type="button"
+                  className={`voice-mode-btn ${inputMode === "vad" ? "active" : ""}`}
+                  onClick={() => switchInputMode("vad")}
+                  title="Rảnh tay thông minh (DTX: tự hạ về 0 kbps khi bạn im lặng)"
+                >
+                  Rảnh tay
+                </button>
+                <button
+                  type="button"
+                  className={`voice-mode-btn ${inputMode === "ptt" ? "active" : ""}`}
+                  onClick={() => switchInputMode("ptt")}
+                  title="Giữ phím Space (máy tính) hoặc giữ nút Mic (điện thoại) để nói"
+                >
+                  Giữ nói
+                </button>
+              </div>
+            )}
+
+            {canPublish ? (
+              inputMode === "ptt" ? (
+                <button
+                  type="button"
+                  className={`btn-mic btn-ptt-hold ${
+                    !canSpeak ? "mic-disabled" : isPttPressed ? "mic-on ptt-holding" : "mic-off"
+                  }`}
+                  disabled={!canSpeak}
+                  onPointerDown={(e) => {
+                    if (!canSpeak) return;
+                    e.preventDefault();
+                    setIsPttPressed(true);
+                  }}
+                  onPointerUp={() => setIsPttPressed(false)}
+                  onPointerLeave={() => setIsPttPressed(false)}
+                  onPointerCancel={() => setIsPttPressed(false)}
+                  title={
+                    !canSpeak
+                      ? "Đang khóa Mic theo pha trò chơi"
+                      : "Nhấn giữ nút này hoặc giữ phím Space để nói"
+                  }
+                >
+                  {!canSpeak ? "🔒" : isPttPressed ? "🎙️" : "⌨️"}
+                  <span className="mic-btn-text">
+                    {!canSpeak ? "Khóa mic" : isPttPressed ? "Đang nói..." : "Giữ nói"}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={`btn-mic ${
+                    !canSpeak ? "mic-disabled" : wantTransmitNow ? "mic-on" : "mic-off"
+                  }`}
+                  onClick={toggleMic}
+                  disabled={!canSpeak}
+                  title={
+                    !canSpeak
+                      ? isNightPhase && !isWolfTeamRole(myRole)
+                        ? "Ban đêm dân làng phải giữ im lặng"
+                        : "Đang tạm khóa Mic"
+                      : userMicPreference
+                        ? "Tắt mic của bạn"
+                        : "Bật mic của bạn"
+                  }
+                >
+                  {!canSpeak ? "🔒" : wantTransmitNow ? "🎤" : "🔇"}
+                  <span className="mic-btn-text">
+                    {!canSpeak ? "Khóa mic" : wantTransmitNow ? "Đang bật" : "Bật mic"}
+                  </span>
+                </button>
+              )
+            ) : (
+              <span className="voice-listen-tag" title="Đã nhả phần cứng Micro (0% tốn pin)">
+                👂 Chỉ nghe
+              </span>
+            )}
+
+            <button
+              type="button"
+              className="btn-leave-voice"
+              onClick={leaveVoice}
+              title="Rời kênh voice (ngắt kết nối WebRTC ngay lập tức)"
+            >
+              📵
+            </button>
+          </div>
+        </div>
+
+        <div className="voice-participants">
+          {isNightSilentShield ? (
+            <span className="voice-empty-hint">
+              🌙 Kênh thoại đang khóa bảo mật — 0 kbps (chống lộ vai tuyệt đối)
+            </span>
+          ) : (
+            <>
+              {/* Thẻ của chính bạn luôn hiện đầu tiên để biết chắc chắn mình đã vào kênh & thấy sóng âm */}
+              <div
+                className={`voice-participant self-card ${isSelfSpeaking ? "speaking" : ""} ${
+                  !wantTransmitNow ? "participant-muted" : ""
+                }`}
+              >
+                <span className="voice-participant-name" title={myName || "Bạn"}>
+                  {!canPublish
+                    ? "👂 "
+                    : !canSpeak
+                      ? "🔒 "
+                      : isSelfSpeaking
+                        ? "🔊 "
+                        : wantTransmitNow
+                          ? "🎙️ "
+                          : "🔇 "}
+                  Bạn
+                </span>
+              </div>
+
+              {visibleRemotePeers.map((peer) => {
+                const identity = peer.identity;
+                const displayName = peer.displayName || identity.slice(0, 8);
+                const isMuted = volumeMap[identity] === 0;
+                const isSpeaking = !isMuted && activeSpeakingIds.includes(identity);
+
+                return (
+                  <div
+                    key={identity}
+                    className={`voice-participant ${isSpeaking ? "speaking" : ""} ${
+                      isMuted ? "participant-muted" : ""
+                    }`}
+                  >
+                    <span className="voice-participant-name" title={displayName}>
+                      {isMuted ? "🔇 " : isSpeaking ? "🔊 " : !peer.canPublish ? "👂 " : "🎙️ "}
+                      {displayName}
+                    </span>
+                    <button
+                      type="button"
+                      className={`btn-mute-player ${isMuted ? "muted" : ""}`}
+                      onClick={() => toggleMutePeer(identity)}
+                      title={
+                        isMuted
+                          ? "Bỏ tắt tiếng người chơi này"
+                          : "Tắt tiếng riêng người chơi này trên máy bạn"
+                      }
+                    >
+                      {isMuted ? "🔇" : "🔉"}
+                    </button>
+                  </div>
+                );
+              })}
+
+              {visibleRemotePeers.length === 0 && (
+                <span className="voice-empty-hint">
+                  {isNightPhase
+                    ? "Đang chờ đồng bọn Sói khác vào kênh thoại..."
+                    : "Đã vào kênh — mời bạn bè bấm Tham gia Voice!"}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+// =============================================================================
+// EXPORT MẶC ĐỊNH (Tự động dùng Provider cấp phòng nếu có, hoặc tự bọc độc lập)
+// =============================================================================
+export default function VoiceRoom(props) {
+  const existingSession = useVoiceSession();
+  if (existingSession) {
+    return <VoiceRoomConsumerView />;
+  }
+
+  return (
+    <VoiceSessionProvider
+      socketRef={props.socketRef}
+      roomCode={props.roomCode || "standalone"}
+      isLobby={Boolean(props.isLobby)}
+      nightDayPhase={props.nightDayPhase || (props.isNight ? "night_wolf" : "day_discuss")}
+      hasWinner={Boolean(props.hasWinner)}
+      isSpectator={Boolean(props.isSpectator)}
+      myId={props.myId}
+      myName={props.myName || "Bạn"}
+      myRole={props.myRole}
+      isAlive={props.isAlive !== false}
+      wolfTeammates={props.wolfTeammates || []}
+      mcDuckingActive={Boolean(props.mcDuckingActive)}
+      isSuppressedForRecap={Boolean(props.isSuppressedForRecap)}
+      onSpeakingChange={props.onSpeakingChange}
+    >
+      <VoiceRoomConsumerView />
+    </VoiceSessionProvider>
   );
 }
