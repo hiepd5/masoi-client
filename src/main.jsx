@@ -11,9 +11,16 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
-// Đăng ký Service Worker Phân Tách Kép (Chốt #14: Cache-First GLB/WebP/Audio 0 MB ván 2 + Network-First HTML/JS)
-if (import.meta.env.PROD && typeof window !== "undefined" && "serviceWorker" in navigator && !isNativeCapacitor()) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
+// Đăng ký Service Worker Phân Tách Kép trên Production; ở DEV tự gỡ mọi SW cũ chống kẹt cache Localhost!
+if (typeof window !== "undefined" && "serviceWorker" in navigator && !isNativeCapacitor()) {
+  if (import.meta.env.PROD) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    });
+  } else {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((regs) => regs.forEach((r) => r.unregister().catch(() => {})))
+      .catch(() => {});
+  }
 }

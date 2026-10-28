@@ -24,10 +24,17 @@ export function isNativeCapacitor() {
   return false;
 }
 
+export function isLocalDevClient() {
+  return !import.meta.env.PROD && !isNativeCapacitor();
+}
+
 export function getApiBaseUrl() {
   try {
     const customUrl = typeof localStorage !== "undefined" && localStorage.getItem("ws_server_override");
-    if (customUrl && /^https?:\/\//i.test(customUrl)) {
+    const allowOverrideInDev =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location?.search || "").get("ws_override") === "1";
+    if (customUrl && /^https?:\/\//i.test(customUrl) && (!isLocalDevClient() || allowOverrideInDev)) {
       return customUrl.replace(/\/+$/, "");
     }
   } catch {

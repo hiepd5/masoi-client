@@ -625,6 +625,21 @@ export default function Lobby({
                 🏗️ Studio D5
               </button>
             )}
+            {!import.meta.env.PROD && (
+              <span
+                className="btn-home-top"
+                title="Đang chạy bản kiểm thử Local nối thẳng http://localhost:3001 (Chưa đẩy lên Cloud)"
+                style={{
+                  background: "rgba(6, 95, 70, 0.55)",
+                  borderColor: "rgba(52, 211, 153, 0.65)",
+                  color: "#a7f3d0",
+                  fontWeight: 800,
+                  cursor: "default",
+                }}
+              >
+                🧪 LOCAL :3001
+              </span>
+            )}
             <button type="button" className="btn-home-top" onClick={() => setShowRules(true)}>
               📖 Luật Chơi
             </button>

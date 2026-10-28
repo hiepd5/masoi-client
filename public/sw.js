@@ -7,7 +7,7 @@
  *    -> Tải 0 MB từ ván thứ 2 trở đi, vào bàn siêu tốc!
  * ============================================================================ */
 
-const SHELL_CACHE = "masoi-shell-v4.3";
+const SHELL_CACHE = "masoi-shell-v4.3.1";
 const ASSET_CACHE = "masoi-assets-v4.3";
 const ACTIVE_CACHES = [SHELL_CACHE, ASSET_CACHE];
 

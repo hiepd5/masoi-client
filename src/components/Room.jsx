@@ -137,6 +137,11 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const [dismissedRecapKey, setDismissedRecapKey] = useState(null);
 
   const myId = sessionStorage.getItem("ws_playerId") || socketRef.current?.id;
+  const me = room?.isSpectator
+    ? null
+    : room?.players?.find((p) => p.id === myId) ||
+      room?.players?.find((p) => p.sessionToken) ||
+      null;
 
   const liveEndedKey =
     room?.phase === "ended" && room?.game?.winner && Array.isArray(room?.game?.history)
@@ -821,15 +826,25 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   }
 
   function handleRoleChange(roleKey, delta) {
-    if (!me?.isHost) return;
+    if (!me?.isHost || !room) return;
     setError("");
-    const currentCounts = room.rolesConfig || generateDefaultRoles(room.players.length);
+    const currentCounts =
+      room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
     const current = Number(currentCounts[roleKey]) || 0;
+    const totalRolesNow = Object.values(currentCounts).reduce(
+      (s, v) => s + (Number(v) || 0),
+      0
+    );
     const totalWolfNow =
       (Number(currentCounts.wolf) || 0) + (Number(currentCounts.alpha_wolf) || 0);
     const isWolfCard = roleKey === "wolf" || roleKey === "alpha_wolf";
     if (delta < 0 && isWolfCard && current <= 1 && totalWolfNow <= 1) {
-      return; // Giữ tối thiểu 1 Sói hoặc 1 Sói Đầu Đàn
+      setError("Bàn chơi cần tối thiểu 1 Ma Sói (hoặc bấm 👑 Đầu Đàn để đổi loại Sói).");
+      return;
+    }
+    if (delta > 0 && totalRolesNow >= 18) {
+      setError("Tối đa 18 vai trong một bàn chơi.");
+      return;
     }
     const nextVal = Math.max(0, current + delta);
     if (nextVal === current) return;
@@ -840,13 +855,142 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
     });
   }
 
-  function handlePresetRoles(mode = "v33") {
-    if (!me?.isHost) return;
+  function handleSetTableScale(requestedTotal) {
+    if (!me?.isHost || !room) return;
     setError("");
+    const rawTarget = Math.max(6, Math.min(18, Number(requestedTotal) || 6));
+    const minBySeated = Math.max(6, room.players.length);
+    if (rawTarget < room.players.length) {
+      setError(
+        `Đang có ${room.players.length} ghế có người/Bot ngồi — hãy bấm '-1 Bot' hoặc '🗑️ Xóa Bot' nếu muốn hạ bàn xuống ${rawTarget} người.`
+      );
+    }
+    const targetTotal = Math.max(minBySeated, rawTarget);
+    const baseCfg = {
+      ...(room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length))),
+    };
+
+    const sumNonVillager = () =>
+      Object.entries(baseCfg)
+        .filter(([k]) => k !== "villager")
+        .reduce((s, [, c]) => s + (Number(c) || 0), 0);
+
+    let nonVillager = sumNonVillager();
+    if (targetTotal >= nonVillager) {
+      baseCfg.villager = targetTotal - nonVillager;
+    } else {
+      baseCfg.villager = 0;
+      const trimOrder = [
+        "tanner",
+        "cursed",
+        "tough_guy",
+        "cupid",
+        "mayor",
+        "hunter",
+        "guard",
+        "witch",
+        "seer",
+        "wolf",
+        "alpha_wolf",
+      ];
+      for (const rk of trimOrder) {
+        while (nonVillager > targetTotal && (Number(baseCfg[rk]) || 0) > 0) {
+          const totalWolfLeft =
+            (Number(baseCfg.wolf) || 0) + (Number(baseCfg.alpha_wolf) || 0);
+          if ((rk === "wolf" || rk === "alpha_wolf") && totalWolfLeft <= 1) {
+            break;
+          }
+          baseCfg[rk] = Math.max(0, (Number(baseCfg[rk]) || 0) - 1);
+          nonVillager -= 1;
+        }
+      }
+    }
+
+    socketRef.current.emit("room:setRolesConfig", { rolesConfig: baseCfg }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không thể chỉnh quy mô bàn.");
+    });
+  }
+
+  function handleChangeTotalWolves(delta) {
+    if (!me?.isHost || !room || !delta) return;
+    setError("");
+    const currentCounts = {
+      ...(room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length))),
+    };
+    const wolfNow = Number(currentCounts.wolf) || 0;
+    const alphaNow = Number(currentCounts.alpha_wolf) || 0;
+    const totalWolfNow = wolfNow + alphaNow;
+    const villagerNow = Number(currentCounts.villager) || 0;
+    const totalRolesNow = Object.values(currentCounts).reduce(
+      (s, v) => s + (Number(v) || 0),
+      0
+    );
+
+    if (delta < 0) {
+      if (totalWolfNow <= 1) {
+        setError("Bàn chơi phải có tối thiểu 1 Ma Sói.");
+        return;
+      }
+      if (wolfNow > 0) {
+        currentCounts.wolf = wolfNow - 1;
+      } else {
+        currentCounts.alpha_wolf = Math.max(0, alphaNow - 1);
+      }
+      currentCounts.villager = villagerNow + 1;
+    } else {
+      const maxWolvesAllowed = Math.min(8, Math.max(1, totalRolesNow - 1));
+      if (totalWolfNow >= maxWolvesAllowed && villagerNow <= 0 && totalRolesNow >= 18) {
+        setError("Số lượng Sói đã chạm trần tối đa của bàn.");
+        return;
+      }
+      currentCounts.wolf = wolfNow + 1;
+      if (villagerNow > 0) {
+        currentCounts.villager = villagerNow - 1;
+      } else if (totalRolesNow >= 18) {
+        setError("Hãy giảm bớt 1 vai đặc biệt trước khi tăng thêm Sói (tối đa 18 vai).");
+        return;
+      }
+    }
+
+    socketRef.current.emit("room:setRolesConfig", { rolesConfig: currentCounts }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không thể chỉnh số lượng Sói.");
+    });
+  }
+
+  function handleToggleAlphaWolf() {
+    if (!me?.isHost || !room) return;
+    setError("");
+    const currentCounts = {
+      ...(room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length))),
+    };
+    const wolfNow = Number(currentCounts.wolf) || 0;
+    const alphaNow = Number(currentCounts.alpha_wolf) || 0;
+    if (alphaNow > 0) {
+      currentCounts.alpha_wolf = 0;
+      currentCounts.wolf = wolfNow + alphaNow;
+    } else if (wolfNow > 0) {
+      currentCounts.wolf = wolfNow - 1;
+      currentCounts.alpha_wolf = 1;
+    } else {
+      currentCounts.alpha_wolf = 1;
+    }
+    socketRef.current.emit("room:setRolesConfig", { rolesConfig: currentCounts }, (res) => {
+      if (res && !res.ok) setError(res.error || "Không thể bật/tắt Sói Đầu Đàn.");
+    });
+  }
+
+  function handlePresetRoles(mode = "v33") {
+    if (!me?.isHost || !room) return;
+    setError("");
+    const currentTotal = Object.values(room.rolesConfig || {}).reduce(
+      (s, v) => s + (Number(v) || 0),
+      0
+    );
+    const scaleBase = Math.min(18, Math.max(currentTotal, room.players.length));
     const preset =
       mode === "classic"
-        ? generateDefaultRoles(Math.max(6, room.players.length))
-        : generateExpandedV33Roles(Math.max(8, room.players.length));
+        ? generateDefaultRoles(Math.max(6, scaleBase))
+        : generateExpandedV33Roles(Math.max(8, scaleBase));
     socketRef.current.emit("room:setRolesConfig", { rolesConfig: preset }, (res) => {
       if (res && !res.ok) setError(res.error || "Lỗi thiết lập preset.");
     });
@@ -969,11 +1113,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
   // Thông số phiên Voice liên thông Sảnh Chờ 3D <-> Trong Trận <-> Ván Mới (0ms rớt kết nối)
   const liveIsSpectator = Boolean(room.isSpectator);
-  const liveMe = liveIsSpectator
-    ? null
-    : room.players?.find((p) => p.id === myId) ||
-      room.players?.find((p) => p.sessionToken) ||
-      null;
+  const liveMe = me;
   const isLobbyNow =
     room.phase === "lobby" || (room.phase === "ended" && !isWatchingPersonalRecap);
   const voiceMyId = liveIsSpectator
@@ -1032,7 +1172,6 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       />
     );
   } else {
-    const me = room.players.find((p) => p.id === myId);
     const rolesConfig = room.rolesConfig || generateDefaultRoles(Math.max(6, room.players.length));
     const totalRoles = Object.values(rolesConfig).reduce((s, v) => s + (Number(v) || 0), 0);
 
@@ -1217,6 +1356,14 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         </div>
 
         <div className="lobby-header-actions">
+          {!import.meta.env.PROD && (
+            <span
+              className="local-dev-env-badge"
+              title="Đang chạy bản kiểm thử Local nối thẳng http://localhost:3001 (Chưa đẩy lên Cloud)"
+            >
+              🧪 LOCAL :3001
+            </span>
+          )}
           <VoiceQuickMicPill />
           {(botCount > 0 || missingBotsToFill > 0) && room.canToggleMcPacing && (
             <button
@@ -1465,9 +1612,9 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                         type="button"
                         className="mini-pill bot-btn"
                         onClick={() => handleManageBots("fill_roles")}
-                        title="Triệu hồi AI Bot ngồi vào ghế 3D cho khớp tổng số vai đang chọn"
+                        title="Cân chỉnh ghế AI Bot khớp đúng tổng số vai của bàn (bảo toàn 100% số Sói & vai đặc biệt)"
                       >
-                        ⚡ Lấp đủ ({totalRoles} ghế)
+                        ⚡ Khớp Bot ({totalRoles} ghế)
                       </button>
                       <button
                         type="button"
@@ -1477,6 +1624,16 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       >
                         +1 Bot
                       </button>
+                      {botCount > 0 && (
+                        <button
+                          type="button"
+                          className="mini-pill bot-btn"
+                          onClick={() => handleManageBots("remove", 1)}
+                          title="Bớt 1 AI Bot (giữ nguyên cấu hình Sói & vai trò)"
+                        >
+                          −1 Bot
+                        </button>
+                      )}
                       {botCount > 0 && (
                         <button
                           type="button"
@@ -1550,36 +1707,114 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 </div>
               )}
 
-              {/* Thanh Thiết Lập Nhanh 1-Click cho Chủ Phòng / Chú thích đồng bộ cho Khách */}
+              {/* Thanh Thiết Lập Nhanh Quy Mô Bàn (6–18 Người) + Số Sói Tự Cân Bằng Nông Dân cho Chủ Phòng */}
               {me?.isHost ? (
-                <div className="roles-preset-bar compact">
-                  <div className="roles-preset-buttons">
-                    <button
-                      type="button"
-                      className="btn-preset-v33"
-                      onClick={() => handlePresetRoles("v33")}
-                      title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng!"
-                    >
-                      🔥 Mở Rộng V3.3 ({Math.max(8, totalPlayers)}p)
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset-default"
-                      onClick={() => handlePresetRoles("classic")}
-                      title="Áp dụng bộ 8 vai cổ điển"
-                    >
-                      ⚖️ Cổ Điển
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-preset-autofill"
-                      onClick={handleAutoFillVillagers}
-                      title="Tự động bù Nông Dân cho khớp số ghế"
-                    >
-                      ➕ Bù Dân
-                    </button>
+                <>
+                  <div className="quick-scale-wolf-box">
+                    <div className="quick-scale-row">
+                      <span className="quick-scale-label">👥 Tổng số người (Bàn):</span>
+                      <div className="quick-scale-controls">
+                        <button
+                          type="button"
+                          className="btn-quick-step"
+                          onClick={() => handleSetTableScale(totalRoles - 1)}
+                          disabled={totalRoles <= 6}
+                          title="Giảm tổng số người của bàn (tự cân bằng Nông Dân)"
+                        >
+                          −
+                        </button>
+                        <span className="quick-step-readout">{totalRoles} người</span>
+                        <button
+                          type="button"
+                          className="btn-quick-step"
+                          onClick={() => handleSetTableScale(totalRoles + 1)}
+                          disabled={totalRoles >= 18}
+                          title="Tăng tổng số người của bàn (tự cộng thêm Nông Dân)"
+                        >
+                          +
+                        </button>
+                        <div className="quick-size-pills">
+                          {[6, 8, 10, 12, 16].map((sz) => (
+                            <button
+                              key={sz}
+                              type="button"
+                              className={`quick-size-pill ${totalRoles === sz ? "active" : ""}`}
+                              onClick={() => handleSetTableScale(sz)}
+                              title={`Đặt bàn ${sz} người chơi`}
+                            >
+                              {sz}p
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="quick-scale-row">
+                      <span className="quick-scale-label">🐺 Số lượng Ma Sói:</span>
+                      <div className="quick-scale-controls">
+                        <button
+                          type="button"
+                          className="btn-quick-step wolf"
+                          onClick={() => handleChangeTotalWolves(-1)}
+                          disabled={totalWolfTeam <= 1}
+                          title="Giảm 1 Sói (tự chuyển thành Nông Dân)"
+                        >
+                          −
+                        </button>
+                        <span className="quick-step-readout wolf">{totalWolfTeam} Sói</span>
+                        <button
+                          type="button"
+                          className="btn-quick-step wolf"
+                          onClick={() => handleChangeTotalWolves(1)}
+                          disabled={totalWolfTeam >= Math.min(8, Math.max(1, totalRoles - 1))}
+                          title="Tăng 1 Sói (tự trừ từ Nông Dân để giữ nguyên tổng người)"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          className={`quick-alpha-pill ${(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "active" : ""}`}
+                          onClick={handleToggleAlphaWolf}
+                          title="Bật/tắt 1 Sói Đầu Đàn trong bầy Sói mà không làm lệch tổng số Sói"
+                        >
+                          👑 Đầu Đàn: {(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "CÓ" : "TẮT"}
+                        </button>
+                        <span className="quick-villager-chip" title="Nông Dân tự động bù trừ cân bằng">
+                          🧑‍🌾 Dân: x{Number(rolesConfig.villager) || 0}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="roles-preset-bar compact">
+                    <div className="roles-preset-buttons">
+                      <button
+                        type="button"
+                        className="btn-preset-v33"
+                        onClick={() => handlePresetRoles("v33")}
+                        title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng!"
+                      >
+                        🔥 Mở Rộng V3.3 ({Math.max(8, totalRoles, totalPlayers)}p)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-preset-default"
+                        onClick={() => handlePresetRoles("classic")}
+                        title="Áp dụng bộ vai cổ điển theo quy mô hiện tại"
+                      >
+                        ⚖️ Cổ Điển
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-preset-autofill"
+                        onClick={handleAutoFillVillagers}
+                        title="Tự động bù Nông Dân cho khớp số ghế"
+                      >
+                        ➕ Bù Dân
+                      </button>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="guest-sync-banner">
                   👀 Bảng bài trực tiếp từ Chủ phòng — các thẻ phát sáng là vai có mặt trong ván!

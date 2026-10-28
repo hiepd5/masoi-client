@@ -127,6 +127,23 @@ export default function PlayingView({
   useEffect(() => {
     setSuspectTags({});
     setDidActOrVoteInMatch(false);
+    setChatLog([]);
+    setGhostChatLog([]);
+    setChatChannel("village");
+    setSeerHistory([]);
+    setShowSeerPopover(false);
+    setShowDeadOverlay(false);
+    setShowPostGameChat(false);
+    setSelectedId(null);
+    setCupidTargets([]);
+    setHasActed(false);
+    setMySkipVote(false);
+    setActionFeedback("");
+    setLocalBubbleChatLog({});
+    setUnreadCount(0);
+    setNewMsgCount(0);
+    prevAliveRef.current = true;
+    prevIsNightRef.current = null;
   }, [g.gameStartedAt]);
 
   // Kích hoạt hoạt cảnh ngắn 3D + VFX ngay trên màn hình người thực hiện (100% Zero-Leak — không phát sang máy người khác!)
@@ -1876,13 +1893,21 @@ export default function PlayingView({
                   {g.myGhostBet ? (
                     <span>
                       🔮 Đã dự đoán:{" "}
-                      <strong>{g.myGhostBet === "wolf" ? "🐺 Phe Sói" : "🏡 Phe Dân"}</strong>{" "}
+                      <strong>
+                        {g.myGhostBet === "wolf"
+                          ? "🐺 Phe Sói"
+                          : g.myGhostBet === "lovers"
+                            ? "💘 Cặp Đôi"
+                            : g.myGhostBet === "tanner"
+                              ? "💀 Chán Đời"
+                              : "🏡 Phe Dân"}
+                      </strong>{" "}
                       (Đúng +35 XP!)
                     </span>
                   ) : (
                     <>
                       <span>🔮 Dự đoán phe thắng (+35 XP):</span>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
                           className="btn-ghost-bet"
@@ -1897,6 +1922,24 @@ export default function PlayingView({
                         >
                           🐺 Phe Sói
                         </button>
+                        {Number(g.roleCounts?.cupid) > 0 && (
+                          <button
+                            type="button"
+                            className="btn-ghost-bet"
+                            onClick={() => handleGhostBet("lovers")}
+                          >
+                            💘 Cặp Đôi
+                          </button>
+                        )}
+                        {Number(g.roleCounts?.tanner) > 0 && (
+                          <button
+                            type="button"
+                            className="btn-ghost-bet"
+                            onClick={() => handleGhostBet("tanner")}
+                          >
+                            💀 Chán Đời
+                          </button>
+                        )}
                       </div>
                     </>
                   )}
