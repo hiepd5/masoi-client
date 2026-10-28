@@ -1122,7 +1122,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       : myId
     : liveMe?.id || myId;
   const voiceMyName = liveIsSpectator ? "Khán Giả" : liveMe?.name || "Bạn";
-  const voiceMyRole = liveIsSpectator || isLobbyNow ? null : liveMe?.role || null;
+  const voiceMyRole =
+    liveIsSpectator || isLobbyNow ? null : room.game?.myRole || liveMe?.role || null;
   const voiceIsAlive = isLobbyNow
     ? !liveIsSpectator
     : Boolean(liveMe?.alive !== false && !liveIsSpectator);
@@ -2110,6 +2111,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       socketRef={socketRef}
       roomCode={room.code}
       isLobby={isLobbyNow}
+      humanCount={room.humanCount ?? 1}
+      spectatorCount={room.spectatorCount ?? 0}
       nightDayPhase={voiceNightDayPhase}
       hasWinner={voiceHasWinner}
       isSpectator={liveIsSpectator}

@@ -91,12 +91,14 @@ export default function Lobby({
   const [showAvatarVault, setShowAvatarVault] = useState(false);
   const [, setCatalogTick] = useState(0);
   const [goldenHourInfo, setGoldenHourInfo] = useState(null);
+  const [voiceHealth, setVoiceHealth] = useState(null);
   const [progression, setProgression] = useState(() => getPlayerProgressionState());
 
   useEffect(() => {
     let alive = true;
-    const fetchGolden = () => {
-      fetch(`${getApiBaseUrl()}/api/golden-hour`, { cache: "no-store" })
+    const fetchServerStatus = () => {
+      const apiBase = getApiBaseUrl();
+      fetch(`${apiBase}/api/golden-hour`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (!alive || !data?.ok) return;
@@ -104,9 +106,17 @@ export default function Lobby({
           setProgression(getPlayerProgressionState(data.serverDateKey));
         })
         .catch(() => {});
+
+      fetch(`${apiBase}/api/voice-status`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!alive || !data?.ok) return;
+          setVoiceHealth(data);
+        })
+        .catch(() => {});
     };
-    fetchGolden();
-    const timer = window.setInterval(fetchGolden, 60_000);
+    fetchServerStatus();
+    const timer = window.setInterval(fetchServerStatus, 60_000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -602,6 +612,33 @@ export default function Lobby({
                 ? "🌕 ĐÊM HUYẾT NGUYỆT: ĐANG X2 XP!"
                 : "🌙 Giờ Vàng X2 XP: 20h–23h"}
             </span>
+            {voiceHealth && (
+              <span
+                className="home-live-pill"
+                title={
+                  voiceHealth.livekitHealthy
+                    ? "Máy chủ đàm thoại LiveKit Cloud SFU đã đủ Key & hoạt động tốt — Chế độ Bộ Đàm Giữ-Để-Nói (0 kbps khi nhả tay)"
+                    : `Trạng thái LiveKit: ${voiceHealth.livekitStatus || "Đang kiểm tra"}`
+                }
+                style={{
+                  borderColor: voiceHealth.livekitHealthy
+                    ? "rgba(56, 189, 248, 0.52)"
+                    : "rgba(251, 191, 36, 0.55)",
+                  background: voiceHealth.livekitHealthy
+                    ? "rgba(14, 116, 144, 0.24)"
+                    : "rgba(146, 64, 14, 0.28)",
+                  color: voiceHealth.livekitHealthy ? "#bae6fd" : "#fde68a",
+                }}
+              >
+                {voiceHealth.livekitHealthy
+                  ? "🎙️ LiveKit: Sẵn sàng • Giữ nói"
+                  : !voiceHealth.livekitConfigured
+                    ? "⚠️ LiveKit: Thiếu Key"
+                    : voiceHealth.livekitStatus === "LIVEKIT_QUOTA_EXCEEDED"
+                      ? "⚠️ LiveKit: Chạm Quota 429"
+                      : "⏳ LiveKit: Đang kiểm tra"}
+              </span>
+            )}
           </div>
 
           <div className="home-topbar-actions">

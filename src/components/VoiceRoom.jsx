@@ -17,13 +17,21 @@ import {
 import { DisconnectReason, RoomEvent, Track } from "livekit-client";
 import "@livekit/components-styles";
 import { isWolfTeamRole } from "../config/roles.config.js";
-import { VOICE_CAPTURE_OPTIONS, useP2PVoiceMesh } from "../utils/p2pVoiceEngine.js";
 import "./VoiceRoom.css";
 
-const VOICE_INPUT_MODE_KEY = "ws_voice_input_mode";
-const LIVEKIT_TOKEN_TIMEOUT_MS = 5500;
+const LIVEKIT_TOKEN_TIMEOUT_MS = 6500;
+const MAX_CONTINUOUS_PTT_MS = 45_000; // Tự nhả Mic nếu kẹt phím Space quá 45s
+const LOBBY_IDLE_SLEEP_MS = 4 * 60_000; // Tự nghỉ tiết kiệm phút LiveKit nếu treo Sảnh Chờ > 4 phút không ai nói
 
-// Cấu hình phòng LiveKit chuyên Thoại Game (Opus 16kbps + DTX 0 kbps khi im lặng)
+export const VOICE_CAPTURE_OPTIONS = {
+  channelCount: 1,
+  sampleRate: 24000,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+};
+
+// Cấu hình phòng Thuần LiveKit SFU Siêu Tiết Kiệm (Opus Mono 14kbps + DTX 0 kbps + Bộ Đàm Giữ-Để-Nói)
 const VOICE_ROOM_OPTIONS = {
   adaptiveStream: false,
   dynacast: false,
@@ -32,7 +40,7 @@ const VOICE_ROOM_OPTIONS = {
   stopLocalTrackOnUnpublish: true,
   audioCaptureDefaults: VOICE_CAPTURE_OPTIONS,
   publishDefaults: {
-    audioPreset: { maxBitrate: 16_000, priority: "high" },
+    audioPreset: { maxBitrate: 14_000, priority: "high" },
     dtx: true,
     red: true,
     forceStereo: false,
@@ -41,10 +49,10 @@ const VOICE_ROOM_OPTIONS = {
   },
 };
 
-// KHÓA KÉP ZERO-LEAK: Không tự động subscribe bất kỳ luồng âm thanh nào cho đến khi qua bộ lọc vai trò/ban đêm
+// KHÓA KÉP ZERO-LEAK & BỀN KẾT NỐI: Không tự subscribe trước khi qua bộ lọc vai trò, tự thử nối lại 6 lần khi đổi mạng 4G/Wi-Fi
 const VOICE_CONNECT_OPTIONS = {
   autoSubscribe: false,
-  maxRetries: 1,
+  maxRetries: 6,
 };
 
 const AUDIO_RENDER_EVENTS = [
@@ -85,6 +93,23 @@ function isTypingInTextField(target) {
     tag === "SELECT" ||
     Boolean(el.isContentEditable)
   );
+}
+
+function describeLiveKitIssue(reason, rawMessage = "") {
+  const code = String(reason || "").toUpperCase();
+  if (code === "LIVEKIT_NOT_CONFIGURED") {
+    return "Máy chủ chưa cấu hình khóa LiveKit Cloud (LIVEKIT_URL / API_KEY / API_SECRET).";
+  }
+  if (code === "LIVEKIT_QUOTA_EXCEEDED" || /429|quota|limit/i.test(rawMessage)) {
+    return "Dự án LiveKit Cloud đang chạm hạn mức gói miễn phí (429) — vui lòng kiểm tra Quota.";
+  }
+  if (code === "LIVEKIT_AUTH_INVALID" || /401|403|unauthorized|invalid token/i.test(rawMessage)) {
+    return "Khóa LiveKit API Key/Secret không hợp lệ hoặc đã hết hạn.";
+  }
+  if (code === "TOKEN_TIMEOUT") {
+    return "Kết nối cấp khóa LiveKit phản hồi chậm — bấm Kết nối lại để vào kênh.";
+  }
+  return "Kết nối LiveKit SFU bị gián đoạn tạm thời — bấm Kết nối lại để vào kênh.";
 }
 
 // Điều phối thuê bao SFU chủ động: Cắt 100% gói tin chiều về (0 kbps) vào ban đêm cho Dân Làng, lúc lật bài 6s & khi Mute cá nhân
@@ -140,9 +165,10 @@ function SelectiveSubscriptionManager({ shouldHearIdentity, isSuppressedForRecap
   return null;
 }
 
-// Quản lý trạng thái Micro phần cứng an toàn (Không văng kênh khi máy thiếu Mic -> tự giữ chế độ Chỉ Nghe!)
+// Quản lý Micro Bộ Đàm (0 kbps tuyệt đối khi nhả tay; giải phóng hẳn phần cứng Mic khi sang Ban Đêm / Chết / Chỉ Nghe)
 function VoiceParticipantManager({
   canPublish,
+  canSpeak,
   wantTransmitNow,
   micRetryNonce,
   onMicWarning,
@@ -161,8 +187,8 @@ function VoiceParticipantManager({
   useEffect(() => {
     if (!localParticipant) return;
 
-    // Người đã chết hoặc Khán giả: ngắt hẳn track thu âm phần cứng (0% hao pin & giữ nguyên phiên Chỉ Nghe)
-    if (!canPublish) {
+    // Khi bị khóa nói (Ban đêm Dân Làng / 6s Nhận Vai / Người chết / Khán giả): ngắt sạch phần cứng Micro (0% hao pin)
+    if (!canPublish || !canSpeak) {
       localParticipant.setMicrophoneEnabled(false).catch(() => {});
       localParticipant.audioTrackPublications?.forEach((pub) => {
         try {
@@ -193,7 +219,9 @@ function VoiceParticipantManager({
           micBlockedRef.current = true;
           const errName = String(err?.name || err?.message || "");
           if (/NotAllowed|Permission/i.test(errName)) {
-            onMicWarning?.("Bạn đang chặn quyền Micro — vẫn nghe mọi người bình thường (Chỉ Nghe).");
+            onMicWarning?.(
+              "Bạn đang chặn quyền Micro — vẫn nghe mọi người bình thường (Chỉ Nghe)."
+            );
           } else if (/NotFound|Device/i.test(errName)) {
             onMicWarning?.("Không tìm thấy thiết bị Micro — đang ở chế độ Chỉ Nghe.");
           } else {
@@ -201,12 +229,12 @@ function VoiceParticipantManager({
           }
         });
     }
-  }, [canPublish, wantTransmitNow, micRetryNonce, localParticipant, onMicWarning]);
+  }, [canPublish, canSpeak, wantTransmitNow, micRetryNonce, localParticipant, onMicWarning]);
 
   return null;
 }
 
-// Đồng bộ danh sách Thành viên & Người đang nói từ LiveKit SFU ra Context chung (Hiện cả Bạn & người tắt Mic)
+// Đồng bộ danh sách Thành viên & Người đang nói từ LiveKit SFU ra Context chung
 function LiveKitRosterAndSpeakersSync({
   myId,
   canSpeak,
@@ -222,7 +250,6 @@ function LiveKitRosterAndSpeakersSync({
   const syncState = useCallback(() => {
     if (!room) return;
 
-    // 1. Danh sách tất cả người tham gia kênh thoại từ xa
     const peers = [];
     room.remoteParticipants?.forEach((p) => {
       if (!p?.identity) return;
@@ -236,7 +263,6 @@ function LiveKitRosterAndSpeakersSync({
     });
     onPeersSync(peers);
 
-    // 2. Danh sách người đang phát sóng âm (Zero-Leak)
     const active = Array.isArray(room.activeSpeakers) ? room.activeSpeakers : [];
     const allowedIds = [];
     if (!isSuppressedForRecap) {
@@ -331,12 +357,14 @@ function CustomAudioRenderer({
 }
 
 // =============================================================================
-// PROVIDER GỐC CẤP PHÒNG (Giữ kết nối WebRTC xuyên suốt Sảnh Chờ <-> Trong Trận <-> Ván Mới)
+// PROVIDER GỐC THUẦN LIVEKIT SFU (CHẾ ĐỘ BỘ ĐÀM GIỮ-ĐỂ-NÓI SIÊU TIẾT KIỆM)
 // =============================================================================
 export function VoiceSessionProvider({
   socketRef,
   roomCode,
   isLobby = false,
+  humanCount = 2,
+  spectatorCount = 0,
   nightDayPhase = null,
   hasWinner = false,
   isSpectator = false,
@@ -352,31 +380,29 @@ export function VoiceSessionProvider({
 }) {
   const [hasJoined, setHasJoined] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [engineMode, setEngineMode] = useState("idle"); // 'idle' | 'livekit' | 'p2p'
   const [lkToken, setLkToken] = useState(null);
   const [lkUrl, setLkUrl] = useState(null);
+  const [lkIdentity, setLkIdentity] = useState(null);
+  const [lkTokenCanPublish, setLkTokenCanPublish] = useState(false);
   const [lkConnected, setLkConnected] = useState(false);
+  const [lkConnectionError, setLkConnectionError] = useState(null);
+  const [reconnectSeq, setReconnectSeq] = useState(0);
+
   const [lkRemotePeers, setLkRemotePeers] = useState([]);
   const [lkSpeakingIds, setLkSpeakingIds] = useState([]);
   const [lkMicWarning, setLkMicWarning] = useState(null);
   const [lkAutoplayBlocked, setLkAutoplayBlocked] = useState(false);
 
   const [volumeMap, setVolumeMap] = useState({});
-  const [userMicPreference, setUserMicPreference] = useState(true);
   const [micRetryNonce, setMicRetryNonce] = useState(0);
-  const [inputMode, setInputMode] = useState(() => {
-    try {
-      return localStorage.getItem(VOICE_INPUT_MODE_KEY) === "ptt" ? "ptt" : "vad";
-    } catch {
-      return "vad";
-    }
-  });
+  // Khóa cố định 100% chế độ Bộ Đàm "Giữ Nút Mic / Giữ Phím Space Để Nói" (0 kbps khi nhả tay)
+  const inputMode = "ptt";
   const [isPttPressed, setIsPttPressed] = useState(false);
 
-  const tokenCanPublishRef = useRef(false);
   const lkStartAudioFnRef = useRef(null);
-  const lkSignalFailuresRef = useRef(0);
   const tokenTimeoutRef = useRef(null);
+  const pttSafetyTimerRef = useRef(null);
+  const lastActivityAtRef = useRef(Date.now());
   const lastBroadcastSpeakersKeyRef = useRef("");
 
   // Phân loại chính xác trạng thái Zero-Leak theo từng giây của ván đấu
@@ -384,26 +410,78 @@ export function VoiceSessionProvider({
   const isNightPhase = Boolean(
     !isLobby && !hasWinner && String(nightDayPhase || "").startsWith("night_")
   );
+  // Tiết kiệm 100% phút Quota LiveKit khi vào trận Solo chỉ có 1 người thật đấu với AI Bot (tự nối lại ngay khi có người thứ 2!)
+  const isSoloBotMatch = Boolean(
+    !isLobby && (Number(humanCount) || 0) <= 1 && (Number(spectatorCount) || 0) <= 0
+  );
+  const isEcoPaused = Boolean(isSuppressedForRecap || isSoloBotMatch);
+  const isEcoPausedRef = useRef(isEcoPaused);
+  isEcoPausedRef.current = isEcoPaused;
   const canPublish = Boolean(isAlive && !isSpectator);
 
   const canSpeak = useMemo(() => {
-    if (!canPublish || isSuppressedForRecap) return false;
+    if (!canPublish || isEcoPaused) return false;
     if (isLobby || hasWinner) return true;
     if (isRoleReveal) return false; // Khóa cứng 6s Nhận Vai Định Mệnh chống lộ cảm thán!
     if (isNightPhase) return Boolean(isWolfTeamRole(myRole));
     return true;
-  }, [canPublish, isSuppressedForRecap, isLobby, hasWinner, isRoleReveal, isNightPhase, myRole]);
+  }, [canPublish, isEcoPaused, isLobby, hasWinner, isRoleReveal, isNightPhase, myRole]);
 
   const isNightSilentShield = Boolean(
     (isRoleReveal || (isNightPhase && !(isWolfTeamRole(myRole) && canPublish))) && !isLobby
   );
 
   const wantTransmitNow = Boolean(
-    hasJoined &&
-      canSpeak &&
-      !isSuppressedForRecap &&
-      (inputMode === "ptt" ? isPttPressed : userMicPreference)
+    hasJoined && lkConnected && canSpeak && !isSuppressedForRecap && isPttPressed
   );
+
+  // Ngay khi chuyển pha không được phép nói hoặc xem Recap -> nhả nút PTT tức thì
+  useEffect(() => {
+    if (!canSpeak || isSuppressedForRecap) {
+      setIsPttPressed(false);
+    }
+  }, [canSpeak, isSuppressedForRecap]);
+
+  // Chống kẹt nút PTT / phím Space quá 45 giây liên tục + lưới nhả chuột/chạm toàn cục
+  useEffect(() => {
+    if (!isPttPressed) {
+      if (pttSafetyTimerRef.current) {
+        clearTimeout(pttSafetyTimerRef.current);
+        pttSafetyTimerRef.current = null;
+      }
+      return undefined;
+    }
+
+    lastActivityAtRef.current = Date.now();
+    pttSafetyTimerRef.current = setTimeout(() => {
+      setIsPttPressed(false);
+      setLkMicWarning(
+        "Đã tự nhả Mic sau 45s giữ liên tục để tiết kiệm băng thông — nhấn giữ lại để nói tiếp."
+      );
+    }, MAX_CONTINUOUS_PTT_MS);
+
+    const releaseOnGlobalPointerEnd = () => {
+      setIsPttPressed(false);
+    };
+
+    window.addEventListener("pointerup", releaseOnGlobalPointerEnd);
+    window.addEventListener("pointercancel", releaseOnGlobalPointerEnd);
+    window.addEventListener("touchend", releaseOnGlobalPointerEnd);
+    window.addEventListener("touchcancel", releaseOnGlobalPointerEnd);
+    window.addEventListener("blur", releaseOnGlobalPointerEnd);
+
+    return () => {
+      if (pttSafetyTimerRef.current) {
+        clearTimeout(pttSafetyTimerRef.current);
+        pttSafetyTimerRef.current = null;
+      }
+      window.removeEventListener("pointerup", releaseOnGlobalPointerEnd);
+      window.removeEventListener("pointercancel", releaseOnGlobalPointerEnd);
+      window.removeEventListener("touchend", releaseOnGlobalPointerEnd);
+      window.removeEventListener("touchcancel", releaseOnGlobalPointerEnd);
+      window.removeEventListener("blur", releaseOnGlobalPointerEnd);
+    };
+  }, [isPttPressed]);
 
   const shouldHearIdentity = useCallback(
     (identity) => {
@@ -440,32 +518,22 @@ export function VoiceSessionProvider({
     }
   }, []);
 
-  const switchToP2PFallback = useCallback(() => {
-    clearTokenTimeout();
-    setLkToken(null);
-    setLkUrl(null);
-    setLkConnected(false);
-    setLkRemotePeers([]);
-    setLkSpeakingIds([]);
-    setLkAutoplayBlocked(false);
-    setConnecting(false);
-    setEngineMode("p2p");
-  }, [clearTokenTimeout]);
-
   const requestVoiceSession = useCallback(
     ({ forceRefresh = false } = {}) => {
       const socket = socketRef?.current;
       if (!socket || !roomCode) return;
-      if (!forceRefresh && engineMode === "livekit" && lkToken && lkUrl) return;
+      if (!forceRefresh && lkToken && lkUrl && !lkConnectionError) return;
 
       clearTokenTimeout();
       setConnecting(true);
+      setLkConnectionError(null);
 
       let settled = false;
       tokenTimeoutRef.current = setTimeout(() => {
         if (settled) return;
         settled = true;
-        switchToP2PFallback();
+        setConnecting(false);
+        setLkConnectionError(describeLiveKitIssue("TOKEN_TIMEOUT"));
       }, LIVEKIT_TOKEN_TIMEOUT_MS);
 
       socket.emit("livekit:token", {}, (res) => {
@@ -473,69 +541,81 @@ export function VoiceSessionProvider({
         settled = true;
         clearTokenTimeout();
 
-        if (res?.mode === "livekit" && res?.token && res?.url) {
-          tokenCanPublishRef.current = Boolean(res.canPublish);
-          lkSignalFailuresRef.current = 0;
+        if (res?.ok && res?.mode === "livekit" && res?.token && res?.url) {
+          setLkTokenCanPublish(Boolean(res.canPublish));
+          setLkIdentity(res.identity || myId || null);
           setLkToken(res.token);
           setLkUrl(res.url);
-          setEngineMode("livekit");
-          setConnecting(false);
+          setLkConnectionError(null);
+          if (forceRefresh) {
+            setReconnectSeq((n) => n + 1);
+          }
           return;
         }
 
-        // Bất kỳ trường hợp hết hạn mức 429 / chưa cấu hình LiveKit -> nhảy sang P2P Mesh 0đ ngay lập tức!
-        switchToP2PFallback();
+        setConnecting(false);
+        setLkConnected(false);
+        setLkToken(null);
+        setLkUrl(null);
+        setLkConnectionError(
+          res?.error || describeLiveKitIssue(res?.reason || res?.fallbackReason)
+        );
       });
     },
-    [socketRef, roomCode, engineMode, lkToken, lkUrl, clearTokenTimeout, switchToP2PFallback]
+    [socketRef, roomCode, lkToken, lkUrl, lkConnectionError, myId, clearTokenTimeout]
   );
 
-  // Tự động cấp lại Token có quyền nói (canPublish: true) khi người chết ván trước quay về Sảnh / sang ván mới!
+  // Tự động cấp lại Token LiveKit có quyền nói (canPublish: true) hoặc đổi identity khi từ Khán Giả / Người Chết sang ván mới!
   useEffect(() => {
-    if (!hasJoined) return;
-    if (engineMode === "idle") {
+    if (!hasJoined || isSuppressedForRecap) return;
+    if (!lkToken && !connecting && !lkConnectionError) {
       requestVoiceSession({ forceRefresh: true });
       return;
     }
-    if (engineMode === "livekit" && canPublish && !tokenCanPublishRef.current) {
+    const desiredIdentity = myId || null;
+    const identityChanged = Boolean(
+      lkToken && desiredIdentity && lkIdentity && desiredIdentity !== lkIdentity
+    );
+    const needUpgradePublish = Boolean(lkToken && canPublish && !lkTokenCanPublish);
+    if (identityChanged || needUpgradePublish) {
       requestVoiceSession({ forceRefresh: true });
     }
-  }, [hasJoined, engineMode, canPublish, requestVoiceSession]);
+  }, [
+    hasJoined,
+    isSuppressedForRecap,
+    lkToken,
+    connecting,
+    lkConnectionError,
+    myId,
+    lkIdentity,
+    canPublish,
+    lkTokenCanPublish,
+    requestVoiceSession,
+  ]);
 
   // Nếu đổi sang mã phòng khác -> reset sạch
   const prevRoomCodeRef = useRef(roomCode);
   useEffect(() => {
     if (prevRoomCodeRef.current && roomCode && prevRoomCodeRef.current !== roomCode) {
       clearTokenTimeout();
+      setIsPttPressed(false);
       setHasJoined(false);
-      setEngineMode("idle");
+      setConnecting(false);
       setLkToken(null);
       setLkUrl(null);
+      setLkIdentity(null);
+      setLkTokenCanPublish(false);
       setLkConnected(false);
+      setLkConnectionError(null);
       setLkRemotePeers([]);
       setLkSpeakingIds([]);
     }
     prevRoomCodeRef.current = roomCode;
   }, [roomCode, clearTokenTimeout]);
 
-  // Động cơ dự phòng P2P Mesh ($0/tháng — chỉ chạy khi engineMode === 'p2p')
-  const p2p = useP2PVoiceMesh({
-    active: Boolean(hasJoined && engineMode === "p2p"),
-    socketRef,
-    roomCode,
-    myFallbackId: myId,
-    myFallbackName: myName,
-    canPublish,
-    wantTransmitNow,
-    volumeMap,
-    mcDuckingActive,
-    isSuppressedForRecap,
-    shouldHearIdentity,
-  });
-
-  // Phím Space giữ để nói toàn cục (hoạt động ngay cả khi đang mở tab Sân Khấu 3D!)
+  // Phím Space giữ để nói toàn cục trên máy tính (tự bỏ qua khi đang gõ ô Chat)
   useEffect(() => {
-    if (!hasJoined || inputMode !== "ptt" || !canSpeak) {
+    if (!hasJoined || !canSpeak || isSuppressedForRecap) {
       setIsPttPressed(false);
       return undefined;
     }
@@ -545,6 +625,7 @@ export function VoiceSessionProvider({
       if (isTypingInTextField(e.target)) return;
       e.preventDefault();
       if (!e.repeat) {
+        lastActivityAtRef.current = Date.now();
         setMicRetryNonce((n) => n + 1);
         setIsPttPressed(true);
       }
@@ -555,7 +636,6 @@ export function VoiceSessionProvider({
       setIsPttPressed(false);
     };
 
-    const releaseMic = () => setIsPttPressed(false);
     const handleVisibility = () => {
       if (document.visibilityState !== "visible") {
         setIsPttPressed(false);
@@ -564,30 +644,53 @@ export function VoiceSessionProvider({
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", releaseMic);
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", releaseMic);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [hasJoined, inputMode, canSpeak]);
+  }, [hasJoined, canSpeak, isSuppressedForRecap]);
 
-  // Hợp nhất danh sách người đang nói (LiveKit hoặc P2P) và báo lên Sân khấu 3D
+  // Danh sách người đang nói và cập nhật mốc hoạt động chống tốn phút Sảnh Chờ treo máy
   const activeSpeakingIds = useMemo(() => {
     if (!hasJoined || isSuppressedForRecap) return [];
-    return engineMode === "p2p" ? p2p.speakingIds : lkSpeakingIds;
-  }, [hasJoined, isSuppressedForRecap, engineMode, p2p.speakingIds, lkSpeakingIds]);
+    return lkSpeakingIds;
+  }, [hasJoined, isSuppressedForRecap, lkSpeakingIds]);
 
   useEffect(() => {
+    if (activeSpeakingIds.length > 0) {
+      lastActivityAtRef.current = Date.now();
+    }
     const key = activeSpeakingIds.join("|");
     if (key !== lastBroadcastSpeakersKeyRef.current) {
       lastBroadcastSpeakersKeyRef.current = key;
       onSpeakingChange?.(activeSpeakingIds);
     }
   }, [activeSpeakingIds, onSpeakingChange]);
+
+  // Tự ngắt tiết kiệm hạn mức 5,000 phút LiveKit nếu chỉ treo tab ở Sảnh Chờ > 8 phút không ai nói (tuyệt đối không ngắt khi đang trong trận!)
+  useEffect(() => {
+    if (!hasJoined || !isLobby) return undefined;
+    lastActivityAtRef.current = Date.now();
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivityAtRef.current >= LOBBY_IDLE_SLEEP_MS) {
+        setIsPttPressed(false);
+        setHasJoined(false);
+        setConnecting(false);
+        setLkToken(null);
+        setLkUrl(null);
+        setLkConnected(false);
+        setLkRemotePeers([]);
+        setLkSpeakingIds([]);
+        setLkMicWarning(
+          "💤 Đã tạm nghỉ Voice Sảnh sau 4 phút yên lặng để tiết kiệm hạn mức LiveKit — bấm Bật Voice để nối lại ngay."
+        );
+      }
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [hasJoined, isLobby]);
 
   useEffect(() => {
     return () => {
@@ -596,35 +699,57 @@ export function VoiceSessionProvider({
     };
   }, [clearTokenTimeout, onSpeakingChange]);
 
+  const startHoldToTalk = useCallback(
+    (e) => {
+      e?.preventDefault?.();
+      if (!canSpeak || isSuppressedForRecap || !lkConnected) return;
+      lastActivityAtRef.current = Date.now();
+      setMicRetryNonce((n) => n + 1);
+      setIsPttPressed(true);
+    },
+    [canSpeak, isSuppressedForRecap, lkConnected]
+  );
+
+  const stopHoldToTalk = useCallback(() => {
+    setIsPttPressed(false);
+  }, []);
+
   const joinVoice = useCallback(() => {
+    lastActivityAtRef.current = Date.now();
     setLkMicWarning(null);
-    p2p.clearMicWarning?.();
+    setLkConnectionError(null);
     setMicRetryNonce((n) => n + 1);
     setHasJoined(true);
-    setEngineMode("idle");
-  }, [p2p]);
+    setLkToken(null);
+    setLkUrl(null);
+  }, []);
+
+  const retryLiveKitConnection = useCallback(() => {
+    lastActivityAtRef.current = Date.now();
+    setLkMicWarning(null);
+    setLkConnectionError(null);
+    setMicRetryNonce((n) => n + 1);
+    setHasJoined(true);
+    requestVoiceSession({ forceRefresh: true });
+  }, [requestVoiceSession]);
 
   const leaveVoice = useCallback(() => {
     clearTokenTimeout();
     setIsPttPressed(false);
     setHasJoined(false);
     setConnecting(false);
-    setEngineMode("idle");
     setLkToken(null);
     setLkUrl(null);
+    setLkIdentity(null);
+    setLkTokenCanPublish(false);
     setLkConnected(false);
+    setLkConnectionError(null);
     setLkRemotePeers([]);
     setLkSpeakingIds([]);
     setLkMicWarning(null);
     setLkAutoplayBlocked(false);
     onSpeakingChange?.([]);
   }, [clearTokenTimeout, onSpeakingChange]);
-
-  const toggleMic = useCallback(() => {
-    if (!canSpeak) return;
-    setMicRetryNonce((n) => n + 1);
-    setUserMicPreference((prev) => !prev);
-  }, [canSpeak]);
 
   const toggleMutePeer = useCallback((identity) => {
     if (!identity) return;
@@ -634,34 +759,19 @@ export function VoiceSessionProvider({
     }));
   }, []);
 
-  const switchInputMode = useCallback((nextMode) => {
-    setInputMode(nextMode);
-    setIsPttPressed(false);
-    try {
-      localStorage.setItem(VOICE_INPUT_MODE_KEY, nextMode);
-    } catch {
-      // ignore storage quota
-    }
-  }, []);
-
   const handleLkAutoplayChange = useCallback((blocked, startFn) => {
     lkStartAudioFnRef.current = startFn || null;
     setLkAutoplayBlocked(Boolean(blocked));
   }, []);
 
   const resumeAudioPlayback = useCallback(() => {
-    if (engineMode === "p2p") {
-      p2p.resumePlayback();
-    } else {
-      lkStartAudioFnRef.current?.();
-      setLkAutoplayBlocked(false);
-    }
-  }, [engineMode, p2p]);
+    lkStartAudioFnRef.current?.();
+    setLkAutoplayBlocked(false);
+  }, []);
 
-  const rawRemotePeers = engineMode === "p2p" ? p2p.remotePeers : lkRemotePeers;
   const visibleRemotePeers = useMemo(() => {
     if (isNightSilentShield) return [];
-    return rawRemotePeers.filter((p) => {
+    return lkRemotePeers.filter((p) => {
       if (!p?.identity || p.identity === myId) return false;
       if (p.isSpectator || String(p.identity).startsWith("spec_")) return false;
       if (isNightPhase) {
@@ -669,11 +779,13 @@ export function VoiceSessionProvider({
       }
       return true;
     });
-  }, [rawRemotePeers, isNightSilentShield, myId, isNightPhase, wolfTeammates]);
+  }, [lkRemotePeers, isNightSilentShield, myId, isNightPhase, wolfTeammates]);
 
   let channelLabel = "☀️ Kênh Chung";
   if (isSuppressedForRecap) {
-    channelLabel = "🎬 Tạm ngắt (Đang xem phim)";
+    channelLabel = "🎬 Tạm nghỉ (Đang xem phim)";
+  } else if (isSoloBotMatch) {
+    channelLabel = "🤖 Đấu Bot (0 phút Quota)";
   } else if (isSpectator) {
     channelLabel = "👀 Khán Giả (Chỉ nghe)";
   } else if (!isAlive) {
@@ -686,23 +798,27 @@ export function VoiceSessionProvider({
     channelLabel = isWolfTeamRole(myRole) ? "🐺 Kênh Bầy Sói" : "🌙 Đêm Ngủ (0 kbps)";
   }
 
-  const activeWarning = engineMode === "p2p" ? p2p.micWarning : lkMicWarning;
   const clearActiveWarning = useCallback(() => {
     setLkMicWarning(null);
-    p2p.clearMicWarning?.();
-  }, [p2p]);
+  }, []);
 
-  const autoplayBlocked = engineMode === "p2p" ? p2p.autoplayBlocked : lkAutoplayBlocked;
-  const isEngineReady =
-    engineMode === "p2p" ? p2p.connected : Boolean(engineMode === "livekit" && lkConnected);
+  const isEngineReady = Boolean(lkConnected && !lkConnectionError);
+  const engineMode = hasJoined ? "livekit" : "idle";
+  const roomInstanceKey = `${lkUrl || "lk"}_${lkIdentity || myId || "me"}_${
+    lkTokenCanPublish ? "pub" : "sub"
+  }_${reconnectSeq}`;
 
   const sessionValue = useMemo(
     () => ({
       hasJoined,
-      connecting: connecting || (hasJoined && !isEngineReady),
+      connecting: Boolean(
+        connecting || (hasJoined && !isEcoPaused && !isEngineReady && !lkConnectionError)
+      ),
       isEngineReady,
       engineMode,
+      connectionError: lkConnectionError,
       isLobby,
+      isSoloBotMatch,
       isRoleReveal,
       isNightPhase,
       isNightSilentShield,
@@ -717,21 +833,20 @@ export function VoiceSessionProvider({
       isAlive,
       isSpectator,
       inputMode,
-      switchInputMode,
-      userMicPreference,
-      toggleMic,
       isPttPressed,
-      setIsPttPressed,
+      startHoldToTalk,
+      stopHoldToTalk,
       volumeMap,
       toggleMutePeer,
       visibleRemotePeers,
       activeSpeakingIds,
       channelLabel,
-      activeWarning,
+      activeWarning: lkMicWarning,
       clearActiveWarning,
-      autoplayBlocked,
+      autoplayBlocked: lkAutoplayBlocked,
       resumeAudioPlayback,
       joinVoice,
+      retryLiveKitConnection,
       leaveVoice,
     }),
     [
@@ -739,7 +854,9 @@ export function VoiceSessionProvider({
       connecting,
       isEngineReady,
       engineMode,
+      lkConnectionError,
       isLobby,
+      isSoloBotMatch,
       isRoleReveal,
       isNightPhase,
       isNightSilentShield,
@@ -754,57 +871,58 @@ export function VoiceSessionProvider({
       isAlive,
       isSpectator,
       inputMode,
-      switchInputMode,
-      userMicPreference,
-      toggleMic,
       isPttPressed,
+      startHoldToTalk,
+      stopHoldToTalk,
       volumeMap,
       toggleMutePeer,
       visibleRemotePeers,
       activeSpeakingIds,
       channelLabel,
-      activeWarning,
+      lkMicWarning,
       clearActiveWarning,
-      autoplayBlocked,
+      lkAutoplayBlocked,
       resumeAudioPlayback,
       joinVoice,
+      retryLiveKitConnection,
       leaveVoice,
     ]
   );
 
   return (
     <VoiceSessionContext.Provider value={sessionValue}>
-      {/* Cầu âm thanh LiveKit chạy ngầm liên thông không bao giờ bị unmount khi đổi Tab / Sảnh <-> Trận */}
-      {hasJoined && engineMode === "livekit" && lkToken && lkUrl && (
+      {/* Cầu âm thanh Thuần LiveKit SFU (Tự tạm ngắt connect=false khi xem Phim Cuối Ván & khi Đấu Solo Bot để 0 tốn phút Quota!) */}
+      {hasJoined && lkToken && lkUrl && !lkConnectionError && (
         <LiveKitRoom
+          key={roomInstanceKey}
           serverUrl={lkUrl}
           token={lkToken}
-          connect={true}
+          connect={!isSuppressedForRecap && !isSoloBotMatch}
           video={false}
           audio={false}
           options={VOICE_ROOM_OPTIONS}
           connectOptions={VOICE_CONNECT_OPTIONS}
           className="livekit-custom"
           onConnected={() => {
-            lkSignalFailuresRef.current = 0;
             setLkConnected(true);
             setConnecting(false);
+            setLkConnectionError(null);
           }}
           onError={(err) => {
             const msg = String(err?.message || "");
-            // Nếu chỉ là lỗi quyền Micro nội bộ thì giữ nguyên phòng SFU ở chế độ Chỉ Nghe
             if (/NotAllowed|NotFound|Permission|microphone|device/i.test(msg)) {
               setLkMicWarning("Không mở được Micro — đang giữ chế độ Chỉ Nghe.");
               return;
             }
-            // Lỗi kết nối WebSocket / hết hạn mức LiveKit -> nhảy êm sang P2P Mesh < 300ms!
-            switchToP2PFallback();
+            setConnecting(false);
+            setLkConnected(false);
+            setLkConnectionError(describeLiveKitIssue("LIVEKIT_ERROR", msg));
           }}
           onDisconnected={(reason) => {
             setLkConnected(false);
             setLkSpeakingIds([]);
             setIsPttPressed(false);
-            if (!hasJoined) return;
+            if (!hasJoined || isSuppressedForRecap || isEcoPausedRef.current) return;
 
             if (
               reason === DisconnectReason.CLIENT_INITIATED ||
@@ -813,16 +931,15 @@ export function VoiceSessionProvider({
               reason === DisconnectReason.ROOM_DELETED
             ) {
               setHasJoined(false);
-              setEngineMode("idle");
               setLkToken(null);
               setLkUrl(null);
               return;
             }
 
-            lkSignalFailuresRef.current += 1;
-            if (lkSignalFailuresRef.current >= 1) {
-              switchToP2PFallback();
-            }
+            setConnecting(false);
+            setLkConnectionError(
+              "Mất kết nối tới máy chủ LiveKit — bấm Kết nối lại để vào tiếp."
+            );
           }}
         >
           <SelectiveSubscriptionManager
@@ -831,6 +948,7 @@ export function VoiceSessionProvider({
           />
           <VoiceParticipantManager
             canPublish={canPublish}
+            canSpeak={canSpeak}
             wantTransmitNow={wantTransmitNow}
             micRetryNonce={micRetryNonce}
             onMicWarning={setLkMicWarning}
@@ -859,7 +977,7 @@ export function VoiceSessionProvider({
 }
 
 // =============================================================================
-// NÚT NỔI TRÊN SÂN KHẤU 3D (Cho cả Sảnh Chờ & Màn Hình Chơi Mobile/PC)
+// NÚT BỘ ĐÀM NỔI TRÊN SÂN KHẤU 3D (Sảnh Chờ & Màn Hình Chơi Mobile/PC)
 // =============================================================================
 export function VoiceQuickMicPill({ className = "" }) {
   const voice = useVoiceSession();
@@ -868,17 +986,17 @@ export function VoiceQuickMicPill({ className = "" }) {
   const {
     hasJoined,
     connecting,
-    engineMode,
+    connectionError,
     canPublish,
     canSpeak,
+    isSoloBotMatch,
     isRoleReveal,
     isSuppressedForRecap,
-    wantTransmitNow,
-    inputMode,
     isPttPressed,
-    setIsPttPressed,
-    toggleMic,
+    startHoldToTalk,
+    stopHoldToTalk,
     joinVoice,
+    retryLiveKitConnection,
     visibleRemotePeers,
     activeSpeakingIds,
     myId,
@@ -890,7 +1008,7 @@ export function VoiceQuickMicPill({ className = "" }) {
         type="button"
         className={`voice-quick-pill join-cta ${className}`.trim()}
         onClick={joinVoice}
-        title="Tham gia kênh đàm thoại trực tiếp (giữ kết nối xuyên suốt Sảnh Chờ & Trong Trận)"
+        title="Tham gia kênh đàm thoại LiveKit Cloud (Chế độ Bộ Đàm Giữ-Để-Nói siêu tiết kiệm 0 kbps khi nhả tay)"
       >
         <span>🎙️</span>
         <span>Bật Voice</span>
@@ -898,26 +1016,42 @@ export function VoiceQuickMicPill({ className = "" }) {
     );
   }
 
+  if (connectionError) {
+    return (
+      <button
+        type="button"
+        className={`voice-quick-pill mic-muted ${className}`.trim()}
+        onClick={retryLiveKitConnection}
+        title={connectionError}
+      >
+        <span>🔄 Nối lại LiveKit</span>
+      </button>
+    );
+  }
+
   const isSelfSpeaking = Boolean(myId && activeSpeakingIds.includes(myId));
   const remoteSpeaker = visibleRemotePeers.find((p) => activeSpeakingIds.includes(p.identity));
   const peerCount = (canPublish ? 1 : 0) + visibleRemotePeers.length;
-  const modeTag = engineMode === "p2p" ? "⚡P2P" : "☁️SFU";
 
-  if (connecting) {
+  if (isSuppressedForRecap || isSoloBotMatch) {
     return (
-      <div className={`voice-quick-pill connecting ${className}`.trim()}>
-        <span>⏳ Đang nối Voice...</span>
+      <div
+        className={`voice-quick-pill locked ${className}`.trim()}
+        title={
+          isSoloBotMatch
+            ? "Đang đấu Solo với AI Bot — tự tạm nghỉ LiveKit để tiết kiệm 100% phút Quota (tự nối lại ngay khi có người thật vào)"
+            : "Đang tạm ngắt kết nối LiveKit để tiết kiệm phút Quota khi xem phim — tự nối lại khi về Sảnh"
+        }
+      >
+        <span>{isSoloBotMatch ? "🤖 Solo (0 phút)" : "🎬 Tạm nghỉ Voice"}</span>
       </div>
     );
   }
 
-  if (isSuppressedForRecap) {
+  if (connecting) {
     return (
-      <div
-        className={`voice-quick-pill locked ${className}`.trim()}
-        title="Tự động mở lại ngay khi bạn bấm Về Sảnh Chờ"
-      >
-        <span>🎬 Tạm ngắt thoại</span>
+      <div className={`voice-quick-pill connecting ${className}`.trim()}>
+        <span>⏳ Đang nối LiveKit...</span>
       </div>
     );
   }
@@ -926,7 +1060,7 @@ export function VoiceQuickMicPill({ className = "" }) {
     return (
       <div
         className={`voice-quick-pill listen-only ${remoteSpeaker ? "remote-speaking" : ""} ${className}`.trim()}
-        title={`Đang nghe kênh thoại (${modeTag}) — 0% tốn pin Micro`}
+        title="Đang nghe kênh thoại LiveKit SFU — 0% tốn pin Micro"
       >
         <span>{remoteSpeaker ? `🔊 ${remoteSpeaker.displayName}` : "👂 Chỉ nghe"}</span>
         <span className="voice-pill-count">{peerCount}</span>
@@ -949,43 +1083,25 @@ export function VoiceQuickMicPill({ className = "" }) {
     );
   }
 
-  if (inputMode === "ptt") {
-    return (
-      <button
-        type="button"
-        className={`voice-quick-pill ${isPttPressed ? "mic-live" : "mic-ptt"} ${
-          isSelfSpeaking ? "self-speaking" : ""
-        } ${className}`.trim()}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          setIsPttPressed(true);
-        }}
-        onPointerUp={() => setIsPttPressed(false)}
-        onPointerLeave={() => setIsPttPressed(false)}
-        onPointerCancel={() => setIsPttPressed(false)}
-        title="Nhấn giữ nút này (hoặc phím Space) để nói"
-      >
-        <span>{isPttPressed ? "🎙️ Đang nói" : "⌨️ Giữ nói"}</span>
-        <span className="voice-pill-count">{peerCount}</span>
-      </button>
-    );
-  }
-
   return (
     <button
       type="button"
-      className={`voice-quick-pill ${wantTransmitNow ? "mic-live" : "mic-muted"} ${
+      className={`voice-quick-pill ${isPttPressed ? "mic-live" : "mic-ptt"} ${
         isSelfSpeaking ? "self-speaking" : remoteSpeaker ? "remote-speaking" : ""
       } ${className}`.trim()}
-      onClick={toggleMic}
-      title={
-        wantTransmitNow
-          ? `Đang bật Mic (${modeTag}) — Nhấn để tắt Mic`
-          : `Đang tắt Mic (${modeTag}) — Nhấn để bật Mic`
-      }
+      onPointerDown={startHoldToTalk}
+      onPointerUp={stopHoldToTalk}
+      onPointerLeave={stopHoldToTalk}
+      onPointerCancel={stopHoldToTalk}
+      onContextMenu={(e) => e.preventDefault()}
+      title="Nhấn giữ nút này (hoặc giữ phím Space trên PC) để nói — nhả tay tự ngắt 0 kbps!"
     >
       <span>
-        {wantTransmitNow ? (isSelfSpeaking ? "🔊 Đang nói" : "🎤 Mic bật") : "🔇 Mic tắt"}
+        {isPttPressed
+          ? "🎙️ Đang phát..."
+          : remoteSpeaker
+            ? `🔊 ${remoteSpeaker.displayName}`
+            : "🎙️ Giữ để nói"}
       </span>
       <span className="voice-pill-count">{peerCount}</span>
     </button>
@@ -1002,7 +1118,7 @@ function VoiceRoomConsumerView() {
   const {
     hasJoined,
     connecting,
-    engineMode,
+    connectionError,
     isNightPhase,
     isNightSilentShield,
     mcDuckingActive,
@@ -1012,12 +1128,9 @@ function VoiceRoomConsumerView() {
     myId,
     myName,
     myRole,
-    inputMode,
-    switchInputMode,
-    userMicPreference,
-    toggleMic,
     isPttPressed,
-    setIsPttPressed,
+    startHoldToTalk,
+    stopHoldToTalk,
     volumeMap,
     toggleMutePeer,
     visibleRemotePeers,
@@ -1028,6 +1141,7 @@ function VoiceRoomConsumerView() {
     autoplayBlocked,
     resumeAudioPlayback,
     joinVoice,
+    retryLiveKitConnection,
     leaveVoice,
   } = voice;
 
@@ -1035,16 +1149,29 @@ function VoiceRoomConsumerView() {
     return (
       <div className="voice-room-wrapper">
         <div className="voice-join-prompt">
+          {activeWarning && (
+            <div className="voice-soft-warning" style={{ width: "100%" }}>
+              <span>ℹ️ {activeWarning}</span>
+              <button
+                type="button"
+                className="voice-error-close"
+                onClick={clearActiveWarning}
+                title="Ẩn thông báo"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <div className="voice-join-row">
             <span className="voice-join-icon">🎙️</span>
             <div className="voice-join-text">
               {!canPublish
-                ? "Chế độ Chỉ Nghe (0% hao pin Micro — nghe trực tiếp bàn thảo luận)."
-                : "Thoại trực tiếp liên thông Sảnh & Trận (Opus 16kbps · Tự ngắt 0 kbps khi im lặng)."}
+                ? "LiveKit Cloud SFU • Chế độ Chỉ Nghe (0% hao pin Micro — nghe trực tiếp bàn thảo luận)."
+                : "LiveKit Cloud SFU • Bộ Đàm Giữ-Để-Nói (Giữ nút Mic hoặc phím Space để nói — nhả tay 0 kbps)."}
             </div>
           </div>
           <button type="button" className="btn-join-voice" onClick={joinVoice}>
-            🎙️ Tham gia Voice
+            🎙️ Bật Voice
           </button>
         </div>
       </div>
@@ -1061,6 +1188,19 @@ function VoiceRoomConsumerView() {
             <span>
               🔊 Trình duyệt đang tạm chặn tiếng thoại. <b>Bấm vào đây để nghe ngay</b>
             </span>
+          </div>
+        )}
+
+        {connectionError && (
+          <div className="voice-soft-warning voice-error-banner">
+            <span>⚠️ {connectionError}</span>
+            <button
+              type="button"
+              className="btn-retry-livekit"
+              onClick={retryLiveKitConnection}
+            >
+              🔄 Kết nối lại
+            </button>
           </div>
         )}
 
@@ -1082,19 +1222,21 @@ function VoiceRoomConsumerView() {
           <div className="voice-title-group">
             <span
               className="voice-status-label"
-              title="Nén Thoại Opus 16kbps + Tự giảm 40% âm lượng khi MC đọc truyện"
+              title="Nén Thoại Opus Mono 14kbps + Tự giảm 40% âm lượng khi MC đọc truyện"
             >
               {channelLabel}
             </span>
             <span
-              className={`voice-engine-badge ${engineMode === "p2p" ? "p2p" : "sfu"}`}
-              title={
-                engineMode === "p2p"
-                  ? "Đang chạy WebRTC P2P Mesh trực tiếp ($0 không giới hạn)"
-                  : "Đang chạy máy chủ LiveKit Cloud SFU"
-              }
+              className="voice-engine-badge sfu"
+              title="Thuần LiveKit Cloud SFU • Bộ Đàm Giữ-Để-Nói (0.00 kbps khi nhả tay)"
             >
-              {connecting ? "⏳..." : engineMode === "p2p" ? "⚡ P2P" : "☁️ SFU"}
+              {connecting
+                ? "⏳ LiveKit..."
+                : connectionError
+                  ? "⚠️ Gián đoạn"
+                  : wantTransmitNow
+                    ? "📡 Đang phát 14kbps"
+                    : "☁️ LiveKit • 0 kbps"}
             </span>
             {mcDuckingActive && (
               <span
@@ -1107,78 +1249,39 @@ function VoiceRoomConsumerView() {
           </div>
 
           <div className="voice-header-actions">
-            {canPublish && (
-              <div className="voice-mode-switch" role="group" aria-label="Chế độ thu âm">
-                <button
-                  type="button"
-                  className={`voice-mode-btn ${inputMode === "vad" ? "active" : ""}`}
-                  onClick={() => switchInputMode("vad")}
-                  title="Rảnh tay thông minh (DTX: tự hạ về 0 kbps khi bạn im lặng)"
-                >
-                  Rảnh tay
-                </button>
-                <button
-                  type="button"
-                  className={`voice-mode-btn ${inputMode === "ptt" ? "active" : ""}`}
-                  onClick={() => switchInputMode("ptt")}
-                  title="Giữ phím Space (máy tính) hoặc giữ nút Mic (điện thoại) để nói"
-                >
-                  Giữ nói
-                </button>
-              </div>
-            )}
-
             {canPublish ? (
-              inputMode === "ptt" ? (
-                <button
-                  type="button"
-                  className={`btn-mic btn-ptt-hold ${
-                    !canSpeak ? "mic-disabled" : isPttPressed ? "mic-on ptt-holding" : "mic-off"
-                  }`}
-                  disabled={!canSpeak}
-                  onPointerDown={(e) => {
-                    if (!canSpeak) return;
-                    e.preventDefault();
-                    setIsPttPressed(true);
-                  }}
-                  onPointerUp={() => setIsPttPressed(false)}
-                  onPointerLeave={() => setIsPttPressed(false)}
-                  onPointerCancel={() => setIsPttPressed(false)}
-                  title={
-                    !canSpeak
-                      ? "Đang khóa Mic theo pha trò chơi"
-                      : "Nhấn giữ nút này hoặc giữ phím Space để nói"
-                  }
-                >
-                  {!canSpeak ? "🔒" : isPttPressed ? "🎙️" : "⌨️"}
-                  <span className="mic-btn-text">
-                    {!canSpeak ? "Khóa mic" : isPttPressed ? "Đang nói..." : "Giữ nói"}
-                  </span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={`btn-mic ${
-                    !canSpeak ? "mic-disabled" : wantTransmitNow ? "mic-on" : "mic-off"
-                  }`}
-                  onClick={toggleMic}
-                  disabled={!canSpeak}
-                  title={
-                    !canSpeak
-                      ? isNightPhase && !isWolfTeamRole(myRole)
-                        ? "Ban đêm dân làng phải giữ im lặng"
-                        : "Đang tạm khóa Mic"
-                      : userMicPreference
-                        ? "Tắt mic của bạn"
-                        : "Bật mic của bạn"
-                  }
-                >
-                  {!canSpeak ? "🔒" : wantTransmitNow ? "🎤" : "🔇"}
-                  <span className="mic-btn-text">
-                    {!canSpeak ? "Khóa mic" : wantTransmitNow ? "Đang bật" : "Bật mic"}
-                  </span>
-                </button>
-              )
+              <button
+                type="button"
+                className={`btn-mic btn-ptt-hold ${
+                  !canSpeak || Boolean(connectionError) || connecting
+                    ? "mic-disabled"
+                    : isPttPressed
+                      ? "mic-on ptt-holding"
+                      : "mic-off"
+                }`}
+                disabled={!canSpeak || Boolean(connectionError) || connecting}
+                onPointerDown={startHoldToTalk}
+                onPointerUp={stopHoldToTalk}
+                onPointerLeave={stopHoldToTalk}
+                onPointerCancel={stopHoldToTalk}
+                onContextMenu={(e) => e.preventDefault()}
+                title={
+                  !canSpeak
+                    ? isNightPhase && !isWolfTeamRole(myRole)
+                      ? "Ban đêm dân làng phải giữ im lặng (0 kbps)"
+                      : "Đang khóa Mic theo pha trò chơi"
+                    : "Nhấn giữ nút này (hoặc giữ phím Space trên PC) để nói — nhả tay tự ngắt 0 kbps"
+                }
+              >
+                {!canSpeak ? "🔒" : isPttPressed ? "🎙️" : "⌨️"}
+                <span className="mic-btn-text">
+                  {!canSpeak
+                    ? "Khóa mic"
+                    : isPttPressed
+                      ? "Đang phát..."
+                      : "Giữ để nói (Space)"}
+                </span>
+              </button>
             ) : (
               <span className="voice-listen-tag" title="Đã nhả phần cứng Micro (0% tốn pin)">
                 👂 Chỉ nghe
@@ -1189,7 +1292,7 @@ function VoiceRoomConsumerView() {
               type="button"
               className="btn-leave-voice"
               onClick={leaveVoice}
-              title="Rời kênh voice (ngắt kết nối WebRTC ngay lập tức)"
+              title="Rời kênh LiveKit (ngắt kết nối WebRTC ngay lập tức)"
             >
               📵
             </button>
@@ -1203,9 +1306,8 @@ function VoiceRoomConsumerView() {
             </span>
           ) : (
             <>
-              {/* Thẻ của chính bạn luôn hiện đầu tiên để biết chắc chắn mình đã vào kênh & thấy sóng âm */}
               <div
-                className={`voice-participant self-card ${isSelfSpeaking ? "speaking" : ""} ${
+                className={`voice-participant self-card ${isSelfSpeaking || wantTransmitNow ? "speaking" : ""} ${
                   !wantTransmitNow ? "participant-muted" : ""
                 }`}
               >
@@ -1214,12 +1316,10 @@ function VoiceRoomConsumerView() {
                     ? "👂 "
                     : !canSpeak
                       ? "🔒 "
-                      : isSelfSpeaking
-                        ? "🔊 "
-                        : wantTransmitNow
-                          ? "🎙️ "
-                          : "🔇 "}
-                  Bạn
+                      : wantTransmitNow
+                        ? "🎙️ "
+                        : "🔇 "}
+                  Bạn {wantTransmitNow ? "(Đang giữ)" : ""}
                 </span>
               </div>
 
@@ -1259,8 +1359,8 @@ function VoiceRoomConsumerView() {
               {visibleRemotePeers.length === 0 && (
                 <span className="voice-empty-hint">
                   {isNightPhase
-                    ? "Đang chờ đồng bọn Sói khác vào kênh thoại..."
-                    : "Đã vào kênh — mời bạn bè bấm Tham gia Voice!"}
+                    ? "Giữ nút Mic / Space để bàn mưu kín cùng bầy Sói..."
+                    : "Giữ nút Mic (hoặc phím Space) khi cần phát biểu — nhả tay tự tắt 0 kbps!"}
                 </span>
               )}
             </>

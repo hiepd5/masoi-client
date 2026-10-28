@@ -41,6 +41,32 @@
   line-height: 1.35;
 }
 
+.voice-error-banner {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(248, 113, 113, 0.52);
+  color: #fecaca;
+}
+
+.btn-retry-livekit {
+  width: auto;
+  margin: 0;
+  background: rgba(99, 102, 241, 0.36);
+  border: 1px solid rgba(165, 180, 252, 0.65);
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.18s ease;
+}
+
+.btn-retry-livekit:hover {
+  background: rgba(99, 102, 241, 0.62);
+}
+
 .voice-header {
   display: flex;
   align-items: center;
