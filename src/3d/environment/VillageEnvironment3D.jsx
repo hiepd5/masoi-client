@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import SmartPropGLB from "../props/SmartPropGLB.jsx";
+import DarkAcademiaSocketNode, {
+  DARK_ACADEMIA_PROP_TYPES,
+} from "../props/DarkAcademiaBlockout3D.jsx";
 import InstancedExteriorBatch3D, {
   INSTANCED_EXTERIOR_TYPES,
 } from "../props/InstancedExteriorBatch3D.jsx";
@@ -121,13 +124,69 @@ const ATMOSPHERE_PALETTES = {
     mistOpacity: 0.32,
     warmGlow: 1.48,
   },
+  blood_moon: {
+    bg: "#120408",
+    skyZenith: "#090205",
+    skyMid: "#290811",
+    skyHorizon: "#541220",
+    cloudTint: "#dc2626",
+    fog: "#22070f",
+    fogNear: 12.5,
+    fogFar: 46,
+    hemiSky: "#f87171",
+    hemiGround: "#2e140d",
+    hemiIntensity: 0.58,
+    dirColor: "#fecaca",
+    dirIntensity: 1.18,
+    dirPos: [-7, 17, -18],
+    rimColor: "#ef4444",
+    rimIntensity: 0.92,
+    envIntensity: 0.82,
+    groundTint: "#856e74",
+    plazaTint: "#b8a7ad",
+    starOpacity: 0.72,
+    mistOpacity: 0.34,
+    warmGlow: 1.62,
+  },
+  dark_academia: {
+    bg: "#08071a",
+    skyZenith: "#050412",
+    skyMid: "#141136",
+    skyHorizon: "#2d1b4e",
+    cloudTint: "#a78bfa",
+    fog: "#120f2d",
+    fogNear: 13.5,
+    fogFar: 48,
+    hemiSky: "#c4b5fd",
+    hemiGround: "#2d1d14",
+    hemiIntensity: 0.64,
+    dirColor: "#e9d5ff",
+    dirIntensity: 1.22,
+    dirPos: [-6, 17.5, -17],
+    rimColor: "#a855f7",
+    rimIntensity: 0.86,
+    envIntensity: 0.78,
+    groundTint: "#747b8c",
+    plazaTint: "#a5b4fc",
+    starOpacity: 0.86,
+    mistOpacity: 0.3,
+    warmGlow: 1.52,
+  },
 };
 
-function resolveMoodKey(isNight, phase, hasWinner) {
-  if (isNight && !hasWinner) return "night";
+function resolveMoodKey(isNight, phase, hasWinner, scenePresetId = null) {
+  const isBloodMoonMap = scenePresetId === "blood_moon_sanctuary";
+  const isAcademiaMap = scenePresetId === "dark_academia_courtyard";
+  if (isNight && !hasWinner) {
+    if (isBloodMoonMap) return "blood_moon";
+    if (isAcademiaMap) return "dark_academia";
+    return "night";
+  }
   if (phase === "day_reveal") return "dawn";
   if (phase === "day_defense" || phase === "day_final_vote") return "dusk_trial";
-  return "day";
+  if (isAcademiaMap) return "dark_academia";
+  if (isBloodMoonMap && (!phase || phase === "lobby" || phase === "waiting")) return "blood_moon";
+  return isBloodMoonMap ? "dusk_trial" : "day";
 }
 
 function resolvePhaseAccentHex(phase) {
@@ -435,8 +494,11 @@ function AtmosphereAndSky3D({
   });
 
   const activePanorama = isNightActive ? skyTextures.night : skyTextures.day;
-  const moonColor = moodKey === "dusk_trial" ? "#fda4af" : "#f0f9ff";
-  const moonGlowColor = moodKey === "dusk_trial" ? "#fb7185" : "#7dd3fc";
+  const isBloodMoon = moodKey === "blood_moon";
+  const moonColor = isBloodMoon ? "#fca5a5" : moodKey === "dusk_trial" ? "#fda4af" : "#f0f9ff";
+  const moonGlowColor = isBloodMoon ? "#ef4444" : moodKey === "dusk_trial" ? "#fb7185" : "#7dd3fc";
+  const moonOuterHaloColor = isBloodMoon ? "#b91c1c" : "#38bdf8";
+  const moonDiscRadius = isBloodMoon ? 2.95 : 2.15;
 
   return (
     <group>
@@ -501,26 +563,26 @@ function AtmosphereAndSky3D({
       {/* Vầng Trăng Sáng & Quầng Tán Xạ Sương Bạc nằm ngay góc nhìn Bắc (cạnh Tháp Chuông & Đài Treo Cổ y hệt Ảnh Concept!) */}
       <group position={[-5.4, 17.6, -42]}>
         <mesh raycast={NOOP_RAYCAST}>
-          <sphereGeometry args={[2.15, 24, 24]} />
+          <sphereGeometry args={[moonDiscRadius, 24, 24]} />
           <meshBasicMaterial color={moonColor} fog={false} />
         </mesh>
-        <sprite raycast={NOOP_RAYCAST} scale={[16.5, 16.5, 1]}>
+        <sprite raycast={NOOP_RAYCAST} scale={isBloodMoon ? [22, 22, 1] : [16.5, 16.5, 1]}>
           <spriteMaterial
             map={moonHaloTex}
             color={moonGlowColor}
             transparent
-            opacity={isNightActive ? 0.58 : 0.36}
+            opacity={isNightActive || isBloodMoon ? 0.64 : 0.36}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             fog={false}
           />
         </sprite>
-        <sprite raycast={NOOP_RAYCAST} scale={[32, 24, 1]}>
+        <sprite raycast={NOOP_RAYCAST} scale={isBloodMoon ? [40, 30, 1] : [32, 24, 1]}>
           <spriteMaterial
             map={moonHaloTex}
-            color="#38bdf8"
+            color={moonOuterHaloColor}
             transparent
-            opacity={isNightActive ? 0.22 : 0.12}
+            opacity={isNightActive || isBloodMoon ? 0.28 : 0.12}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
             fog={false}
@@ -544,10 +606,15 @@ function ForestBaseTerrainPBR({
   onClearSelection,
 }) {
   const groundDownRef = useRef(null);
-  const { cobbleColorMap, cobbleBumpMap, forestColorMap, forestBumpMap } = useMemo(
-    () => getProceduralGroundAssets(),
-    []
-  );
+  const {
+    cobbleColorMap,
+    cobbleBumpMap,
+    cobbleNormalMap,
+    cobbleRoughnessMap,
+    forestColorMap,
+    forestBumpMap,
+  } = useMemo(() => getProceduralGroundAssets(), []);
+  const cobbleNormalScale = useMemo(() => new THREE.Vector2(0.85, 0.85), []);
 
   // Tự động xoay & co giãn đường lát đá nối từ rìa sân tròn tới vị trí hiện tại của Đài Treo Cổ!
   const pathTransform = useMemo(() => {
@@ -619,10 +686,14 @@ function ForestBaseTerrainPBR({
             <planeGeometry args={[1.95, pathTransform.length]} />
             <meshStandardMaterial
               map={cobbleColorMap}
+              normalMap={cobbleNormalMap}
+              normalScale={cobbleNormalScale}
               bumpMap={cobbleBumpMap}
-              bumpScale={0.045}
+              bumpScale={0.04}
+              roughnessMap={cobbleRoughnessMap}
               color={pal.plazaTint}
-              roughness={0.88}
+              roughness={0.96}
+              metalness={0.08}
             />
           </mesh>
         </group>
@@ -642,7 +713,11 @@ function CourtyardPlazaContent({
   reloadToken,
   architectMode = false,
 }) {
-  const { cobbleColorMap, cobbleBumpMap } = useMemo(() => getProceduralGroundAssets(), []);
+  const { cobbleColorMap, cobbleBumpMap, cobbleNormalMap, cobbleRoughnessMap } = useMemo(
+    () => getProceduralGroundAssets(),
+    []
+  );
+  const cobbleNormalScale = useMemo(() => new THREE.Vector2(0.88, 0.88), []);
   const plazaRadius = circleRadius + 1.48;
 
   const borderStones = useMemo(() => {
@@ -682,11 +757,14 @@ function CourtyardPlazaContent({
               <circleGeometry args={[plazaRadius, 56]} />
               <meshStandardMaterial
                 map={cobbleColorMap}
+                normalMap={cobbleNormalMap}
+                normalScale={cobbleNormalScale}
                 bumpMap={cobbleBumpMap}
-                bumpScale={0.055}
+                bumpScale={0.048}
+                roughnessMap={cobbleRoughnessMap}
                 color={pal.plazaTint}
-                roughness={0.86}
-                metalness={0.06}
+                roughness={0.96}
+                metalness={0.08}
               />
             </mesh>
             <mesh
@@ -1885,6 +1963,27 @@ function EditableExteriorNode({
 
       {node.type === "procedural_rock" && <ProceduralBoulderContent />}
 
+      {/* 8 SOCKET KIẾN TRÚC BOX-BLOCKOUT HỌC VIỆN ĐÊM (V4.5 — HOT-SWAP .GLB 1:1) */}
+      {DARK_ACADEMIA_PROP_TYPES.includes(node.type) && (
+        <group>
+          {meta.aoRadius > 0 && (
+            <ContactShadowDisc
+              radius={meta.aoRadius}
+              scaleXZ={meta.aoScaleXZ || [1, 1]}
+              opacity={meta.aoOpacity ?? 0.62}
+            />
+          )}
+          <DarkAcademiaSocketNode
+            type={node.type}
+            isNightActive={isNightActive}
+            calib={propCalib?.[node.type]}
+            reloadToken={reloadToken}
+            seed={node.seed || 0}
+            disableRaycast={Boolean(architectMode && isLockedSurface)}
+          />
+        </group>
+      )}
+
       {(node.type === "tree_pine_tall" ||
         node.type === "tree_pine_wide" ||
         node.type === "tree_dead_gnarled") && (
@@ -2266,7 +2365,15 @@ function DriftingGroundMistLayers({
   });
 
   const mistColor =
-    moodKey === "dusk_trial" ? "#fda4af" : moodKey === "dawn" ? "#d8b4fe" : "#93c5fd";
+    moodKey === "blood_moon"
+      ? "#fca5a5"
+      : moodKey === "dark_academia"
+        ? "#c4b5fd"
+        : moodKey === "dusk_trial"
+          ? "#fda4af"
+          : moodKey === "dawn"
+            ? "#d8b4fe"
+            : "#93c5fd";
 
   return (
     <group ref={mistGroupRef}>
@@ -2362,9 +2469,10 @@ export default function VillageEnvironment3D({
   onSelectNode,
   onClearSelection,
   onVisibleSectorsChange,
+  scenePresetId = null,
 }) {
   const isNightActive = Boolean(isNight && !hasWinner);
-  const moodKey = resolveMoodKey(isNight, phase, hasWinner);
+  const moodKey = resolveMoodKey(isNight, phase, hasWinner, scenePresetId);
   const pal = ATMOSPHERE_PALETTES[moodKey] || ATMOSPHERE_PALETTES.day;
 
   const fallbackDefaultNodes = useMemo(() => buildDefaultVillageNodes(), []);

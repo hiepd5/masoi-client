@@ -61,6 +61,111 @@ export const BUILTIN_VILLAGER_AVATARS = [
 
 export const DEFAULT_RESERVED_SLOTS_COUNT = 12;
 
+/**
+ * 6 Cổng Chờ Nhân Vật Teen Học Viện Đêm (V4.5 — Hot-Swap Tripo -> Blender -> Web .GLB):
+ * - Có thể chọn thử ngay lập tức (dùng Proxy 3D có xương sẵn, 0 lỗi 404).
+ * - Ngay khi thả file `char_teen_*.glb` đã tối ưu từ Blender vào `client/public/models/characters/`,
+ *   cổng tự động nhận diện `status: "ready"` và thay thế 1:1 lên ghế 3D!
+ */
+export const TEEN_ACADEMY_AVATAR_SLOTS = [
+  {
+    id: "teen_detective",
+    slotKey: "teen_detective",
+    emblem: "🕵️",
+    label: "Thám Tử Học Viện",
+    shortLabel: "Thám Tử",
+    desc: "Áo măng-tô học viện tối màu, chuyên soi manh mối đêm sương",
+    expectedGlb: "char_teen_detective.glb",
+    specNote: "Cao 1.78m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager_cloak.webp",
+    portraitCard: "/portraits/cards/villager_cloak.webp",
+  },
+  {
+    id: "teen_occult",
+    slotKey: "teen_occult",
+    emblem: "🔮",
+    label: "Nữ Sinh Huyền Bí",
+    shortLabel: "Huyền Bí",
+    desc: "Đồng phục Gothic tím than & sổ tay chiêm tinh cổ ngữ",
+    expectedGlb: "char_teen_occult.glb",
+    specNote: "Cao 1.72m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager_female.webp",
+    portraitCard: "/portraits/cards/villager_female.webp",
+  },
+  {
+    id: "teen_idol",
+    slotKey: "teen_idol",
+    emblem: "🎧",
+    label: "Idol Ký Túc Xá",
+    shortLabel: "Idol Teen",
+    desc: "Áo blazer học viện cách điệu & tai nghe ánh bạc cá tính",
+    expectedGlb: "char_teen_idol.glb",
+    specNote: "Cao 1.74m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager_female.webp",
+    portraitCard: "/portraits/cards/villager_female.webp",
+  },
+  {
+    id: "teen_hacker",
+    slotKey: "teen_hacker",
+    emblem: "💻",
+    label: "Thiên Tài Giải Mã",
+    shortLabel: "Giải Mã",
+    desc: "Hoodie khoác ngoài sơ mi học viện, điềm tĩnh bắt bài Sói",
+    expectedGlb: "char_teen_hacker.glb",
+    specNote: "Cao 1.76m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager.webp",
+    portraitCard: "/portraits/cards/villager.webp",
+  },
+  {
+    id: "teen_varsity",
+    slotKey: "teen_varsity",
+    emblem: "🏀",
+    label: "Đội Trưởng Áo Khoác",
+    shortLabel: "Đội Trưởng",
+    desc: "Áo khoác Varsity huy hiệu Học Viện Đêm năng động, vững chãi",
+    expectedGlb: "char_teen_varsity.glb",
+    specNote: "Cao 1.82m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager.webp",
+    portraitCard: "/portraits/cards/villager.webp",
+  },
+  {
+    id: "teen_rebel",
+    slotKey: "teen_rebel",
+    emblem: "🎸",
+    label: "Nghệ Sĩ Đêm Trăng",
+    shortLabel: "Nghệ Sĩ",
+    desc: "Áo khoác da tối màu & khăn choàng đỏ thẫm lãng tử dưới trăng",
+    expectedGlb: "char_teen_rebel.glb",
+    specNote: "Cao 1.77m • Y=0.00m • <=7.5k tris",
+    status: "slot_waiting",
+    source: "teen_academy_3d",
+    botAllowed: false,
+    glbUrl: null,
+    portraitBadge: "/portraits/badges/villager_cloak.webp",
+    portraitCard: "/portraits/cards/villager_cloak.webp",
+  },
+];
+
 export function buildDefaultReservedHumanSlots(count = DEFAULT_RESERVED_SLOTS_COUNT) {
   return Array.from({ length: count }, (_, idx) => {
     const slotNum = idx + 1;
@@ -83,6 +188,7 @@ export function buildDefaultReservedHumanSlots(count = DEFAULT_RESERVED_SLOTS_CO
 
 let cachedCatalog = {
   builtinVillagers: BUILTIN_VILLAGER_AVATARS,
+  teenAcademyAvatars: TEEN_ACADEMY_AVATAR_SLOTS,
   customHumanAvatars: buildDefaultReservedHumanSlots(),
 };
 let loadedCatalogOnce = false;
@@ -113,23 +219,81 @@ export async function loadCitizenAvatarCatalog({ force = false } = {}) {
   if (inflightCatalogPromise && !force) return inflightCatalogPromise;
 
   inflightCatalogPromise = (async () => {
+    let customList = buildDefaultReservedHumanSlots();
+    let detectedCharacterMap = {};
+
+    try {
+      const charRes = await fetch(`/models/characters/characters_manifest.json?v=${ASSET_SYNC_VERSION}`, {
+        cache: "no-store",
+      });
+      if (charRes.ok) {
+        const charDoc = await charRes.json();
+        if (charDoc && typeof charDoc.characters === "object") {
+          detectedCharacterMap = { ...charDoc.characters };
+        }
+      }
+    } catch {
+      // ignore offline manifest
+    }
+
+    if (!import.meta.env.PROD) {
+      try {
+        const devCharRes = await fetch("http://localhost:3001/api/character-models", {
+          cache: "no-store",
+        });
+        if (devCharRes.ok) {
+          const devData = await devCharRes.json();
+          if (devData && typeof devData.characters === "object") {
+            detectedCharacterMap = { ...detectedCharacterMap, ...devData.characters };
+          }
+        }
+      } catch {
+        // ignore when local API not started yet
+      }
+    }
+
+    let manifestTeenOverrides = [];
     try {
       const res = await fetch(`/models/avatars/avatars_manifest.json?v=${ASSET_SYNC_VERSION}`, {
         cache: "no-store",
       });
       if (res.ok) {
         const doc = await res.json();
-        const customList = Array.isArray(doc?.customHumanAvatars) && doc.customHumanAvatars.length > 0
-          ? doc.customHumanAvatars
-          : buildDefaultReservedHumanSlots();
-        cachedCatalog = {
-          builtinVillagers: BUILTIN_VILLAGER_AVATARS,
-          customHumanAvatars: customList,
-        };
+        if (Array.isArray(doc?.customHumanAvatars) && doc.customHumanAvatars.length > 0) {
+          customList = doc.customHumanAvatars;
+        }
+        if (Array.isArray(doc?.teenAcademyAvatars)) {
+          manifestTeenOverrides = doc.teenAcademyAvatars;
+        }
       }
     } catch {
       // Giữ danh mục mặc định nếu offline
     }
+
+    const mergedTeenList = TEEN_ACADEMY_AVATAR_SLOTS.map((slot) => {
+      const override = manifestTeenOverrides.find((x) => x?.id === slot.id);
+      const liveGlbUrl =
+        detectedCharacterMap[slot.id] ||
+        (override?.status === "ready" && override?.glbUrl ? override.glbUrl : null);
+      if (liveGlbUrl) {
+        return {
+          ...slot,
+          ...(override || {}),
+          status: "ready",
+          glbUrl: liveGlbUrl,
+        };
+      }
+      return {
+        ...slot,
+        ...(override || {}),
+      };
+    });
+
+    cachedCatalog = {
+      builtinVillagers: BUILTIN_VILLAGER_AVATARS,
+      teenAcademyAvatars: mergedTeenList,
+      customHumanAvatars: customList,
+    };
     loadedCatalogOnce = true;
     notifyCatalogListeners();
     return cachedCatalog;
@@ -147,6 +311,11 @@ export function getCitizenAvatarMeta(citizenModelId) {
   const builtin = BUILTIN_VILLAGER_AVATARS.find((item) => item.id === citizenModelId);
   if (builtin) return builtin;
 
+  const teenItem = (cachedCatalog.teenAcademyAvatars || TEEN_ACADEMY_AVATAR_SLOTS).find(
+    (item) => item.id === citizenModelId
+  );
+  if (teenItem) return teenItem;
+
   const customReady = cachedCatalog.customHumanAvatars.find(
     (item) => item.id === citizenModelId && item.status === "ready" && item.glbUrl
   );
@@ -158,6 +327,9 @@ export function getCitizenAvatarMeta(citizenModelId) {
 export function isReadyCitizenModelId(citizenModelId) {
   if (!citizenModelId) return false;
   if (BUILTIN_VILLAGER_AVATARS.some((item) => item.id === citizenModelId)) return true;
+  if ((cachedCatalog.teenAcademyAvatars || TEEN_ACADEMY_AVATAR_SLOTS).some((item) => item.id === citizenModelId)) {
+    return true;
+  }
   return cachedCatalog.customHumanAvatars.some(
     (item) => item.id === citizenModelId && item.status === "ready" && Boolean(item.glbUrl)
   );

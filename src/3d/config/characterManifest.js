@@ -193,6 +193,85 @@ export const CHARACTER_SLOTS = {
     tintStrength: 0.22,
     proxySlot: "villager_true",
   },
+  // ================== 6 CỔNG CHỜ THẾ HỆ HỌC VIỆN TEEN 3D V4.5 (#25 -> #30 — TRIPO -> BLENDER -> WEB) ==================
+  teen_detective: {
+    key: "teen_detective",
+    portNumber: 25,
+    fileName: "char_teen_detective.glb",
+    label: "Thám Tử Học Viện (#25)",
+    standingHeight: 1.78,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "villager_cloak",
+  },
+  teen_occult: {
+    key: "teen_occult",
+    portNumber: 26,
+    fileName: "char_teen_occult.glb",
+    label: "Nữ Sinh Huyền Bí (#26)",
+    standingHeight: 1.72,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "villager_female",
+  },
+  teen_idol: {
+    key: "teen_idol",
+    portNumber: 27,
+    fileName: "char_teen_idol.glb",
+    label: "Idol Ký Túc Xá (#27)",
+    standingHeight: 1.74,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "villager_female",
+  },
+  teen_hacker: {
+    key: "teen_hacker",
+    portNumber: 28,
+    fileName: "char_teen_hacker.glb",
+    label: "Thiên Tài Giải Mã (#28)",
+    standingHeight: 1.76,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "villager_true",
+  },
+  teen_varsity: {
+    key: "teen_varsity",
+    portNumber: 29,
+    fileName: "char_teen_varsity.glb",
+    label: "Đội Trưởng Áo Khoác (#29)",
+    standingHeight: 1.82,
+    seatHipOffsetY: 0.045,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "guard",
+  },
+  teen_rebel: {
+    key: "teen_rebel",
+    portNumber: 30,
+    fileName: "char_teen_rebel.glb",
+    label: "Nghệ Sĩ Đêm Trăng (#30)",
+    standingHeight: 1.77,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: "villager_cloak",
+  },
 };
 
 let availableCharacterModels = {};
@@ -261,6 +340,13 @@ export async function ensureCharacterManifestLoaded({ force = false } = {}) {
     // Đồng bộ Kho Avatar 3D Người Thật (tintableCloak=false để giữ nguyên 100% màu da & trang phục ngoài đời!)
     try {
       const avatarCat = await loadCitizenAvatarCatalog({ force });
+      if (Array.isArray(avatarCat?.teenAcademyAvatars)) {
+        avatarCat.teenAcademyAvatars.forEach((item) => {
+          if (item?.id && item.status === "ready" && item.glbUrl) {
+            availableCharacterModels[item.id] = item.glbUrl;
+          }
+        });
+      }
       if (Array.isArray(avatarCat?.customHumanAvatars)) {
         avatarCat.customHumanAvatars.forEach((item) => {
           if (item?.id && item.status === "ready" && item.glbUrl) {

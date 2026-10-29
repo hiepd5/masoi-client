@@ -201,6 +201,7 @@ export default function WerewolfScene3D({
   const [resetCounter, setResetCounter] = useState(0);
   const [showMeasureGrid, setShowMeasureGrid] = useState(false);
   const [showPropTuner, setShowPropTuner] = useState(false);
+  const [showStudioToolsTray, setShowStudioToolsTray] = useState(false);
   const [frustumCullingEnabled, setFrustumCullingEnabled] = useState(true);
   const [visibleSectors, setVisibleSectors] = useState(4);
   const [reloadToken, setReloadToken] = useState(0);
@@ -1113,18 +1114,19 @@ export default function WerewolfScene3D({
         overflow: "hidden",
       }}
     >
-      {/* ==================== THANH ĐIỀU KHIỂN GÓC TRÁI (CHỈ HIỆN NÚT DEV KHI isDevSetup = true, ẨN KHI PHÁT BĂNG GHI HÌNH REPLAY!) ==================== */}
+      {/* ==================== THANH ĐIỀU KHIỂN GÓC TRÁI SIÊU GỌN V4.5 (2 NÚT CAMERA + NGĂN THU GỌN STUDIO 3D ▾) ==================== */}
       {!architectMode && !hasWinner && (
         <div
           style={{
             position: "absolute",
-            top: "10px",
-            left: "10px",
+            top: phase === "lobby" ? "66px" : "10px",
+            left: "12px",
             zIndex: 12,
             display: "flex",
             flexWrap: "wrap",
             gap: "6px",
             alignItems: "center",
+            maxWidth: "calc(100% - 170px)",
             pointerEvents: "auto",
           }}
         >
@@ -1174,150 +1176,202 @@ export default function WerewolfScene3D({
             🎯 Về Ghế Tôi
           </button>
 
-          <button
-            type="button"
-            onClick={cycleGraphicsQuality}
-            style={{
-              width: "auto",
-              margin: 0,
-              padding: "5px 10px",
-              borderRadius: "999px",
-              fontSize: "11px",
-              fontWeight: 700,
-              background: "rgba(15, 23, 42, 0.76)",
-              color: "#fde68a",
-              border: "1px solid rgba(250, 204, 21, 0.35)",
-              backdropFilter: "blur(8px)",
-              cursor: "pointer",
-            }}
-            title="Chuyển mức Đồ Họa 3D (Cao / Cân bằng / Siêu Mượt 60FPS cho điện thoại)"
-          >
-            🎮 Đồ họa: {gfxPreset.label}
-          </button>
+          {!isDevSetup && (
+            <button
+              type="button"
+              onClick={cycleGraphicsQuality}
+              style={{
+                width: "auto",
+                margin: 0,
+                padding: "5px 10px",
+                borderRadius: "999px",
+                fontSize: "11px",
+                fontWeight: 700,
+                background: "rgba(15, 23, 42, 0.76)",
+                color: "#fde68a",
+                border: "1px solid rgba(250, 204, 21, 0.35)",
+                backdropFilter: "blur(8px)",
+                cursor: "pointer",
+              }}
+              title="Chuyển mức Đồ Họa 3D (Cao / Cân bằng / Siêu Mượt 60FPS cho điện thoại)"
+            >
+              🎮 {gfxPreset.label}
+            </button>
+          )}
 
-          {/* NHÓM CÔNG CỤ ĐẶC QUYỀN KIẾN TRÚC SƯ / DEV SETUP (Ẩn 100% ở bản Người Chơi Thật!) */}
+          {/* NGĂN THU GỌN CÔNG CỤ KIẾN TRÚC SƯ / DEV SETUP (Giải phóng 100% bầu trời & kiến trúc 3D!) */}
           {isDevSetup && (
             <>
               <button
                 type="button"
-                onClick={() => {
-                  setShowPropTuner(false);
-                  setChoreoStudioOpen(false);
-                  setArchitectMode(true);
-                }}
+                onClick={() => setShowStudioToolsTray((v) => !v)}
                 style={{
                   width: "auto",
                   margin: 0,
-                  padding: "5px 12px",
+                  padding: "5px 11px",
                   borderRadius: "999px",
                   fontSize: "11.5px",
                   fontWeight: 800,
-                  background: "linear-gradient(135deg, #d97706, #b45309)",
-                  color: "#ffffff",
-                  border: "1px solid rgba(253, 224, 71, 0.55)",
-                  boxShadow: "0 2px 10px rgba(217, 119, 6, 0.45)",
-                  cursor: "pointer",
-                }}
-                title="Mở Không Gian Sắp Xếp Cảnh Quan Kiểu D5 Render (3 Mũi Tên X·Y·Z + Scale Đa Chiều + Bay WASD — Chỉ Dev mới thấy!)"
-              >
-                🏗️ Dựng Cảnh D5 {hasUnsavedDraft ? "*" : ""}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPropTuner(false);
-                  setChoreoStudioOpen((open) => {
-                    const next = !open;
-                    if (next) {
-                      setChoreoProgress(0);
-                      setChoreoIsPlaying(true);
-                    }
-                    return next;
-                  });
-                }}
-                style={{
-                  width: "auto",
-                  margin: 0,
-                  padding: "5px 12px",
-                  borderRadius: "999px",
-                  fontSize: "11.5px",
-                  fontWeight: 800,
-                  background: choreoStudioOpen
-                    ? "linear-gradient(135deg, #9333ea, #4f46e5)"
-                    : "rgba(88, 28, 135, 0.78)",
-                  color: "#ffffff",
-                  border: "1px solid rgba(216, 180, 254, 0.62)",
-                  boxShadow: choreoStudioOpen ? "0 2px 12px rgba(147, 51, 234, 0.55)" : "none",
-                  cursor: "pointer",
-                }}
-                title="Diễn thử 1-Click toàn bộ 9 Nhân Vật & Đường nhảy Bezier trước khi tạo model Tripo AI"
-              >
-                🎬 Diễn Thử 9 Vai
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowMeasureGrid((g) => !g)}
-                style={{
-                  width: "auto",
-                  margin: 0,
-                  padding: "5px 9px",
-                  borderRadius: "999px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  background: showMeasureGrid ? "rgba(16, 185, 129, 0.28)" : "rgba(15, 23, 42, 0.68)",
-                  color: showMeasureGrid ? "#a7f3d0" : "#94a3b8",
-                  border: "1px solid rgba(255,255,255,0.15)",
+                  background:
+                    showStudioToolsTray || choreoStudioOpen || showPropTuner
+                      ? "linear-gradient(135deg, #d97706, #9333ea)"
+                      : "rgba(15, 23, 42, 0.82)",
+                  color: "#fef08a",
+                  border: "1px solid rgba(245, 194, 92, 0.5)",
                   backdropFilter: "blur(8px)",
                   cursor: "pointer",
                 }}
-                title="Bật/tắt lưới thước đo mét chuẩn (1 ô = 1m)"
+                title="Mở/Đóng khay công cụ Studio 3D (Dựng Cảnh D5, Hoạt cảnh 9 vai, Lưới đo, Khe cắm .GLB)"
               >
-                📏 Lưới Đo
+                🛠️ Studio 3D {hasUnsavedDraft ? "* " : ""}
+                {showStudioToolsTray ? "▴" : "▾"}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setFrustumCullingEnabled((v) => !v)}
-                style={{
-                  width: "auto",
-                  margin: 0,
-                  padding: "5px 10px",
-                  borderRadius: "999px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  background: frustumCullingEnabled ? "rgba(16, 185, 129, 0.24)" : "rgba(15, 23, 42, 0.72)",
-                  color: frustumCullingEnabled ? "#6ee7b7" : "#94a3b8",
-                  border: `1px solid ${frustumCullingEnabled ? "rgba(16, 185, 129, 0.42)" : "rgba(255,255,255,0.16)"}`,
-                  backdropFilter: "blur(8px)",
-                  cursor: "pointer",
-                }}
-                title="Kiểm tra Engine Render theo góc xoay Camera (Xoay đâu hiện đến đó)"
-              >
-                {frustumCullingEnabled ? `👁️ View: ${visibleSectors}/8 khu` : "👁️ View: 8/8 khu"}
-              </button>
+              {showStudioToolsTray && (
+                <>
+                  <button
+                    type="button"
+                    onClick={cycleGraphicsQuality}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      background: "rgba(15, 23, 42, 0.84)",
+                      color: "#fde68a",
+                      border: "1px solid rgba(250, 204, 21, 0.35)",
+                      backdropFilter: "blur(8px)",
+                      cursor: "pointer",
+                    }}
+                    title="Chuyển mức Đồ Họa 3D (Cao / Cân bằng / Siêu Mượt 60FPS)"
+                  >
+                    🎮 Đồ họa: {gfxPreset.label}
+                  </button>
 
-              <button
-                type="button"
-                onClick={() => setShowPropTuner((v) => !v)}
-                style={{
-                  width: "auto",
-                  margin: 0,
-                  padding: "5px 10px",
-                  borderRadius: "999px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  background: showPropTuner ? "rgba(59, 130, 246, 0.85)" : "rgba(15, 23, 42, 0.74)",
-                  color: showPropTuner ? "#ffffff" : "#cbd5e1",
-                  border: "1px solid rgba(148, 163, 184, 0.28)",
-                  backdropFilter: "blur(8px)",
-                  cursor: "pointer",
-                }}
-                title="Quản lý 12 khe cắm nóng file .GLB từ Tripo Pro (Đợt 1 + Đợt 2)"
-              >
-                🔧 Đạo Cụ ({loadedGlbCount}/{PROP_KEYS.length} .GLB)
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPropTuner(false);
+                      setChoreoStudioOpen(false);
+                      setArchitectMode(true);
+                    }}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 12px",
+                      borderRadius: "999px",
+                      fontSize: "11.5px",
+                      fontWeight: 800,
+                      background: "linear-gradient(135deg, #d97706, #b45309)",
+                      color: "#ffffff",
+                      border: "1px solid rgba(253, 224, 71, 0.55)",
+                      boxShadow: "0 2px 10px rgba(217, 119, 6, 0.45)",
+                      cursor: "pointer",
+                    }}
+                    title="Mở Không Gian Sắp Xếp Cảnh Quan Kiểu D5 Render (3 Mũi Tên X·Y·Z + Scale Đa Chiều + Bay WASD)"
+                  >
+                    🏗️ Dựng Cảnh D5 {hasUnsavedDraft ? "*" : ""}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPropTuner(false);
+                      setChoreoStudioOpen((open) => {
+                        const next = !open;
+                        if (next) {
+                          setChoreoProgress(0);
+                          setChoreoIsPlaying(true);
+                        }
+                        return next;
+                      });
+                    }}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 12px",
+                      borderRadius: "999px",
+                      fontSize: "11.5px",
+                      fontWeight: 800,
+                      background: choreoStudioOpen
+                        ? "linear-gradient(135deg, #9333ea, #4f46e5)"
+                        : "rgba(88, 28, 135, 0.78)",
+                      color: "#ffffff",
+                      border: "1px solid rgba(216, 180, 254, 0.62)",
+                      boxShadow: choreoStudioOpen ? "0 2px 12px rgba(147, 51, 234, 0.55)" : "none",
+                      cursor: "pointer",
+                    }}
+                    title="Diễn thử 1-Click toàn bộ Nhân Vật & Đường nhảy Bezier"
+                  >
+                    🎬 Diễn Thử 9 Vai
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowMeasureGrid((g) => !g)}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 9px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      background: showMeasureGrid ? "rgba(16, 185, 129, 0.28)" : "rgba(15, 23, 42, 0.68)",
+                      color: showMeasureGrid ? "#a7f3d0" : "#94a3b8",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      backdropFilter: "blur(8px)",
+                      cursor: "pointer",
+                    }}
+                    title="Bật/tắt lưới thước đo mét chuẩn (1 ô = 1m)"
+                  >
+                    📏 Lưới Đo
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFrustumCullingEnabled((v) => !v)}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      background: frustumCullingEnabled ? "rgba(16, 185, 129, 0.24)" : "rgba(15, 23, 42, 0.72)",
+                      color: frustumCullingEnabled ? "#6ee7b7" : "#94a3b8",
+                      border: `1px solid ${frustumCullingEnabled ? "rgba(16, 185, 129, 0.42)" : "rgba(255,255,255,0.16)"}`,
+                      backdropFilter: "blur(8px)",
+                      cursor: "pointer",
+                    }}
+                    title="Kiểm tra Engine Render theo góc xoay Camera (Xoay đâu hiện đến đó)"
+                  >
+                    {frustumCullingEnabled ? `👁️ View: ${visibleSectors}/8 khu` : "👁️ View: 8/8 khu"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPropTuner((v) => !v)}
+                    style={{
+                      width: "auto",
+                      margin: 0,
+                      padding: "5px 10px",
+                      borderRadius: "999px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      background: showPropTuner ? "rgba(59, 130, 246, 0.85)" : "rgba(15, 23, 42, 0.74)",
+                      color: showPropTuner ? "#ffffff" : "#cbd5e1",
+                      border: "1px solid rgba(148, 163, 184, 0.28)",
+                      backdropFilter: "blur(8px)",
+                      cursor: "pointer",
+                    }}
+                    title="Quản lý toàn bộ khe cắm nóng file .GLB (gồm cả 8 khe Học Viện Teen mới)"
+                  >
+                    🔧 Khe .GLB ({loadedGlbCount}/{PROP_KEYS.length})
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1719,6 +1773,7 @@ export default function WerewolfScene3D({
           phase={effectiveEnvironmentMood.phase}
           isNight={effectiveEnvironmentMood.isNight}
           hasWinner={effectiveEnvironmentMood.hasWinner}
+          scenePresetId={activePresetId}
           propCalib={propCalib}
           propStatuses={propStatuses}
           reloadToken={reloadToken}

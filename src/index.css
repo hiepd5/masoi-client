@@ -1,15 +1,48 @@
+:root {
+  --font-display: "Spectral", "Cormorant Garamond", Georgia, serif;
+  --font-ui: "Be Vietnam Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --gold-bright: #f5c469;
+  --gold-ember: #d99b38;
+  --gold-border: rgba(217, 155, 56, 0.36);
+  --obsidian-panel: rgba(11, 15, 28, 0.84);
+  --obsidian-panel-strong: rgba(9, 12, 23, 0.92);
+}
+
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 155, 56, 0.34) rgba(8, 12, 22, 0.45);
+}
+
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(8, 12, 22, 0.45);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(217, 155, 56, 0.48), rgba(148, 163, 184, 0.28));
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 196, 105, 0.72);
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  background: #06091e;
-  color: #f1f1f6;
+  font-family: var(--font-ui);
+  background: #050811;
+  color: #f1f5f9;
   min-height: 100vh;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 #root {

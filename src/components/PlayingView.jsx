@@ -337,6 +337,19 @@ export default function PlayingView({
     });
   }
 
+  const [showHudSettings, setShowHudSettings] = useState(false);
+  const hudSettingsRef = useRef(null);
+  useEffect(() => {
+    if (!showHudSettings) return undefined;
+    const onPointerDownOutside = (e) => {
+      if (hudSettingsRef.current && !hudSettingsRef.current.contains(e.target)) {
+        setShowHudSettings(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDownOutside);
+    return () => document.removeEventListener("pointerdown", onPointerDownOutside);
+  }, [showHudSettings]);
+
   // Reset hasActed & hoạt cảnh ngắn khi chuyển phase
   useEffect(() => {
     setHasActed(false);
@@ -1031,164 +1044,114 @@ export default function PlayingView({
           />
         </div>
         <div className="hud-right">
-          {/* Nút Cam Mở Chế Độ Dựng Cảnh D5 Ngay Trong Trận (Chỉ hiện ở Dev/Localhost) */}
-          {canOpenArchitect && (
-            <button
-              type="button"
-              className="btn-mc-voice"
-              onClick={() => {
-                if (viewMode !== '3d') {
-                  setViewMode('3d');
-                  localStorage.setItem('ws_view_mode', '3d');
-                }
-                setOpenArchitectCounter((c) => c + 1);
-              }}
-              title="Mở công cụ sắp xếp ngoại cảnh kiểu D5 Render (3 Mũi tên + Scale X·Y·Z)"
-              style={{
-                width: 'auto',
-                margin: 0,
-                fontWeight: 800,
-                background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-                borderColor: '#fde047',
-                color: '#0f172a',
-                boxShadow: '0 2px 10px rgba(245, 158, 11, 0.45)',
-              }}
-            >
-              🏗️ Dựng Cảnh D5
-            </button>
-          )}
-
-          {/* Công tắc chuyển tức thì 3D <-> 2D Lite (so sánh 1:1 & cứu máy yếu) */}
-          <button
-            type="button"
-            className="btn-mc-voice"
-            onClick={toggleViewMode}
-            title="Chuyển đổi tức thì giữa Sân khấu 3D và Vòng tròn 2D cổ điển"
-            style={{
-              width: 'auto',
-              margin: 0,
-              fontWeight: 700,
-              background: viewMode === '3d' ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255,255,255,0.08)',
-              borderColor: viewMode === '3d' ? 'rgba(245, 158, 11, 0.65)' : 'rgba(255,255,255,0.18)',
-              color: viewMode === '3d' ? '#fde68a' : '#e2e8f0',
-            }}
-          >
-            {viewMode === '3d' ? '🎮 3D' : '⚡ 2D'}
-          </button>
-
           {/* Live Sói/Dân counter */}
           <div className="hud-score" title={hasCursedMystery ? 'Có vai Kẻ Bị Nguyền hoặc Sói Đầu Đàn trong ván (số Sói có thể tăng nếu đồng hóa)' : 'Số Sói vs Dân ước tính còn sống'}>
             <span className="hud-wolf">🐺 {aliveWolfCount}{hasCursedMystery ? '?' : ''}</span>
             <span className="hud-vs">vs</span>
             <span className="hud-village">👥 {aliveVillageCount}</span>
           </div>
-          {hasBotsInMatch && canToggleMcPacing && onToggleMcPacing && !g.winner && (
-            <button
-              type="button"
-              className="btn-mc-voice"
-              onClick={onToggleMcPacing}
-              title={
-                mcPacingMode === 'full'
-                  ? 'Nhịp Đọc Trọn đang BẬT: MC đọc hết từng câu dẫn mới chuyển pha (Thân thiện người mới). Bấm để sang Nhịp Nhanh!'
-                  : 'Nhịp Nhanh đang BẬT: Lướt nhanh qua các pha Bot. Bấm để quay về Nhịp Đọc Trọn!'
-              }
-              style={{
-                width: 'auto',
-                margin: 0,
-                padding: '0 8px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                background:
-                  mcPacingMode === 'full'
-                    ? 'rgba(14, 116, 144, 0.36)'
-                    : 'rgba(180, 83, 9, 0.36)',
-                borderColor:
-                  mcPacingMode === 'full'
-                    ? 'rgba(56, 189, 248, 0.65)'
-                    : 'rgba(251, 191, 36, 0.65)',
-                color: mcPacingMode === 'full' ? '#bae6fd' : '#fef08a',
-              }}
-            >
-              {mcPacingMode === 'full' ? '🐢 Đọc Trọn' : '⚡ Nhanh'}
-            </button>
-          )}
-          {hasBotsInMatch && onToggleBotVoice && !g.winner && (
-            <button
-              type="button"
-              className="btn-mc-voice"
-              onClick={onToggleBotVoice}
-              title={
-                botVoiceEnabled
-                  ? 'Tắt giọng nói riêng của AI Bot (giữ nguyên giọng MC)'
-                  : 'Bật giọng nói riêng của 4 AI Bot (không trùng giọng MC)'
-              }
-              style={{
-                width: 'auto',
-                margin: 0,
-                padding: '0 7px',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                background: botVoiceEnabled
-                  ? 'rgba(91, 33, 182, 0.35)'
-                  : 'rgba(30, 41, 59, 0.45)',
-                borderColor: botVoiceEnabled
-                  ? 'rgba(167, 139, 250, 0.6)'
-                  : 'rgba(148, 163, 184, 0.3)',
-                color: botVoiceEnabled ? '#ddd6fe' : '#94a3b8',
-              }}
-            >
-              {botVoiceEnabled ? '🤖🔊' : '🤖🔇'}
-            </button>
-          )}
+
           {setMcVoiceEnabled && (
             <button
+              type="button"
               className="btn-mc-voice"
-              onClick={() => setMcVoiceEnabled(prev => !prev)}
-              title={mcVoiceEnabled ? 'Tắt giọng MC' : 'Bật giọng MC'}
+              onClick={() => setMcVoiceEnabled((prev) => !prev)}
+              title={mcVoiceEnabled ? 'Tắt tiếng Quản Trò MC' : 'Bật tiếng Quản Trò MC'}
             >
               {mcVoiceEnabled ? '🔊' : '🔇'}
             </button>
           )}
-          {voicePregening && (
-            <span
-              title={`MC đang chuẩn bị giọng: ${voicePregenProgress.done}/${voicePregenProgress.total}`}
-              style={{ fontSize: '0.7rem', color: '#facc15', whiteSpace: 'nowrap' }}
-            >
-              🎙️ {voicePregenProgress.done}/{voicePregenProgress.total}
-            </span>
-          )}
-          {!voicePregening && mcVoiceEnabled && (
+
+          {/* Menu Cài Đặt Nhanh Trong Trận ⚙️ (Gom 3D/2D, Nhịp Đọc, Voice Bot, Trạng thái Voice & Studio D5) */}
+          <div className="hud-settings-popover-anchor" ref={hudSettingsRef}>
             <button
               type="button"
-              onClick={() => onRecheckVoice?.()}
-              title={
-                vsServerOffline
-                  ? 'Máy chủ giọng đọc cá nhân (VoiceStudio) đang tắt — tự động dùng bộ MP3 tĩnh & nhạc nền, 0% giọng tiếng Anh. Bấm để kiểm tra lại ngay!'
-                  : 'Máy chủ Voice Clone cá nhân (RTX 3090) đang trực tuyến sẵn sàng — Bấm để làm mới trạng thái'
-              }
-              style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                color: vsServerOffline ? '#fecaca' : '#a7f3d0',
-                background: vsServerOffline ? 'rgba(127, 29, 29, 0.42)' : 'rgba(6, 78, 59, 0.38)',
-                border: vsServerOffline
-                  ? '1px solid rgba(248, 113, 113, 0.5)'
-                  : '1px solid rgba(52, 211, 153, 0.5)',
-                borderRadius: '999px',
-                padding: '2px 8px',
-                whiteSpace: 'nowrap',
-              }}
+              className={`btn-mc-voice btn-hud-gear ${showHudSettings ? 'active' : ''}`}
+              onClick={() => setShowHudSettings((v) => !v)}
+              title="Tùy chọn Sân khấu 3D/2D, Nhịp đọc MC & Giọng AI Bot"
             >
-              {vsStatusChecking
-                ? '⏳ Kiểm tra Voice...'
-                : vsServerOffline
-                  ? '🔴 Voice Offline (Bấm thử lại)'
-                  : vsStatusReady
-                    ? '🟢 Voice Clone Sẵn Sàng'
-                    : '🟡 Đang kết nối Voice...'}
+              ⚙️
             </button>
-          )}
+
+            {showHudSettings && (
+              <div className="hud-settings-popover">
+                <div className="hud-popover-title">Cài Đặt Nhanh Ván Đấu</div>
+
+                <button
+                  type="button"
+                  className="hud-popover-row"
+                  onClick={toggleViewMode}
+                >
+                  <span>🖥️ Chế độ Sân khấu</span>
+                  <span className="hud-popover-chip">{viewMode === '3d' ? '🎮 3D Đầy Đủ' : '⚡ 2D Nhẹ'}</span>
+                </button>
+
+                {hasBotsInMatch && canToggleMcPacing && onToggleMcPacing && !g.winner && (
+                  <button
+                    type="button"
+                    className="hud-popover-row"
+                    onClick={onToggleMcPacing}
+                  >
+                    <span>🎙️ Nhịp Quản Trò</span>
+                    <span className="hud-popover-chip">
+                      {mcPacingMode === 'full' ? '🐢 Đọc Trọn' : '⚡ Nhanh'}
+                    </span>
+                  </button>
+                )}
+
+                {hasBotsInMatch && onToggleBotVoice && !g.winner && (
+                  <button
+                    type="button"
+                    className="hud-popover-row"
+                    onClick={onToggleBotVoice}
+                  >
+                    <span>🤖 Giọng tranh biện Bot</span>
+                    <span className="hud-popover-chip">
+                      {botVoiceEnabled ? '🤖🔊 Bật' : '🤖🔇 Tắt'}
+                    </span>
+                  </button>
+                )}
+
+                {!voicePregening && mcVoiceEnabled && (
+                  <button
+                    type="button"
+                    className="hud-popover-row"
+                    onClick={() => onRecheckVoice?.()}
+                  >
+                    <span>🔊 Máy chủ Giọng MC</span>
+                    <span className="hud-popover-chip">
+                      {vsStatusChecking
+                        ? '⏳ Kiểm tra...'
+                        : vsServerOffline
+                          ? 'MP3 Chuẩn (Thử lại)'
+                          : vsStatusReady
+                            ? '🟢 Sẵn sàng'
+                            : '🟡 Kết nối...'}
+                    </span>
+                  </button>
+                )}
+
+                {canOpenArchitect && (
+                  <button
+                    type="button"
+                    className="hud-popover-row"
+                    onClick={() => {
+                      setShowHudSettings(false);
+                      if (viewMode !== '3d') {
+                        setViewMode('3d');
+                        localStorage.setItem('ws_view_mode', '3d');
+                      }
+                      setOpenArchitectCounter((c) => c + 1);
+                    }}
+                  >
+                    <span>🏗️ Dựng Cảnh D5</span>
+                    <span className="hud-popover-chip">Dev</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           <FullscreenButton />
           {onLeave && (
             <button
@@ -1402,8 +1365,8 @@ export default function PlayingView({
             <EmojiReactions socketRef={socketRef} myName={me?.name} />
           )}
 
-          {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Floating Glass Dock cho cả 3D & 2D + Thợ Săn bắn trả thù) */}
-          {!isSpectator && !g.winner && (me?.alive || isMyHunterRevenge) && (
+          {/* Thanh Pill Kính Mờ 1 Hàng Ngang Siêu Gọn (Ẩn khi đang hiện Spotlight Lá Bài Định Mệnh role_reveal để chống lặp 2 thanh trên-dưới!) */}
+          {!isSpectator && !g.winner && (me?.alive || isMyHunterRevenge) && !(g.nightDayPhase === "role_reveal" && me?.role && !actionFeedback) && (
             <div className="action-panel compact-floating-dock">
               {/* Popover Lịch sử Tiên Tri (chỉ mở khi bấm nút 🔮 Đã soi) */}
               {showSeerPopover && seerHistory.length > 0 && (

@@ -50,7 +50,7 @@ export default function DevSandbox({ socketRef, room }) {
 
   if (!open) {
     return (
-      <div className="dev-sandbox-root">
+      <div className={`dev-sandbox-root ${isLobby ? "in-room-lobby" : "in-match"}`}>
         <button
           type="button"
           className="dev-sandbox-pill"
@@ -67,7 +67,7 @@ export default function DevSandbox({ socketRef, room }) {
   }
 
   return (
-    <div className="dev-sandbox-root">
+    <div className={`dev-sandbox-root ${isLobby ? "in-room-lobby" : "in-match"}`}>
       <div className="dev-sandbox-panel">
         <div className="dev-panel-header">
           <div className="dev-panel-title">🛠️ Dev Sandbox (Local)</div>

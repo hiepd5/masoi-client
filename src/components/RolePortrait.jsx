@@ -23,10 +23,11 @@ export default function RolePortrait({
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const safeKey = roleKey || "villager_cloak";
-  const src =
+  const rawSrc =
     mode === "card"
       ? ROLE_PORTRAIT_CARDS[safeKey] || ROLE_PORTRAIT_CARDS.villager_cloak
       : ROLE_PORTRAIT_BADGES[safeKey] || ROLE_PORTRAIT_BADGES.villager_cloak;
+  const src = rawSrc ? (rawSrc.includes("?") ? rawSrc : `${rawSrc}?v=44`) : null;
   const accent = ROLE_COLORS[safeKey] || "#d9a441";
   const label = alt || ROLE_LABELS[safeKey] || "Nhân vật";
 

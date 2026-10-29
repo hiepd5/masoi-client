@@ -4,32 +4,74 @@
    ========================================================================== */
 
 :root {
-  --arcane-obsidian: rgba(10, 14, 28, 0.9);
-  --arcane-obsidian-deep: rgba(6, 9, 20, 0.95);
-  --arcane-bronze: rgba(217, 164, 65, 0.36);
+  --arcane-obsidian: rgba(10, 14, 26, 0.82);
+  --arcane-obsidian-deep: rgba(6, 9, 19, 0.94);
+  --arcane-bronze: rgba(217, 164, 65, 0.34);
   --arcane-bronze-strong: rgba(245, 194, 92, 0.72);
-  --arcane-glow-gold: 0 12px 38px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(254, 240, 138, 0.12);
+  --arcane-glow-gold: 0 18px 48px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(254, 240, 138, 0.12);
   --font-ui: "Be Vietnam Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-display: "Cinzel", "Be Vietnam Pro", Georgia, serif;
+  --font-display: "Spectral", "Cormorant Garamond", "Be Vietnam Pro", Georgia, serif;
+  --font-arcane-display: "Spectral", "Cormorant Garamond", "Be Vietnam Pro", Georgia, serif;
 }
 
 body {
   font-family: var(--font-ui);
-  background: radial-gradient(circle at 50% 8%, rgba(30, 41, 82, 0.45) 0%, #050812 68%);
+  background: #050811;
 }
 
-/* --- HOME / LOBBY ARCANE GLASS & SINGLE-CONTEXT HERO BACKDROP --- */
+/* --- HOME / LOBBY UE5 3D VILLAGE CINEMATIC BACKDROP (0% WebGL overhead on Home) --- */
 .home-arcane-backdrop {
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
+  background: #04070f;
+}
+
+.home-arcane-keyart {
+  position: absolute;
+  inset: -2%;
+  background-image: url("/backgrounds/home_bloodmoon_village.webp");
+  background-size: cover;
+  background-position: center 34%;
+  filter: saturate(1.08) contrast(1.04) brightness(0.68);
+  transform-origin: center center;
+  animation: homeKeyArtBreath 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.home-arcane-vignette {
+  position: absolute;
+  inset: 0;
   background:
-    radial-gradient(ellipse 70% 45% at 50% 8%, rgba(217, 164, 65, 0.13) 0%, transparent 65%),
-    radial-gradient(ellipse 55% 40% at 85% 22%, rgba(99, 102, 241, 0.14) 0%, transparent 62%),
-    radial-gradient(ellipse 65% 42% at 15% 88%, rgba(220, 38, 38, 0.11) 0%, transparent 64%),
-    linear-gradient(180deg, #060916 0%, #090e1e 55%, #04060d 100%);
+    radial-gradient(ellipse 78% 68% at 50% 38%, rgba(8, 12, 24, 0.22) 0%, rgba(5, 8, 18, 0.78) 72%, rgba(3, 5, 12, 0.94) 100%),
+    linear-gradient(180deg, rgba(4, 7, 16, 0.62) 0%, rgba(6, 10, 22, 0.28) 38%, rgba(4, 6, 14, 0.88) 100%);
+}
+
+@keyframes homeKeyArtBreath {
+  from { transform: scale(1); }
+  to { transform: scale(1.045); }
+}
+
+.home-arcane-ember {
+  position: absolute;
+  bottom: -16px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fef08a 0%, #f97316 58%, transparent 100%);
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.8);
+  opacity: 0;
+  animation: emberFloatUp 9s ease-in infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes emberFloatUp {
+  0% { transform: translate3d(0, 0, 0) scale(0.7); opacity: 0; }
+  18% { opacity: 0.78; }
+  75% { opacity: 0.45; }
+  100% { transform: translate3d(28px, -72vh, 0) scale(0.25); opacity: 0; }
 }
 
 .home-arcane-rune-halo {
@@ -174,15 +216,15 @@ body {
 .role-thumb-art.has-studio-portrait {
   position: relative;
   padding: 0 !important;
-  min-height: 112px;
+  min-height: 122px;
   overflow: hidden;
 }
 
 .role-thumb-studio-img {
   width: 100%;
-  height: 116px;
+  height: 124px;
   object-fit: cover;
-  object-position: center 14%;
+  object-position: center 12%;
   display: block;
   transition: transform 0.24s ease;
 }
@@ -327,38 +369,40 @@ body {
 .citizen-mini-card {
   width: 100%;
   margin: 0;
-  padding: 6px 4px;
+  padding: 5px 4px 6px;
   border-radius: 12px;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1.5px solid rgba(148, 163, 184, 0.24);
+  gap: 5px;
+  background: rgba(11, 16, 30, 0.82);
+  border: 1.5px solid rgba(148, 163, 184, 0.22);
   color: #cbd5e1;
   transition: all 0.16s ease;
   position: relative;
 }
 
 .citizen-mini-card:hover {
-  border-color: rgba(245, 194, 92, 0.55);
-  transform: translateY(-1px);
+  border-color: rgba(245, 194, 92, 0.6);
+  transform: translateY(-1.5px);
 }
 
 .citizen-mini-card.selected {
-  background: radial-gradient(circle at 50% 25%, rgba(245, 158, 11, 0.24), rgba(15, 23, 42, 0.92));
+  background: radial-gradient(circle at 50% 25%, rgba(245, 158, 11, 0.28), rgba(15, 23, 42, 0.94));
   border-color: #fbbf24;
   color: #fef08a;
-  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.26);
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.28);
 }
 
 .citizen-mini-thumb {
-  width: 46px;
-  height: 46px;
-  border-radius: 50%;
+  width: 100%;
+  max-width: 64px;
+  height: 62px;
+  border-radius: 9px;
   object-fit: cover;
-  border: 1.5px solid rgba(254, 240, 138, 0.35);
+  object-position: center 14%;
+  border: 1.5px solid rgba(254, 240, 138, 0.32);
   background: #090d16;
 }
 
@@ -848,29 +892,160 @@ body {
 
 .role-reveal-spotlight-title {
   font-family: var(--font-arcane-display);
-  font-size: 1rem;
+  font-size: 1.06rem;
   font-weight: 800;
   color: #fffbeb;
 }
 
 .role-reveal-spotlight-desc {
-  font-size: 0.74rem;
+  font-size: 0.76rem;
   color: #cbd5e1;
-  line-height: 1.32;
+  line-height: 1.36;
 }
 
 .role-reveal-ready-cta {
+  width: auto !important;
+  margin: 0 !important;
   flex-shrink: 0;
-  padding: 7px 12px;
+  padding: 9px 15px !important;
   border-radius: 10px;
-  border: 1px solid rgba(253, 224, 71, 0.65);
-  background: linear-gradient(135deg, #f59e0b, #b45309);
+  border: 1px solid rgba(253, 224, 71, 0.72);
+  background: linear-gradient(135deg, #fbbf24, #d97706);
   color: #090d16;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.35);
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.42);
+}
+
+/* Chống hiện lặp 2 nút 🎙️ Bật Voice ngang hàng nhau trên Desktop khi chưa nối đàm thoại */
+@media (min-width: 861px) {
+  .voice-stage-floating-anchor .voice-quick-pill.join-cta {
+    display: none !important;
+  }
+}
+
+/* --- V4.5 TEEN DARK ACADEMIA ASSET SLOTS & TRIPO->BLENDER SPEC BADGES --- */
+.home-teen-slot-teaser {
+  width: 100% !important;
+  margin: 2px 0 0 !important;
+  padding: 7px 10px !important;
+  border-radius: 11px !important;
+  background: linear-gradient(135deg, rgba(76, 29, 149, 0.36), rgba(15, 23, 42, 0.88)) !important;
+  border: 1px solid rgba(192, 132, 252, 0.48) !important;
+  color: #f3e8ff !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.home-teen-slot-teaser:hover {
+  transform: translateY(-1px);
+  border-color: rgba(233, 213, 255, 0.85) !important;
+  box-shadow: 0 6px 18px rgba(139, 92, 246, 0.28);
+}
+
+.teen-teaser-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  background: linear-gradient(135deg, #c084fc, #7c3aed);
+  color: #090d16;
+  flex-shrink: 0;
+}
+
+.teen-teaser-text {
+  flex: 1;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #e9d5ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.teen-teaser-arrow {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #fde047;
+}
+
+.avatar-vault-grid.teen-academy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .avatar-vault-grid.teen-academy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.avatar-vault-card.is-teen-slot {
+  border-style: solid;
+  border-color: rgba(168, 85, 247, 0.42);
+  background: linear-gradient(180deg, rgba(30, 20, 56, 0.78), rgba(11, 15, 29, 0.94));
+}
+
+.avatar-vault-card.is-teen-slot:hover {
+  border-color: rgba(216, 180, 254, 0.82);
+  transform: translateY(-2px);
+}
+
+.vault-teen-slot-art {
+  position: relative;
+  height: 118px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(168, 85, 247, 0.28), rgba(9, 13, 26, 0.95) 72%);
+  overflow: hidden;
+}
+
+.teen-slot-emblem {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(216, 180, 254, 0.55);
+  box-shadow: 0 0 18px rgba(168, 85, 247, 0.32);
+}
+
+.teen-slot-status-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  background: rgba(88, 28, 135, 0.55);
+  border: 1px solid rgba(216, 180, 254, 0.48);
+  color: #f3e8ff;
+}
+
+.teen-slot-spec-code {
+  margin-top: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(6, 9, 19, 0.78);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  font-family: monospace;
+  font-size: 0.64rem;
+  color: #fde68a;
+  word-break: break-all;
 }
 
 /* Dải Thẻ Suy Luận Cá Nhân 1-Chạm (100% Local Zero-Leak) */

@@ -7,8 +7,8 @@
  *    -> Tải 0 MB từ ván thứ 2 trở đi, vào bàn siêu tốc!
  * ============================================================================ */
 
-const SHELL_CACHE = "masoi-shell-v4.3.2";
-const ASSET_CACHE = "masoi-assets-v4.3";
+const SHELL_CACHE = "masoi-shell-v4.3.4";
+const ASSET_CACHE = "masoi-assets-v4.3.4";
 const ACTIVE_CACHES = [SHELL_CACHE, ASSET_CACHE];
 
 const IMMUTABLE_ASSET_RE = /\.(glb|gltf|bin|wasm|webp|png|jpg|jpeg|mp3|ogg|wav|woff2?)(\?.*)?$/i;
@@ -47,6 +47,7 @@ function isHeavyStaticAsset(urlObj) {
   if (
     p.startsWith("/models/") ||
     p.startsWith("/portraits/") ||
+    p.startsWith("/backgrounds/") ||
     p.startsWith("/avatars/") ||
     p.startsWith("/audio/") ||
     p.startsWith("/draco/")

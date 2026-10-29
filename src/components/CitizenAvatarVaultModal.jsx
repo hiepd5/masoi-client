@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   BUILTIN_VILLAGER_AVATARS,
+  TEEN_ACADEMY_AVATAR_SLOTS,
   getCitizenAvatarCatalogSnapshot,
   loadCitizenAvatarCatalog,
   subscribeCitizenAvatarCatalog,
@@ -12,6 +13,11 @@ import {
  * - Nhóm 2: 12+ Ô Chờ Avatar 3D Người Thật (tự động mở khóa không giới hạn khi nạp file .glb qua
  *   UPDATE_AVATARS_3D.bat hoặc đồng bộ từ Database User users.citizen_model_id trong tương lai).
  */
+function withPortraitVer(url) {
+  if (!url) return "/portraits/badges/villager_cloak.webp?v=44";
+  return url.startsWith("/portraits/") && !url.includes("?") ? `${url}?v=44` : url;
+}
+
 export default function CitizenAvatarVaultModal({
   open,
   onClose,
@@ -34,6 +40,10 @@ export default function CitizenAvatarVaultModal({
   if (!open) return null;
 
   const builtinList = catalog?.builtinVillagers || BUILTIN_VILLAGER_AVATARS;
+  const teenList = catalog?.teenAcademyAvatars || TEEN_ACADEMY_AVATAR_SLOTS;
+  const readyTeenCount = teenList.filter(
+    (item) => item.status === "ready" && Boolean(item.glbUrl)
+  ).length;
   const customList = catalog?.customHumanAvatars || [];
   const readyHumanCount = customList.filter(
     (item) => item.status === "ready" && Boolean(item.glbUrl)
@@ -85,7 +95,7 @@ export default function CitizenAvatarVaultModal({
                   >
                     <div className="vault-card-art">
                       <img
-                        src={item.portraitCard || item.portraitBadge}
+                        src={withPortraitVer(item.portraitCard || item.portraitBadge)}
                         alt={item.label}
                         loading="lazy"
                       />
@@ -95,6 +105,66 @@ export default function CitizenAvatarVaultModal({
                     <div className="vault-card-meta">
                       <div className="vault-card-name">{item.label}</div>
                       <div className="vault-card-desc">{item.desc}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* NHÓM 1B: 6 CỔNG CHỜ THẾ HỆ HỌC VIỆN TEEN 3D (TRIPO -> BLENDER -> WEB HOT-SWAP) */}
+          <div className="avatar-vault-section">
+            <div className="avatar-vault-sec-head">
+              <span className="sec-title">
+                🎓 Thế Hệ Học Viện Teen 3D (6 Cổng Chờ Tripo → Blender → .GLB)
+              </span>
+              <span className={`sec-pill ${readyTeenCount > 0 ? "ready" : "reserved"}`}>
+                {readyTeenCount > 0
+                  ? `${readyTeenCount}/6 Đã nạp .GLB`
+                  : "6 Cổng Hot-Swap"}
+              </span>
+            </div>
+
+            <div className="avatar-vault-db-note">
+              ✨ Bấm chọn thử ngay (mượn tạm Proxy 3D có xương sẵn, 0 lỗi `404`). Khi bạn chạy `OPTIMIZE_TRIPO_BLENDER.bat` và thả đúng tên file `char_teen_*.glb` vào `client/public/models/characters/`, ghế 3D sẽ tự động thay model Teen thật 1:1!
+            </div>
+
+            <div className="avatar-vault-grid teen-academy-grid">
+              {teenList.map((item) => {
+                const isNativeReady = item.status === "ready" && Boolean(item.glbUrl);
+                const isSelected = selectedId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`avatar-vault-card is-ready is-teen-slot ${isSelected ? "selected" : ""}`}
+                    onClick={() => handleChoose(item.id)}
+                    title={`${item.label} — ${item.expectedGlb} (${item.specNote})`}
+                  >
+                    {isNativeReady ? (
+                      <div className="vault-card-art">
+                        <img
+                          src={withPortraitVer(item.portraitCard || item.portraitBadge)}
+                          alt={item.label}
+                          loading="lazy"
+                        />
+                        <span className="vault-card-tag tag-human">🎓 Teen .GLB</span>
+                        {isSelected && <span className="vault-card-check">✓ Đang chọn</span>}
+                      </div>
+                    ) : (
+                      <div className="vault-teen-slot-art">
+                        <div className="teen-slot-emblem">{item.emblem || "🎓"}</div>
+                        <span className="teen-slot-status-pill">
+                          {isSelected ? "✓ Đang dùng Proxy 3D" : "⏳ Cổng chờ .GLB"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="vault-card-meta">
+                      <div className="vault-card-name">{item.label}</div>
+                      <div className="vault-card-desc">{item.desc}</div>
+                      <div className="teen-slot-spec-code">
+                        {item.expectedGlb} • {item.specNote}
+                      </div>
                     </div>
                   </button>
                 );
@@ -135,7 +205,9 @@ export default function CitizenAvatarVaultModal({
                     >
                       <div className="vault-card-art">
                         <img
-                          src={item.portraitCard || item.portraitBadge || "/portraits/badges/villager_cloak.webp"}
+                          src={withPortraitVer(
+                            item.portraitCard || item.portraitBadge || "/portraits/badges/villager_cloak.webp"
+                          )}
                           alt={item.label}
                           loading="lazy"
                         />

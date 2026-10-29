@@ -6,6 +6,18 @@
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+.dev-sandbox-root.in-room-lobby {
+  bottom: 82px;
+}
+
+@media (max-width: 960px) {
+  .dev-sandbox-root.in-room-lobby {
+    bottom: auto;
+    top: 108px;
+    left: 10px;
+  }
+}
+
 .dev-sandbox-pill {
   width: auto !important;
   display: inline-flex;

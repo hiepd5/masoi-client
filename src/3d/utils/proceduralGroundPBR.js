@@ -27,8 +27,21 @@ export function getProceduralGroundAssets() {
   cobBumpCanvas.height = cobSize;
   const bCtx = cobBumpCanvas.getContext("2d");
 
+  const cobNormalCanvas = document.createElement("canvas");
+  cobNormalCanvas.width = cobSize;
+  cobNormalCanvas.height = cobSize;
+  const nCtx = cobNormalCanvas.getContext("2d");
+
+  const cobRoughCanvas = document.createElement("canvas");
+  cobRoughCanvas.width = cobSize;
+  cobRoughCanvas.height = cobSize;
+  const rCtx = cobRoughCanvas.getContext("2d");
+
   const cImg = cCtx.createImageData(cobSize, cobSize);
   const bImg = bCtx.createImageData(cobSize, cobSize);
+  const nImg = nCtx.createImageData(cobSize, cobSize);
+  const rImg = rCtx.createImageData(cobSize, cobSize);
+  const heightField = new Float32Array(cobSize * cobSize);
 
   const gridN = 10; // 10x10 viên đá cổ mỗi ô lặp (lặp tuần hoàn 2 chiều không vết nối)
   const cellPts = [];
@@ -95,26 +108,79 @@ export function getProceduralGroundAssets() {
       cImg.data[idx + 3] = 255;
 
       const bv = Math.max(0, Math.min(255, bumpVal));
+      heightField[py * cobSize + px] = bv / 255;
       bImg.data[idx] = bv;
       bImg.data[idx + 1] = bv;
       bImg.data[idx + 2] = bv;
       bImg.data[idx + 3] = 255;
+
+      // Wet Dew Roughness: Đỉnh viên đá ướt sương bóng mượt (0.36..0.52) bắt ánh lửa vàng, khe rêu mờ (0.94)
+      const stoneWetness = 0.36 + (1 - bestCell.tone) * 0.16;
+      const roughFloat = stoneWetness * edge + 0.94 * mortarMoss + (grain / 255) * 0.05;
+      const rv = Math.max(68, Math.min(248, Math.round(roughFloat * 255)));
+      rImg.data[idx] = rv;
+      rImg.data[idx + 1] = rv;
+      rImg.data[idx + 2] = rv;
+      rImg.data[idx + 3] = 255;
     }
   }
+
+  // Sinh Tangent-Space RGB Normal Map thật từ trường độ cao tuần hoàn 2 chiều
+  const normalStrength = 2.85;
+  for (let py = 0; py < cobSize; py++) {
+    const pyUp = (py - 1 + cobSize) % cobSize;
+    const pyDn = (py + 1) % cobSize;
+    for (let px = 0; px < cobSize; px++) {
+      const pxLt = (px - 1 + cobSize) % cobSize;
+      const pxRt = (px + 1) % cobSize;
+      const hL = heightField[py * cobSize + pxLt];
+      const hR = heightField[py * cobSize + pxRt];
+      const hU = heightField[pyUp * cobSize + px];
+      const hD = heightField[pyDn * cobSize + px];
+
+      let nx = (hL - hR) * normalStrength;
+      let ny = (hD - hU) * normalStrength;
+      let nz = 1.0;
+      const invLen = 1.0 / Math.hypot(nx, ny, nz);
+      nx *= invLen;
+      ny *= invLen;
+      nz *= invLen;
+
+      const idx = (py * cobSize + px) * 4;
+      nImg.data[idx] = Math.round((nx * 0.5 + 0.5) * 255);
+      nImg.data[idx + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      nImg.data[idx + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      nImg.data[idx + 3] = 255;
+    }
+  }
+
   cCtx.putImageData(cImg, 0, 0);
   bCtx.putImageData(bImg, 0, 0);
+  nCtx.putImageData(nImg, 0, 0);
+  rCtx.putImageData(rImg, 0, 0);
 
   const cobbleColorMap = new THREE.CanvasTexture(cobColorCanvas);
   cobbleColorMap.wrapS = THREE.RepeatWrapping;
   cobbleColorMap.wrapT = THREE.RepeatWrapping;
   cobbleColorMap.repeat.set(5, 5);
   cobbleColorMap.colorSpace = THREE.SRGBColorSpace;
-  cobbleColorMap.anisotropy = 4;
+  cobbleColorMap.anisotropy = 8;
 
   const cobbleBumpMap = new THREE.CanvasTexture(cobBumpCanvas);
   cobbleBumpMap.wrapS = THREE.RepeatWrapping;
   cobbleBumpMap.wrapT = THREE.RepeatWrapping;
   cobbleBumpMap.repeat.set(5, 5);
+
+  const cobbleNormalMap = new THREE.CanvasTexture(cobNormalCanvas);
+  cobbleNormalMap.wrapS = THREE.RepeatWrapping;
+  cobbleNormalMap.wrapT = THREE.RepeatWrapping;
+  cobbleNormalMap.repeat.set(5, 5);
+  cobbleNormalMap.anisotropy = 4;
+
+  const cobbleRoughnessMap = new THREE.CanvasTexture(cobRoughCanvas);
+  cobbleRoughnessMap.wrapS = THREE.RepeatWrapping;
+  cobbleRoughnessMap.wrapT = THREE.RepeatWrapping;
+  cobbleRoughnessMap.repeat.set(5, 5);
 
   // 2. VÂN ĐẤT RỪNG RÊU SẪM & LÁ THÔNG MỤC LIỀN MẠCH (256x256 lặp 18x18 cho nền 60m)
   const forSize = 256;
@@ -194,6 +260,8 @@ export function getProceduralGroundAssets() {
   cachedGroundAssets = {
     cobbleColorMap,
     cobbleBumpMap,
+    cobbleNormalMap,
+    cobbleRoughnessMap,
     forestColorMap,
     forestBumpMap,
     contactAOMap,

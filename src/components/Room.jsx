@@ -53,9 +53,23 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   // Drawer tabs bên phải Sảnh 3D: 'roles' | 'chat' + nút thu gọn để ngắm 3D 100% màn hình
   const [mobileTab, setMobileTab] = useState("roles");
   const [drawerOpen, setDrawerOpen] = useState(true);
+  const [showAdvancedSetup, setShowAdvancedSetup] = useState(false);
+  const [showRoomSettings, setShowRoomSettings] = useState(false);
+  const roomSettingsRef = useRef(null);
   const [lobbyView3D, setLobbyView3D] = useState(() => (localStorage.getItem("ws_view_mode") || "3d") !== "2d");
   const [lobbyBubbleLog, setLobbyBubbleLog] = useState({});
   const [hasUnreadChat, setHasUnreadChat] = useState(false);
+
+  useEffect(() => {
+    if (!showRoomSettings) return undefined;
+    const onPointerDownOutside = (e) => {
+      if (roomSettingsRef.current && !roomSettingsRef.current.contains(e.target)) {
+        setShowRoomSettings(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDownOutside);
+    return () => document.removeEventListener("pointerdown", onPointerDownOutside);
+  }, [showRoomSettings]);
 
   // Lobby chat
   const [chatInput, setChatInput] = useState("");
@@ -1183,12 +1197,18 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         : [
             {
               id: DEFAULT_SCENE_PRESET_ID,
-              name: "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
-              nodeCount: 141,
+              name: "🌲 Làng Sương Bắc Âu",
+              shortLabel: "Làng Sương",
+              thumbnailUrl: "/backgrounds/preset_nordic_mist.webp",
+              nodeCount: 154,
             },
           ];
     const activeSceneMeta =
       effectivePresets.find((p) => p.id === activeScenePresetId) || effectivePresets[0];
+    const withPortraitVer = (rawUrl) => {
+      if (!rawUrl) return "/portraits/badges/villager_cloak.webp?v=44";
+      return rawUrl.startsWith("/portraits/") && !rawUrl.includes("?") ? `${rawUrl}?v=44` : rawUrl;
+    };
 
     // Điều kiện bắt đầu game (Hỗ trợ cả Đủ Người lẫn Chơi 1 Mình Tự Bù AI Bot!)
     const totalPlayers = room.players.length;
@@ -1261,7 +1281,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                     <div className="seat-wolf-icon">
                       {p ? (
                         <img
-                          src={citizenMeta?.portraitBadge || "/portraits/badges/villager_cloak.webp"}
+                          src={withPortraitVer(citizenMeta?.portraitBadge || "/portraits/badges/villager_cloak.webp")}
                           alt={p.name}
                           style={{
                             width: 38,
@@ -1289,218 +1309,177 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         )}
       </div>
 
-      {/* ==================== 2. THANH KÍNH MỜ TRÊN ĐỈNH (MÃ PHÒNG + CHỈ SỐ + NÚT THU GỌN BẢNG VAI) ==================== */}
-      <header className="lobby-3d-topbar">
+      {/* ==================== 2. THANH KÍNH MỜ TRÊN ĐỈNH V4.4 (5 CỤM GỌN GÀNG + MENU CÀI ĐẶT ⚙️) ==================== */}
+      <header className="lobby-3d-topbar v44-clean-topbar">
+        {/* CỤM 1: MÃ PHÒNG + LINK MỜI + NHÃN BẢO MẬT NHỎ */}
         <div className="lobby-header-left">
-          <div className="lobby-room-code-badge" onClick={copyRoomCode} title="Nhấn để copy mã phòng mời bạn bè">
+          <div className="lobby-room-code-badge" onClick={copyRoomCode} title="Nhấn để sao chép mã bàn">
             <span className="code-text">{room.code}</span>
-            <span className="copy-hint">{copiedCode ? "✅ Đã copy!" : "📋 Copy"}</span>
+            <span className="copy-hint">{copiedCode ? "✅" : "📋"}</span>
           </div>
           <button
             type="button"
-            className="lobby-privacy-chip"
+            className={`btn-invite-compact ${copiedLink ? "copied" : ""}`}
             onClick={copyInviteLink}
-            title="Sao chép đường dẫn 1-Click gửi bạn bè (vào thẳng phòng hoặc hàng chờ khán giả)"
-            style={{
-              width: "auto",
-              margin: 0,
-              cursor: "pointer",
-              background: copiedLink ? "rgba(16, 185, 129, 0.25)" : "rgba(217, 164, 65, 0.2)",
-              border: copiedLink ? "1px solid rgba(52, 211, 153, 0.65)" : "1px solid rgba(245, 194, 92, 0.55)",
-              color: copiedLink ? "#a7f3d0" : "#fef08a",
-              fontWeight: 800,
-            }}
+            title="Sao chép liên kết mời bạn bè vào thẳng bàn"
           >
-            {copiedLink ? "✅ Đã chép Link!" : "🔗 Link Mời"}
+            <span>{copiedLink ? "✅ Đã chép" : "🔗 Mời"}</span>
+            <span className="invite-mode-dot" title={roomAccessMode === "hidden" ? "Phòng ẩn" : roomAccessMode === "password" ? "Có mật khẩu" : "Công khai"}>
+              {roomAccessMode === "hidden" ? "🕵️" : roomAccessMode === "password" ? "🔐" : "🌍"}
+            </span>
           </button>
-          <span
-            className={`lobby-privacy-chip mode-${roomAccessMode}`}
-            title={
-              roomAccessMode === "hidden"
-                ? "Phòng ẩn khỏi trang chủ — chỉ vào được bằng Mã 5 ký tự"
-                : roomAccessMode === "password"
-                  ? "Phòng có khóa mật khẩu"
-                  : "Phòng mở công khai trên trang chủ"
-            }
-          >
-            {roomAccessMode === "hidden"
-              ? "🕵️ Phòng ẩn (Gửi mã)"
-              : roomAccessMode === "password"
-                ? "🔐 Có mật khẩu"
-                : "🌍 Công khai"}
-          </span>
           {room.isTurbo && (
-            <span
-              className="lobby-privacy-chip"
-              title="Chế độ Tốc Chiến 5 Phút: Thảo luận 75s • Đề cử 20s • Biện hộ 35s • Bỏ phiếu 20s"
-              style={{
-                background: "rgba(245, 158, 11, 0.24)",
-                border: "1px solid rgba(251, 191, 36, 0.65)",
-                color: "#fef08a",
-              }}
-            >
-              ⚡ Tốc Chiến 5 Phút
+            <span className="lobby-turbo-mini" title="Chế độ Tốc Chiến 5 Phút">
+              ⚡ 5p
             </span>
           )}
         </div>
 
+        {/* CỤM 2: 1 VIÊN THUỐC THỐNG KÊ HỢP NHẤT */}
         <div className="lobby-header-center">
-          <div className="lobby-stat-chip">
-            👤 {realHumansCount} người{botCount > 0 ? ` + 🤖 ${botCount} Bot` : ""} / {seatRingTarget} ghế
+          <div className={`lobby-unified-capsule ${isRolesValidForStart && hasWolf ? "ok" : "warn"}`}>
+            <span>👥 {totalPlayers}/{seatRingTarget} ghế</span>
+            <span className="capsule-sep">•</span>
+            <span>
+              🎭 {totalRoles} vai{missingBotsToFill > 0 ? ` (+${missingBotsToFill} 🤖)` : ""}
+            </span>
+            {totalPlayers > 1 && (
+              <>
+                <span className="capsule-sep">•</span>
+                <span>🟢 {readyCount}/{totalPlayers}</span>
+              </>
+            )}
           </div>
-          <div className={`lobby-stat-chip ${isAllReady ? "ready-all" : ""}`}>
-            🟢 {readyCount}/{totalPlayers} sẵn sàng
-          </div>
-          <div className={`lobby-stat-chip ${isRolesValidForStart && hasWolf ? "roles-matched" : "roles-mismatch"}`}>
-            🎭 {totalRoles} vai{missingBotsToFill > 0 ? ` (Tự bù +${missingBotsToFill} 🤖)` : ""}
-          </div>
-        </div>
-
-        <div className="lobby-header-actions">
           {!import.meta.env.PROD && (
             <span
               className="local-dev-env-badge"
               title="Đang chạy bản kiểm thử Local nối thẳng http://localhost:3001 (Chưa đẩy lên Cloud)"
             >
-              🧪 LOCAL :3001
+              🧪 LOCAL
             </span>
           )}
+        </div>
+
+        {/* CỤM 3–5: MIC GIỮ NÓI + ĐÓNG/MỞ BỘ BÀI + ⚙️ CÀI ĐẶT + RỜI */}
+        <div className="lobby-header-actions">
           <VoiceQuickMicPill />
-          {(botCount > 0 || missingBotsToFill > 0) && room.canToggleMcPacing && (
-            <button
-              type="button"
-              className="btn-lobby-pill"
-              onClick={handleToggleMcPacing}
-              title={
-                effectiveMcPacingMode === "full"
-                  ? "Đang bật Nhịp Đọc Trọn (Thân thiện người mới): MC đọc hết từng câu dẫn mới chuyển pha. Bấm để sang Nhịp Nhanh!"
-                  : "Đang bật Nhịp Nhanh: Lướt nhanh qua các pha Bot. Bấm để bật Nhịp Đọc Trọn cho người mới!"
-              }
-              style={{
-                borderColor:
-                  effectiveMcPacingMode === "full"
-                    ? "rgba(56, 189, 248, 0.62)"
-                    : "rgba(251, 191, 36, 0.58)",
-                background:
-                  effectiveMcPacingMode === "full"
-                    ? "rgba(12, 74, 110, 0.44)"
-                    : "rgba(120, 53, 15, 0.36)",
-                color: effectiveMcPacingMode === "full" ? "#bae6fd" : "#fef08a",
-                fontWeight: 700,
-              }}
-            >
-              {effectiveMcPacingMode === "full" ? "🐢 Đọc Trọn" : "⚡ Nhịp Nhanh"}
-            </button>
-          )}
-          {(botCount > 0 || missingBotsToFill > 0) && (
-            <button
-              type="button"
-              className="btn-lobby-pill"
-              onClick={handleToggleBotVoice}
-              title={
-                botVoiceEnabled
-                  ? "Giọng nói riêng của 4 AI Bot đang BẬT (không trùng giọng MC) — Bấm để tắt tiếng Bot"
-                  : "Giọng nói riêng của AI Bot đang TẮT — Bấm để bật lại"
-              }
-              style={{
-                borderColor: botVoiceEnabled
-                  ? "rgba(167, 139, 250, 0.58)"
-                  : "rgba(148, 163, 184, 0.35)",
-                background: botVoiceEnabled
-                  ? "rgba(76, 29, 149, 0.38)"
-                  : "rgba(30, 41, 59, 0.45)",
-                color: botVoiceEnabled ? "#ddd6fe" : "#94a3b8",
-                fontWeight: 700,
-              }}
-            >
-              {botVoiceEnabled ? "🤖🔊 Voice Bot" : "🤖🔇 Tắt Bot"}
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn-lobby-pill"
-            onClick={handleManualRecheckVoice}
-            title={
-              vsServerOffline
-                ? "Máy chủ VoiceStudio cá nhân đang tắt (vẫn phát MP3 tĩnh tiếng Việt, 0% tiếng Anh) — Bấm để kiểm tra lại ngay!"
-                : "Máy chủ Voice Clone cá nhân (RTX 3090) đang trực tuyến sẵn sàng — Bấm để làm mới trạng thái"
-            }
-            style={{
-              borderColor: vsServerOffline
-                ? "rgba(248, 113, 113, 0.55)"
-                : "rgba(52, 211, 153, 0.55)",
-              background: vsServerOffline
-                ? "rgba(127, 29, 29, 0.42)"
-                : "rgba(6, 78, 59, 0.38)",
-              color: vsServerOffline ? "#fecaca" : "#a7f3d0",
-              fontWeight: 700,
-            }}
-          >
-            {vsStatusChecking
-              ? "⏳ Đang kiểm tra Voice..."
-              : vsServerOffline
-                ? "🔴 Voice Offline (Bấm thử lại)"
-                : vsStatusReady
-                  ? "🟢 Voice Clone Sẵn Sàng"
-                  : "🟡 Đang kết nối Voice..."}
-          </button>
-
-          <button
-            type="button"
-            className="btn-lobby-pill"
-            onClick={() => setShowAvatarVault(true)}
-            title="Đổi nhân vật Dân Làng 3D ngồi ghế hoặc mở Kho Avatar 3D Người Thật Cá Nhân Hóa"
-            style={{
-              borderColor: "rgba(245, 194, 92, 0.58)",
-              background: "rgba(120, 53, 15, 0.36)",
-              color: "#fef08a",
-              fontWeight: 700,
-            }}
-          >
-            🎭 Đổi Nhân Vật
-          </button>
-
-          <button
-            type="button"
-            className="btn-lobby-pill"
-            onClick={() => {
-              const next = !lobbyView3D;
-              setLobbyView3D(next);
-              localStorage.setItem("ws_view_mode", next ? "3d" : "2d");
-            }}
-            title="Chuyển đổi Sảnh 3D hoặc Sảnh 2D siêu nhẹ"
-          >
-            {lobbyView3D ? "🎮 3D" : "⚡ 2D"}
-          </button>
 
           <button
             type="button"
             className={`btn-lobby-pill ${drawerOpen ? "active" : ""}`}
             onClick={() => setDrawerOpen((v) => !v)}
-            title="Thu gọn hoặc mở rộng Bảng Thumbnail Vai Trò & Chat để ngắm toàn cảnh 3D"
+            title="Thu gọn bảng bên phải để ngắm toàn cảnh Làng 3D hoặc mở lại Bộ Bài"
           >
-            {drawerOpen ? "👁️ Ngắm 3D" : `🎭 Bảng Vai (${totalRoles}/${totalPlayers})`}
+            {drawerOpen ? "👁️ Ngắm 3D" : `🃏 Bộ Bài (${totalRoles})`}
             {!drawerOpen && hasUnreadChat && <span className="tab-unread-dot" />}
           </button>
 
-          {onOpenArchitectStudio && (
+          <div className="room-settings-popover-anchor" ref={roomSettingsRef}>
             <button
               type="button"
-              className="btn-lobby-architect"
-              onClick={onOpenArchitectStudio}
-              title="Mở Studio Cảnh Quan D5 độc lập toàn màn hình"
+              className={`btn-lobby-pill btn-gear-trigger ${showRoomSettings ? "active" : ""}`}
+              onClick={() => setShowRoomSettings((v) => !v)}
+              title="Đổi Nhân Vật 3D, Âm thanh MC/Bot & Chế độ hiển thị"
             >
-              🏗️ Studio D5
+              ⚙️ <span className="gear-label-desktop">Tùy chọn</span>
             </button>
-          )}
 
-          <button className="btn-header-leave" onClick={handleLeave}>
-            🚪 Rời
+            {showRoomSettings && (
+              <div className="room-settings-popover">
+                <div className="popover-section-title">Cài Đặt Nhanh Sảnh 3D</div>
+
+                <button
+                  type="button"
+                  className="popover-action-row highlight-gold"
+                  onClick={() => {
+                    setShowRoomSettings(false);
+                    setShowAvatarVault(true);
+                  }}
+                >
+                  <span>🎭 Đổi Diện Mạo Dân Làng 3D</span>
+                  <span className="popover-badge">Mở Kho</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="popover-action-row"
+                  onClick={() => {
+                    const next = !lobbyView3D;
+                    setLobbyView3D(next);
+                    localStorage.setItem("ws_view_mode", next ? "3d" : "2d");
+                  }}
+                >
+                  <span>🖥️ Chế độ hiển thị Sảnh</span>
+                  <span className="popover-badge">{lobbyView3D ? "🎮 3D Đầy Đủ" : "⚡ 2D Nhẹ"}</span>
+                </button>
+
+                {(botCount > 0 || missingBotsToFill > 0) && room.canToggleMcPacing && (
+                  <button
+                    type="button"
+                    className="popover-action-row"
+                    onClick={handleToggleMcPacing}
+                  >
+                    <span>🎙️ Nhịp đọc Quản Trò MC</span>
+                    <span className="popover-badge">
+                      {effectiveMcPacingMode === "full" ? "🐢 Đọc Trọn" : "⚡ Nhịp Nhanh"}
+                    </span>
+                  </button>
+                )}
+
+                {(botCount > 0 || missingBotsToFill > 0) && (
+                  <button
+                    type="button"
+                    className="popover-action-row"
+                    onClick={handleToggleBotVoice}
+                  >
+                    <span>🤖 Giọng tranh biện AI Bot</span>
+                    <span className="popover-badge">
+                      {botVoiceEnabled ? "🤖🔊 Đang Bật" : "🔇 Đang Tắt"}
+                    </span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="popover-action-row"
+                  onClick={handleManualRecheckVoice}
+                >
+                  <span>🔊 Máy chủ Giọng MC</span>
+                  <span className={`popover-badge ${vsServerOffline ? "warn" : "ok"}`}>
+                    {vsStatusChecking
+                      ? "⏳ Kiểm tra..."
+                      : vsServerOffline
+                        ? "MP3 Chuẩn (Thử lại)"
+                        : vsStatusReady
+                          ? "🟢 Sẵn sàng"
+                          : "🟡 Kết nối..."}
+                  </span>
+                </button>
+
+                {onOpenArchitectStudio && (
+                  <button
+                    type="button"
+                    className="popover-action-row"
+                    onClick={() => {
+                      setShowRoomSettings(false);
+                      onOpenArchitectStudio();
+                    }}
+                  >
+                    <span>🏗️ Studio Cảnh Quan D5</span>
+                    <span className="popover-badge">Dev</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <button className="btn-header-leave" onClick={handleLeave} title="Rời khỏi bàn">
+            🚪 <span className="leave-label-desktop">Rời</span>
           </button>
         </div>
       </header>
 
-      {/* ==================== 3. NGĂN KÍNH MỜ BÊN PHẢI: THUMBNAIL 12 VAI ĐỒNG BỘ + CHAT ==================== */}
+      {/* ==================== 3. NGĂN KÍNH MỜ BÊN PHẢI V4.4: 3 THẺ BẢN ĐỒ 3D + BỘ BÀI TAROT UE5 + CHAT ==================== */}
       {drawerOpen && (
         <aside className="lobby-3d-drawer">
           <div className="lobby-drawer-tabs">
@@ -1509,7 +1488,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
               className={`lobby-drawer-tab ${mobileTab === "roles" ? "active" : ""}`}
               onClick={() => setMobileTab("roles")}
             >
-              🎭 Bộ Bài Thumbnail ({totalRoles}/{totalPlayers})
+              🃏 Bộ Bài ({totalRoles} vai)
             </button>
             <button
               type="button"
@@ -1519,168 +1498,90 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 setHasUnreadChat(false);
               }}
             >
-              💬 Bàn Luận & Ghế ({lobbyMessages.length})
+              💬 Trò Chuyện ({lobbyMessages.length})
               {hasUnreadChat && <span className="tab-unread-dot" />}
+            </button>
+            <button
+              type="button"
+              className="lobby-drawer-mobile-min"
+              onClick={() => setDrawerOpen(false)}
+              title="Thu gọn để ngắm toàn cảnh Làng 3D"
+            >
+              ▾ 3D
             </button>
           </div>
 
           {mobileTab === "roles" ? (
             <div className="lobby-drawer-content">
-              {/* Bộ chọn Bối cảnh 3D cập nhật trực tiếp ngôi làng dưới nền */}
-              <div className="lobby-scene-bar">
-                <span className="scene-bar-label">🗺️ Bối cảnh 3D:</span>
-                {me?.isHost ? (
-                  <select
-                    className="scene-bar-select"
-                    value={activeScenePresetId}
-                    onChange={(e) => handleSelectScenePreset(e.target.value)}
-                  >
-                    {effectivePresets.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.nodeCount ?? 0} vật thể)
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <span className="scene-bar-readonly">
-                    {activeSceneMeta?.name || "🌲 Làng Bắc Âu V3"}
+              {/* 3 THẺ BẢN ĐỒ 3D TRỰC QUAN (Thay thế <select> thô) */}
+              <div className="scene-map-picker-block">
+                <div className="scene-map-header">
+                  <span className="scene-bar-label">🗺️ Không Gian Làng 3D</span>
+                  <span className="scene-active-caption">
+                    {activeSceneMeta?.name || "🌲 Làng Sương Bắc Âu"}
                   </span>
-                )}
-              </div>
-
-              {/* Thanh Bảo Mật Phòng & Điều Khiển AI Bot Chính Thức (Chủ Phòng) */}
-              {me?.isHost && (
-                <div className="lobby-access-bot-panel">
-                  <div className="lobby-access-row">
-                    <span className="mini-panel-label">🔒 Chế độ phòng:</span>
-                    <div className="lobby-mini-pills">
+                </div>
+                <div className="scene-map-cards-grid v45-map-grid">
+                  {effectivePresets.map((p) => {
+                    const isSelectedMap = p.id === activeScenePresetId;
+                    const mapThumb =
+                      p.thumbnailUrl ||
+                      (p.id === "dark_academia_courtyard"
+                        ? "/backgrounds/preset_dark_academia.webp"
+                        : p.id === "blood_moon_sanctuary"
+                          ? "/backgrounds/preset_blood_moon.webp"
+                          : p.id.includes("dau_truong")
+                            ? "/backgrounds/preset_stone_arena.webp"
+                            : "/backgrounds/preset_nordic_mist.webp");
+                    const shortTitle =
+                      p.shortLabel || p.name.replace(/^[^\s]+\s/, "").split("(")[0].trim();
+                    const isBlockoutMap = p.id === "dark_academia_courtyard" || p.slotMode === "blockout_ready";
+                    return (
                       <button
+                        key={p.id}
                         type="button"
-                        className={`mini-pill ${roomAccessMode === "public" && !showPwdEditor ? "active-pub" : ""}`}
-                        onClick={() => {
-                          setShowPwdEditor(false);
-                          handleChangeAccessMode("public");
-                        }}
+                        className={`scene-map-card ${isSelectedMap ? "selected" : ""} ${!me?.isHost ? "readonly" : ""}`}
+                        onClick={() => me?.isHost && handleSelectScenePreset(p.id)}
+                        disabled={!me?.isHost && !isSelectedMap}
+                        title={p.description || p.name}
                       >
-                        🌍 Công khai
+                        <img src={mapThumb} alt={shortTitle} className="scene-map-thumb" loading="lazy" />
+                        {isBlockoutMap && (
+                          <span className="scene-map-slot-pill">🧱 Box→GLB</span>
+                        )}
+                        <div className="scene-map-overlay">
+                          <span className="scene-map-name">{shortTitle}</span>
+                          {isSelectedMap && <span className="scene-map-check">✓</span>}
+                        </div>
                       </button>
-                      <button
-                        type="button"
-                        className={`mini-pill ${roomAccessMode === "password" || showPwdEditor ? "active-pwd" : ""}`}
-                        onClick={() => setShowPwdEditor((v) => !v)}
-                      >
-                        🔐 Mật khẩu
-                      </button>
-                      <button
-                        type="button"
-                        className={`mini-pill ${roomAccessMode === "hidden" && !showPwdEditor ? "active-hid" : ""}`}
-                        onClick={() => {
-                          setShowPwdEditor(false);
-                          handleChangeAccessMode("hidden");
-                        }}
-                      >
-                        🕵️ Phòng ẩn
-                      </button>
-                    </div>
-                  </div>
-
-                  {showPwdEditor && (
-                    <form
-                      className="lobby-pwd-inline-row"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        handleChangeAccessMode("password", pwdDraft);
-                      }}
-                    >
-                      <input
-                        type="password"
-                        value={pwdDraft}
-                        maxLength={32}
-                        onChange={(e) => setPwdDraft(e.target.value)}
-                        placeholder="Nhập mật khẩu mới cho phòng..."
-                        autoFocus
-                      />
-                      <button type="submit" className="btn-save-pwd">
-                        Lưu khóa
-                      </button>
-                    </form>
-                  )}
-
-                  <div className="lobby-access-row">
-                    <span className="mini-panel-label">🤖 Ghế AI Bot:</span>
-                    <div className="lobby-mini-pills">
-                      <button
-                        type="button"
-                        className="mini-pill bot-btn"
-                        onClick={() => handleManageBots("fill_roles")}
-                        title="Cân chỉnh ghế AI Bot khớp đúng tổng số vai của bàn (bảo toàn 100% số Sói & vai đặc biệt)"
-                      >
-                        ⚡ Khớp Bot ({totalRoles} ghế)
-                      </button>
-                      <button
-                        type="button"
-                        className="mini-pill bot-btn"
-                        onClick={() => handleManageBots("add", 1)}
-                        disabled={totalPlayers >= 18}
-                      >
-                        +1 Bot
-                      </button>
-                      {botCount > 0 && (
-                        <button
-                          type="button"
-                          className="mini-pill bot-btn"
-                          onClick={() => handleManageBots("remove", 1)}
-                          title="Bớt 1 AI Bot (giữ nguyên cấu hình Sói & vai trò)"
-                        >
-                          −1 Bot
-                        </button>
-                      )}
-                      {botCount > 0 && (
-                        <button
-                          type="button"
-                          className="mini-pill bot-clear"
-                          onClick={() => handleManageBots("clear")}
-                        >
-                          🗑️ Xóa Bot ({botCount})
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="lobby-access-row">
-                    <span className="mini-panel-label">⚡ Nhịp độ ván:</span>
-                    <div className="lobby-mini-pills">
-                      <button
-                        type="button"
-                        className="mini-pill"
-                        onClick={handleToggleTurbo}
-                        title="Rút gọn thời gian ban ngày (Thảo luận 75s, Đề cử 20s, Biện hộ 35s, Bỏ phiếu 20s) — trọn ván ~5 phút!"
-                        style={
-                          room.isTurbo
-                            ? {
-                                background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                                borderColor: "#fde047",
-                                color: "#0f172a",
-                                fontWeight: 800,
-                              }
-                            : undefined
-                        }
-                      >
-                        {room.isTurbo ? "⚡ Tốc Chiến 5 Phút: BẬT" : "🕐 Chuẩn (Bấm bật ⚡ 5 Phút)"}
-                      </button>
+                    );
+                  })}
+                  <div
+                    className="scene-map-card is-coming-slot"
+                    title="Cổng chờ Bản đồ Teen #5: Phố Đêm Neon Cyber-Folk — Sẵn sàng gắn preset & mô hình 3D trong bản cập nhật tới"
+                  >
+                    <img
+                      src="/backgrounds/preset_neon_market_slot.webp"
+                      alt="Phố Đêm Neon (Sắp mở)"
+                      className="scene-map-thumb"
+                      loading="lazy"
+                    />
+                    <span className="scene-map-slot-pill coming">⏳ Cổng chờ</span>
+                    <div className="scene-map-overlay">
+                      <span className="scene-map-name">🏮 Phố Đêm</span>
                     </div>
                   </div>
                 </div>
-              )}
+              </div>
 
-              {/* Thanh Chọn Vai Muốn Test Khi Đang Ở Phòng 1 Mình (Tự Khóa Công Bằng Khi Có Người Thứ 2!) */}
+              {/* DẢI VUỐT NGANG CHỌN VAI THỬ KHI Ở 1 MÌNH (0% thanh cuộn dọc lồng nhau!) */}
               {realHumansCount === 1 && (
-                <div className="solo-role-picker-box">
+                <div className="solo-role-picker-box clean-ribbon">
                   <div className="solo-role-picker-header">
-                    <span>🎯 Chơi 1 mình — Chọn vai muốn thử:</span>
-                    <span className="solo-fair-note">Tự khóa ngẫu nhiên nếu có người thứ 2 vào</span>
+                    <span>🎯 Đấu AI — Chọn vai bạn muốn hóa thân:</span>
+                    <span className="solo-fair-note">Tự khóa nếu thêm người thật</span>
                   </div>
-                  <div className="solo-role-chips">
+                  <div className="solo-role-chips horizontal-ribbon">
                     <button
                       type="button"
                       className={`solo-role-chip ${!activeSoloRole ? "selected" : ""}`}
@@ -1699,7 +1600,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                           onClick={() => handleSelectSoloRole(rk)}
                           style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                         >
-                          <RolePortrait roleKey={rk} size={20} />
+                          <RolePortrait roleKey={rk} size={18} />
                           <span>{rc.label}</span>
                         </button>
                       );
@@ -1708,128 +1609,232 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 </div>
               )}
 
-              {/* Thanh Thiết Lập Nhanh Quy Mô Bàn (6–18 Người) + Số Sói Tự Cân Bằng Nông Dân cho Chủ Phòng */}
+              {/* THANH QUY MÔ NHANH 1-CHẠM + NÚT MỞ RỘNG TÙY CHỈNH SÂU (PROGRESSIVE DISCLOSURE) */}
               {me?.isHost ? (
                 <>
-                  <div className="quick-scale-wolf-box">
-                    <div className="quick-scale-row">
-                      <span className="quick-scale-label">👥 Tổng số người (Bàn):</span>
-                      <div className="quick-scale-controls">
+                  <div className="deck-quick-toolbar">
+                    <div className="quick-size-pills">
+                      {[6, 8, 10, 12, 16].map((sz) => (
                         <button
+                          key={sz}
                           type="button"
-                          className="btn-quick-step"
-                          onClick={() => handleSetTableScale(totalRoles - 1)}
-                          disabled={totalRoles <= 6}
-                          title="Giảm tổng số người của bàn (tự cân bằng Nông Dân)"
+                          className={`quick-size-pill ${totalRoles === sz ? "active" : ""}`}
+                          onClick={() => handleSetTableScale(sz)}
+                          title={`Đặt quy mô bàn ${sz} người chơi`}
                         >
-                          −
+                          {sz}p
                         </button>
-                        <span className="quick-step-readout">{totalRoles} người</span>
-                        <button
-                          type="button"
-                          className="btn-quick-step"
-                          onClick={() => handleSetTableScale(totalRoles + 1)}
-                          disabled={totalRoles >= 18}
-                          title="Tăng tổng số người của bàn (tự cộng thêm Nông Dân)"
-                        >
-                          +
-                        </button>
-                        <div className="quick-size-pills">
-                          {[6, 8, 10, 12, 16].map((sz) => (
-                            <button
-                              key={sz}
-                              type="button"
-                              className={`quick-size-pill ${totalRoles === sz ? "active" : ""}`}
-                              onClick={() => handleSetTableScale(sz)}
-                              title={`Đặt bàn ${sz} người chơi`}
-                            >
-                              {sz}p
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      ))}
                     </div>
 
-                    <div className="quick-scale-row">
-                      <span className="quick-scale-label">🐺 Số lượng Ma Sói:</span>
-                      <div className="quick-scale-controls">
-                        <button
-                          type="button"
-                          className="btn-quick-step wolf"
-                          onClick={() => handleChangeTotalWolves(-1)}
-                          disabled={totalWolfTeam <= 1}
-                          title="Giảm 1 Sói (tự chuyển thành Nông Dân)"
-                        >
-                          −
-                        </button>
-                        <span className="quick-step-readout wolf">{totalWolfTeam} Sói</span>
-                        <button
-                          type="button"
-                          className="btn-quick-step wolf"
-                          onClick={() => handleChangeTotalWolves(1)}
-                          disabled={totalWolfTeam >= Math.min(8, Math.max(1, totalRoles - 1))}
-                          title="Tăng 1 Sói (tự trừ từ Nông Dân để giữ nguyên tổng người)"
-                        >
-                          +
-                        </button>
-                        <button
-                          type="button"
-                          className={`quick-alpha-pill ${(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "active" : ""}`}
-                          onClick={handleToggleAlphaWolf}
-                          title="Bật/tắt 1 Sói Đầu Đàn trong bầy Sói mà không làm lệch tổng số Sói"
-                        >
-                          👑 Đầu Đàn: {(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "CÓ" : "TẮT"}
-                        </button>
-                        <span className="quick-villager-chip" title="Nông Dân tự động bù trừ cân bằng">
-                          🧑‍🌾 Dân: x{Number(rolesConfig.villager) || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="roles-preset-bar compact">
-                    <div className="roles-preset-buttons">
+                    <div className="deck-quick-presets">
                       <button
                         type="button"
                         className="btn-preset-v33"
                         onClick={() => handlePresetRoles("v33")}
-                        title="Bật ngay Thợ Săn · Thần Tình Yêu · Sói Đầu Đàn · Trưởng Làng cân bằng!"
+                        title="Cân bằng tự động đủ Thợ Săn, Thần Tình Yêu, Sói Đầu Đàn, Trưởng Làng"
                       >
-                        🔥 Mở Rộng V3.3 ({Math.max(8, totalRoles, totalPlayers)}p)
+                        🔥 Đủ Vai
                       </button>
                       <button
                         type="button"
                         className="btn-preset-default"
                         onClick={() => handlePresetRoles("classic")}
-                        title="Áp dụng bộ vai cổ điển theo quy mô hiện tại"
+                        title="Bộ vai cổ điển dễ làm quen"
                       >
                         ⚖️ Cổ Điển
                       </button>
                       <button
                         type="button"
-                        className="btn-preset-autofill"
-                        onClick={handleAutoFillVillagers}
-                        title="Tự động bù Nông Dân cho khớp số ghế"
+                        className={`btn-toggle-adv-setup ${showAdvancedSetup ? "active" : ""}`}
+                        onClick={() => setShowAdvancedSetup((v) => !v)}
+                        title="Mở tùy chỉnh chi tiết Số Sói, AI Bot, Mật khẩu & Tốc chiến"
                       >
-                        ➕ Bù Dân
+                        🎛️ {showAdvancedSetup ? "Thu gọn" : "Tùy chỉnh"}
                       </button>
                     </div>
                   </div>
+
+                  {showAdvancedSetup && (
+                    <div className="advanced-setup-drawer">
+                      <div className="quick-scale-row">
+                        <span className="quick-scale-label">👥 Quy mô bàn:</span>
+                        <div className="quick-scale-controls">
+                          <button
+                            type="button"
+                            className="btn-quick-step"
+                            onClick={() => handleSetTableScale(totalRoles - 1)}
+                            disabled={totalRoles <= 6}
+                          >
+                            −
+                          </button>
+                          <span className="quick-step-readout">{totalRoles} người</span>
+                          <button
+                            type="button"
+                            className="btn-quick-step"
+                            onClick={() => handleSetTableScale(totalRoles + 1)}
+                            disabled={totalRoles >= 18}
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-preset-autofill"
+                            onClick={handleAutoFillVillagers}
+                            title="Bù Nông Dân khớp ghế"
+                          >
+                            ➕ Bù Dân (x{Number(rolesConfig.villager) || 0})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="quick-scale-row">
+                        <span className="quick-scale-label">🐺 Phe Ma Sói:</span>
+                        <div className="quick-scale-controls">
+                          <button
+                            type="button"
+                            className="btn-quick-step wolf"
+                            onClick={() => handleChangeTotalWolves(-1)}
+                            disabled={totalWolfTeam <= 1}
+                          >
+                            −
+                          </button>
+                          <span className="quick-step-readout wolf">{totalWolfTeam} Sói</span>
+                          <button
+                            type="button"
+                            className="btn-quick-step wolf"
+                            onClick={() => handleChangeTotalWolves(1)}
+                            disabled={totalWolfTeam >= Math.min(8, Math.max(1, totalRoles - 1))}
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            className={`quick-alpha-pill ${(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "active" : ""}`}
+                            onClick={handleToggleAlphaWolf}
+                          >
+                            👑 Đầu Đàn: {(Number(rolesConfig.alpha_wolf) || 0) > 0 ? "CÓ" : "TẮT"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="lobby-access-row">
+                        <span className="mini-panel-label">🤖 Ghế AI Bot:</span>
+                        <div className="lobby-mini-pills">
+                          <button
+                            type="button"
+                            className="mini-pill bot-btn"
+                            onClick={() => handleManageBots("fill_roles")}
+                          >
+                            ⚡ Khớp ({totalRoles})
+                          </button>
+                          <button
+                            type="button"
+                            className="mini-pill bot-btn"
+                            onClick={() => handleManageBots("add", 1)}
+                            disabled={totalPlayers >= 18}
+                          >
+                            +1 Bot
+                          </button>
+                          {botCount > 0 && (
+                            <button
+                              type="button"
+                              className="mini-pill bot-btn"
+                              onClick={() => handleManageBots("remove", 1)}
+                            >
+                              −1 Bot
+                            </button>
+                          )}
+                          {botCount > 0 && (
+                            <button
+                              type="button"
+                              className="mini-pill bot-clear"
+                              onClick={() => handleManageBots("clear")}
+                            >
+                              🗑️ Xóa ({botCount})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="lobby-access-row">
+                        <span className="mini-panel-label">🔒 Bảo mật & Nhịp:</span>
+                        <div className="lobby-mini-pills">
+                          <button
+                            type="button"
+                            className={`mini-pill ${roomAccessMode === "public" && !showPwdEditor ? "active-pub" : ""}`}
+                            onClick={() => {
+                              setShowPwdEditor(false);
+                              handleChangeAccessMode("public");
+                            }}
+                          >
+                            🌍 Mở
+                          </button>
+                          <button
+                            type="button"
+                            className={`mini-pill ${roomAccessMode === "password" || showPwdEditor ? "active-pwd" : ""}`}
+                            onClick={() => setShowPwdEditor((v) => !v)}
+                          >
+                            🔐 Khóa
+                          </button>
+                          <button
+                            type="button"
+                            className={`mini-pill ${roomAccessMode === "hidden" && !showPwdEditor ? "active-hid" : ""}`}
+                            onClick={() => {
+                              setShowPwdEditor(false);
+                              handleChangeAccessMode("hidden");
+                            }}
+                          >
+                            🕵️ Ẩn
+                          </button>
+                          <button
+                            type="button"
+                            className={`mini-pill ${room.isTurbo ? "active-pwd" : ""}`}
+                            onClick={handleToggleTurbo}
+                          >
+                            ⚡ 5p: {room.isTurbo ? "BẬT" : "Tắt"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {showPwdEditor && (
+                        <form
+                          className="lobby-pwd-inline-row"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleChangeAccessMode("password", pwdDraft);
+                          }}
+                        >
+                          <input
+                            type="password"
+                            value={pwdDraft}
+                            maxLength={32}
+                            onChange={(e) => setPwdDraft(e.target.value)}
+                            placeholder="Nhập mật khẩu bàn..."
+                            autoFocus
+                          />
+                          <button type="submit" className="btn-save-pwd">
+                            Lưu
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : (
                 <div className="guest-sync-banner">
-                  👀 Bảng bài trực tiếp từ Chủ phòng — các thẻ phát sáng là vai có mặt trong ván!
+                  👀 Bộ bài đồng bộ trực tiếp từ Chủ bàn — thẻ sáng là vai có mặt trong ván!
                 </div>
               )}
 
               {!isRolesValidForStart && (
                 <div className="roles-mismatch-alert">
-                  ⚠️ Đang chọn <strong>{totalRoles}</strong> vai cho <strong>{totalPlayers}</strong> ghế (tối thiểu 6 vai & không ít hơn số người trong phòng).{" "}
-                  {me?.isHost ? "Bấm '+ / -', 'Mở Rộng V3.3' hoặc '➕ Bù Dân' để cân bằng." : "Chờ chủ phòng cân chỉnh."}
+                  ⚠️ Đang có <strong>{totalRoles}</strong> vai / <strong>{totalPlayers}</strong> ghế (cần ≥6 vai).{" "}
+                  {me?.isHost ? "Hãy chọn quy mô 6p–16p hoặc bấm 🔥 Đủ Vai." : "Chờ chủ bàn cân chỉnh."}
                 </div>
               )}
 
-              {/* LƯỚI 12 THẺ THUMBNAIL CHỨC NĂNG & SỐ LƯỢNG ĐỒNG BỘ CHO CẢ PHÒNG */}
+              {/* LƯỚI 12 THẺ BÀI TAROT 3D UE5 CHÂN THẬT */}
               <div className="roles-thumb-grid">
                 {ORDERED_ROLES.map((roleKey) => {
                   const conf = ROLES_CONFIG[roleKey] || {
@@ -1855,14 +1860,13 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       style={{ "--role-accent": conf.color || "#fbbf24" }}
                       title={`${conf.label} (${teamText}): ${conf.description}`}
                     >
-                      {/* Khung ảnh Thumbnail Studio 3D + Huy hiệu Phe + Huy hiệu Số lượng to rõ */}
                       <div
                         className={`role-thumb-art ${ROLE_PORTRAIT_CARDS[roleKey] ? "has-studio-portrait" : ""}`}
                         style={{ background: conf.thumbGradient || "linear-gradient(145deg, #1e293b, #334155)" }}
                       >
                         {ROLE_PORTRAIT_CARDS[roleKey] ? (
                           <img
-                            src={ROLE_PORTRAIT_CARDS[roleKey]}
+                            src={withPortraitVer(ROLE_PORTRAIT_CARDS[roleKey])}
                             alt={conf.label}
                             loading="lazy"
                             decoding="async"
@@ -1877,13 +1881,11 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                         </span>
                       </div>
 
-                      {/* Tên vai + Tag chức năng 1 dòng */}
                       <div className="role-thumb-meta">
                         <div className="role-thumb-title">{conf.label}</div>
                         <div className="role-thumb-skill">{conf.shortSkill || conf.description}</div>
                       </div>
 
-                      {/* Bộ đếm trực tiếp cho Chủ phòng / Nhãn đồng bộ cho Khách */}
                       {me?.isHost ? (
                         <div className="role-thumb-stepper">
                           <button
@@ -1908,7 +1910,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                         </div>
                       ) : (
                         <div className={`role-thumb-guest-footer ${count > 0 ? "in-play" : ""}`}>
-                          {count > 0 ? `Có ${count} vai trong ván` : "Không dùng"}
+                          {count > 0 ? `Có ${count} vai` : "Ẩn"}
                         </div>
                       )}
                     </div>
@@ -1921,7 +1923,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <div className="lobby-drawer-content chat-mode">
               <div className="lobby-seat-strip">
                 <div className="seat-strip-header">
-                  <span>👥 Ghế trong vòng tròn ({totalPlayers}/18)</span>
+                  <span>👥 Ghế quanh lửa trại ({totalPlayers}/{seatRingTarget})</span>
                   {!editingName ? (
                     <button
                       type="button"
@@ -1931,7 +1933,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                         setEditingName(true);
                       }}
                     >
-                      ✏️ Đổi tên tôi
+                      ✏️ Đổi tên
                     </button>
                   ) : null}
                 </div>
@@ -1970,7 +1972,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                             type="button"
                             className="chip-kick-btn"
                             onClick={() => handleKickPlayer(p)}
-                            title={`Kick ${p.name}`}
+                            title={`Mời ${p.name} rời ghế`}
                           >
                             ✕
                           </button>
@@ -1995,7 +1997,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                     const isMine = msg.senderId === myId;
                     return (
                       <div key={msg.id} className={`lobby-chat-msg ${isMine ? "mine" : ""}`}>
-                        <img className="lobby-chat-avatar" src={msg.avatar} alt={msg.senderName} />
+                        <img className="lobby-chat-avatar" src={withPortraitVer(msg.avatar)} alt={msg.senderName} />
                         <div className="lobby-chat-bubble">
                           <div className="lobby-chat-header">
                             <span className="lobby-chat-sender">{isMine ? "Bạn" : msg.senderName}</span>
@@ -2024,20 +2026,17 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         </aside>
       )}
 
-      {/* ==================== 4. THANH KHỞI HÀNH / SẴN SÀNG NỔI DƯỚI ĐÁY SÂN KHẤU 3D ==================== */}
-      <footer className={`lobby-3d-launch-dock ${drawerOpen ? "with-drawer" : "full-stage"}`}>
-        <div className="lobby-checklist-box compact">
-          <span className={`checklist-item ${realHumansCount >= 1 ? "valid" : "invalid"}`}>
-            ✅ {realHumansCount} người{botCount > 0 ? ` + ${botCount} 🤖` : ""}
-            {missingBotsToFill > 0 ? ` (Tự bù +${missingBotsToFill} 🤖)` : ""}
-          </span>
-          <span className={`checklist-item ${isAllReady ? "valid" : "invalid"}`}>
-            {isAllReady ? "✅" : "⚠️"} Sẵn sàng ({readyCount}/{totalPlayers})
-          </span>
-          <span className={`checklist-item ${isRolesValidForStart && hasWolf ? "valid" : "invalid"}`}>
-            {isRolesValidForStart && hasWolf ? "✅" : "⚠️"} Bộ bài {totalRoles} vai (≥1 Sói)
-          </span>
-        </div>
+      {/* ==================== 4. THANH KHỞI HÀNH GỌN ĐẸP DƯỚI ĐÁY SÂN KHẤU 3D ==================== */}
+      <footer className={`lobby-3d-launch-dock v44-clean-dock ${drawerOpen ? "with-drawer" : "full-stage"}`}>
+        {!canStartGame && (
+          <div className="lobby-dock-hint-pill warn">
+            {!isAllReady
+              ? `⏳ Đang chờ ${unreadyPlayers.length} người sẵn sàng`
+              : !hasWolf
+                ? "⚠️ Cần ít nhất 1 Ma Sói"
+                : `⚠️ Cần tối thiểu 6 vai (${totalRoles}/${totalPlayers})`}
+          </div>
+        )}
 
         {error && (
           <div className="lobby-dock-error">
@@ -2060,7 +2059,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
               disabled
               style={{ maxWidth: 420, cursor: "default", opacity: 0.95 }}
             >
-              🪑 Đã vào Sảnh Chờ — Tự nhận ghế ngay khi ván trước khép màn
+              🪑 Đã đặt ghế — Tự vào bàn khi ván trước khép màn
             </button>
           ) : (
             <button
@@ -2068,7 +2067,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
               disabled
               style={{ maxWidth: 420, cursor: "default", opacity: 0.95 }}
             >
-              ✅ Đã vào Sảnh Chờ — Đang đợi người chơi khác xem nốt phim...
+              ✅ Đang chờ người chơi khác xem nốt phim tổng kết...
             </button>
           )
         ) : me?.isHost ? (
@@ -2077,20 +2076,15 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             onClick={handleStartGame}
             disabled={!canStartGame}
             title={
-              !isAllReady
-                ? `Còn ${unreadyPlayers.length} người chơi chưa sẵn sàng`
-                : !isRolesValidForStart
-                  ? `Cần tối thiểu 6 vai và không ít hơn số người hiện có (${totalRoles}/${totalPlayers})`
-                  : !hasWolf
-                    ? "Cần ít nhất 1 Sói hoặc 1 Sói Đầu Đàn"
-                    : missingBotsToFill > 0
-                      ? `Hệ thống sẽ tự triệu hồi thêm +${missingBotsToFill} AI Bot lấp đủ ${totalRoles} ghế và vào Đêm 1 ngay!`
-                      : "Bấm để phân vai bí mật và bắt đầu Đêm đầu tiên!"
+              missingBotsToFill > 0
+                ? `Tự động triệu hồi thêm +${missingBotsToFill} AI Bot lấp đủ ${totalRoles} ghế và vào Đêm 1 ngay!`
+                : "Phân vai bí mật và bắt đầu Đêm đầu tiên!"
             }
           >
-            {missingBotsToFill > 0
-              ? `🚀 BẮT ĐẦU NGAY (Tự Bù +${missingBotsToFill} 🤖 Bot)`
-              : "🚀 PHÂN VAI & BẮT ĐẦU VÁN ĐẤU"}
+            <span>🚀 BẮT ĐẦU VÁN ĐẤU</span>
+            {missingBotsToFill > 0 && (
+              <span className="start-bot-subpill">+{missingBotsToFill} AI Bot</span>
+            )}
           </button>
         ) : (
           <button
@@ -2098,7 +2092,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             onClick={handleToggleReady}
             style={{ maxWidth: 320 }}
           >
-            {me?.ready ? "✅ BẠN ĐÃ SẴN SÀNG (Bấm để hủy)" : "⚡ BẤM SẴN SÀNG"}
+            {me?.ready ? "✅ ĐÃ SẴN SÀNG (Bấm hủy)" : "🙋 SẴN SÀNG XUẤT TRẬN"}
           </button>
         )}
       </footer>

@@ -1,27 +1,56 @@
 {
   "schemaVersion": 1,
   "defaultPresetId": "nordic_village_v3",
-  "updatedAtIso": "2026-10-26T13:51:47.712Z",
+  "updatedAtIso": "2026-10-28T17:00:00.000Z",
   "presets": [
     {
       "id": "nordic_village_v3",
-      "name": "🌲 Làng Bắc Âu V3 (Chuẩn 141 thực thể)",
-      "description": "Bối cảnh rừng thông Bắc Âu sương mù, nhà gỗ & lửa trại mặc định (Bản Lề V3)",
+      "name": "🌲 Làng Sương Bắc Âu",
+      "shortLabel": "Làng Sương",
+      "description": "Quảng trường đá ướt sương đêm, nhà gỗ ấm đèn & rừng thông trăng bạc",
+      "thumbnailUrl": "/backgrounds/preset_nordic_mist.webp",
       "url": "/config/village_layout.json",
       "builtIn": true,
       "nodeCount": 154,
       "moodHint": "auto",
-      "updatedAtIso": "2026-10-25T16:39:53.031Z"
+      "updatedAtIso": "2026-10-28T17:00:00.000Z"
+    },
+    {
+      "id": "blood_moon_sanctuary",
+      "name": "🌕 Rừng Huyết Nguyệt",
+      "shortLabel": "Huyết Nguyệt",
+      "description": "Thánh địa rừng già dưới trăng máu khổng lồ, sương đỏ & cổ thụ ma mị",
+      "thumbnailUrl": "/backgrounds/preset_blood_moon.webp",
+      "url": "/config/presets/preset_blood_moon_forest.json",
+      "builtIn": true,
+      "nodeCount": 30,
+      "moodHint": "blood_moon",
+      "updatedAtIso": "2026-10-28T17:00:00.000Z"
     },
     {
       "id": "preset_dau_truong_da_co_tuy_chinh",
-      "name": "🏟️ Đấu Trường Đá Cổ (Tùy chỉnh)",
-      "description": "Bối cảnh tùy chọn dàn dựng bằng D5 Studio & Kho Concept Tripo",
+      "name": "🏛️ Đấu Trường Đá Cổ",
+      "shortLabel": "Đấu Trường",
+      "description": "Phế tích vòng cột đá rêu phong & đuốc phán quyết giữa sương lạnh",
+      "thumbnailUrl": "/backgrounds/preset_stone_arena.webp",
       "url": "/config/presets/preset_dau_truong_da_co_tuy_chinh.json",
       "builtIn": false,
       "nodeCount": 22,
       "moodHint": "auto",
-      "updatedAtIso": "2026-10-26T13:51:47.712Z"
+      "updatedAtIso": "2026-10-28T17:00:00.000Z"
+    },
+    {
+      "id": "dark_academia_courtyard",
+      "name": "🏰 Học Viện Huyết Nguyệt",
+      "shortLabel": "Học Viện",
+      "description": "Sân Học Viện Đêm phong cách Teen Dark Academia (Box-Blockout 1:1 sẵn sàng gắn .GLB)",
+      "thumbnailUrl": "/backgrounds/preset_dark_academia.webp",
+      "url": "/config/presets/preset_dark_academia_teen.json",
+      "builtIn": true,
+      "slotMode": "blockout_ready",
+      "nodeCount": 30,
+      "moodHint": "dark_academia",
+      "updatedAtIso": "2026-10-29T09:00:00.000Z"
     }
   ]
 }
