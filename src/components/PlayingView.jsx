@@ -14,6 +14,14 @@ import { useBotVoicePlayer } from "../utils/botVoicePlayer.js";
 import { SUSPECT_TAG_META } from "../3d/components/SeatHudBatchOverlay.jsx";
 
 import { ROLE_LABELS, ROLE_EMOJIS, ROLE_DESCRIPTIONS, isWolfTeamRole } from '../config/roles.config.js';
+import {
+  sanitizeUniverseId,
+  getUniverseTheme,
+  getUniverseRoleLabel,
+  getUniverseRoleEmoji,
+  getUniverseRoleDescription,
+} from '../config/universeThemes.config.js';
+import StealthCamouflageOverlay, { BossKeyTriggerButton } from './StealthCamouflageOverlay.jsx';
 import VillageBackdrop from './VillageBackdrop.jsx';
 import Scene3DErrorBoundary from '../3d/components/Scene3DErrorBoundary.jsx';
 import { isDevArchitectAllowed } from '../3d/editor/defaultVillageLayout.js';
@@ -72,6 +80,7 @@ export default function PlayingView({
   mcLog,
   mcVoiceEnabled,
   setMcVoiceEnabled,
+  onToggleStealthHeadphones = null,
   onLeave = null,
   onExitRecapToLobby = null,
   voicePregening = false,
@@ -90,6 +99,15 @@ export default function PlayingView({
   onToggleMcPacing = null,
 }) {
   const g = room.game;
+  const universeId = sanitizeUniverseId(room?.universeId);
+  const uTheme = getUniverseTheme(universeId);
+  const phaseLabels = uTheme.phaseLabels || PHASE_LABELS;
+  const actionBanners = uTheme.actionBanners || ACTION_BANNERS;
+  const quickDebateChips = uTheme.quickDebateChips || QUICK_DEBATE_CHIPS;
+  const voteLabels = uTheme.voteLabels || {};
+  const roleLabelOf = (rk) => getUniverseRoleLabel(rk, universeId);
+  const roleEmojiOf = (rk) => getUniverseRoleEmoji(rk, universeId);
+  const roleDescOf = (rk) => getUniverseRoleDescription(rk, universeId);
   const isSpectator = Boolean(room.isSpectator);
   // Dùng playerId ổn định (không thay đổi khi reconnect), kèm fallback sessionToken sống từ room.players
   const myPlayerId = sessionStorage.getItem("ws_playerId") || socketRef.current.id;
@@ -517,16 +535,24 @@ export default function PlayingView({
     });
   }, [mcLog]);
 
-  // SFX: death / win sounds triggered by chatLog changes
+  // Đồng bộ cờ tắt tiếng & chủ đề âm thanh SFX theo Vũ trụ hiện tại
+  useEffect(() => {
+    SFX.setMuted(!mcVoiceEnabled);
+    SFX.setUniverse(universeId);
+  }, [mcVoiceEnabled, universeId]);
+
+  // SFX: death / win sounds triggered by chatLog / winner changes
   useEffect(() => {
     if (chatLog.length === 0) return;
     const last = chatLog[chatLog.length - 1];
     if (last?.type === 'death') SFX.death();
-    if (last?.type === 'mc' && last?.text?.includes('chiến thắng')) {
-      if (last.text.includes('Phe Sói')) SFX.winWolf();
-      else SFX.winVillage();
-    }
   }, [chatLog]);
+
+  useEffect(() => {
+    if (!g.winner) return;
+    if (g.winner === "wolf") SFX.winWolf();
+    else SFX.winVillage();
+  }, [g.winner]);
 
   // SFX: bell when it becomes my turn
   useEffect(() => {
@@ -600,9 +626,21 @@ export default function PlayingView({
       }
       if (res?.alphaConvertTonight) {
         triggerMyMicroChoreo("alpha_blood_convert", selectedId || me?.id, 2600);
-        flashActionFeedback("🩸 Đã BẬT Huyết Nguyệt: Con mồi đêm nay sẽ hóa thành Sói!");
+        flashActionFeedback(
+          universeId === "office"
+            ? "👑 Đã BẬT Thẻ VIP: Nhân sự bị nhắm tối nay sẽ gia nhập phe Sếp!"
+            : universeId === "school"
+              ? "🕶️ Đã BẬT Tuyển Ngầm: Bạn bị nhắm tối nay sẽ đeo băng đỏ nhập phe Giáo Viên!"
+              : "🩸 Đã BẬT Huyết Nguyệt: Con mồi đêm nay sẽ hóa thành Sói!"
+        );
       } else {
-        flashActionFeedback("🐺 Đã tắt Huyết Nguyệt — chuyển về cắn hạ sát bình thường.");
+        flashActionFeedback(
+          universeId === "office"
+            ? "👔 Đã tắt Thẻ VIP — quay về chế độ đóng mộc cắt KPI thông thường."
+            : universeId === "school"
+              ? "👩‍🏫 Đã tắt Tuyển Ngầm — quay về chế độ gõ thước ghi Sổ Đầu Bài."
+              : "🐺 Đã tắt Huyết Nguyệt — chuyển về cắn hạ sát bình thường."
+        );
       }
     });
   }
@@ -615,7 +653,13 @@ export default function PlayingView({
         return;
       }
       triggerMyMicroChoreo("mayor_decree_slam", me?.id, 2800);
-      flashActionFeedback("👑 Đã công bố Quyền Trượng Trưởng Làng — Mọi lá phiếu x2!");
+      flashActionFeedback(
+        universeId === "office"
+          ? "🏅 Đã công bố Cúp Chủ Tịch Công Đoàn — Mọi lá phiếu từ nay tính x2!"
+          : universeId === "school"
+            ? "⭐ Đã công bố Sao Lớp Trưởng — Mọi lá phiếu biểu quyết từ nay tính x2!"
+            : "👑 Đã công bố Quyền Trượng Trưởng Làng — Mọi lá phiếu x2!"
+      );
     });
   }
 
@@ -836,9 +880,9 @@ export default function PlayingView({
     const phase = g.nightDayPhase;
     if (isNight && !isMyTurn) return null; // đêm: chỉ hiện cho người đến lượt
     if (phase === 'night_witch') {
-      return g.witchInfo?.victimId ? ACTION_BANNERS.night_witch : ACTION_BANNERS.night_witch_nd;
+      return g.witchInfo?.victimId ? actionBanners.night_witch : actionBanners.night_witch_nd;
     }
-    return ACTION_BANNERS[phase] || null;
+    return actionBanners[phase] || null;
   };
   const actionBanner = getActionBanner();
 
@@ -885,23 +929,54 @@ export default function PlayingView({
     if (phase === "hunter_revenge" && isMyHunterRevenge && !hasActed) {
       return {
         canConfirm: true,
-        label: "🏹 Bắn Đạn Bạc",
+        label:
+          universeId === "office"
+            ? "📁 Tung Email CC"
+            : universeId === "school"
+              ? "📢 Thưa Cô!"
+              : "🏹 Bắn Đạn Bạc",
         accent: "#e11d48",
         onConfirm: handleHunterShoot,
         onClear: clearFn,
       };
     }
     if (phase === "night_guard" && isMyTurn && !hasActed) {
-      return { canConfirm: true, label: "🛡️ Bảo vệ", accent: "#2563eb", onConfirm: handleAction, onClear: clearFn };
+      return {
+        canConfirm: true,
+        label:
+          universeId === "office"
+            ? "🛡️ Bảo lãnh KPI"
+            : universeId === "school"
+              ? "🙋 Đỡ lời"
+              : "🛡️ Bảo vệ",
+        accent: "#2563eb",
+        onConfirm: handleAction,
+        onClear: clearFn,
+      };
     }
     if (phase === "night_wolf" && isMyTurn) {
       const isFellowWolf = selectedPlayer.id === me?.id || (g.wolfTeammates || []).includes(selectedPlayer.id);
       if (isFellowWolf) {
-        return { canConfirm: false, invalidReason: "Không thể cắn đồng bọn Sói", onClear: clearFn };
+        return {
+          canConfirm: false,
+          invalidReason:
+            universeId === "office"
+              ? "Không thể trừ lương đồng minh Phe Sếp"
+              : universeId === "school"
+                ? "Không thể ghi sổ đồng minh Giáo Viên"
+                : "Không thể cắn đồng bọn Sói",
+          onClear: clearFn,
+        };
       }
       return {
         canConfirm: true,
-        label: g.alphaWolfInfo?.convertTonight ? "🩸 Đồng hóa" : "🐺 Cắn",
+        label: g.alphaWolfInfo?.convertTonight
+          ? universeId === "office"
+            ? "👑 Mua chuộc"
+            : universeId === "school"
+              ? "🕶️ Tuyển ngầm"
+              : "🩸 Đồng hóa"
+          : `${voteLabels.wolfCountIcon || "🐺"} ${voteLabels.wolfConfirm || "Cắn"}`,
         accent: g.alphaWolfInfo?.convertTonight ? "#be123c" : "#dc2626",
         onConfirm: handleAction,
         onClear: clearFn,
@@ -910,7 +985,12 @@ export default function PlayingView({
     if (phase === "night_witch" && isMyTurn && !hasActed && !g.witchInfo?.usedPoison) {
       return {
         canConfirm: true,
-        label: "☠️ Đầu độc",
+        label:
+          universeId === "office"
+            ? "🧮 Trừ Chuyên Cần"
+            : universeId === "school"
+              ? "📒 Bút Đỏ"
+              : "☠️ Đầu độc",
         accent: "#7c3aed",
         onConfirm: () => handleWitch(false, selectedPlayer.id),
         onClear: clearFn,
@@ -920,7 +1000,18 @@ export default function PlayingView({
       if (selectedPlayer.id === me?.id) {
         return { canConfirm: false, invalidReason: "Hãy chọn người khác để soi", onClear: clearFn };
       }
-      return { canConfirm: true, label: "🔮 Soi", accent: "#4f46e5", onConfirm: handleAction, onClear: clearFn };
+      return {
+        canConfirm: true,
+        label:
+          universeId === "office"
+            ? "💻 Quét IP"
+            : universeId === "school"
+              ? "🎽 Soi Thẻ"
+              : "🔮 Soi",
+        accent: "#4f46e5",
+        onConfirm: handleAction,
+        onClear: clearFn,
+      };
     }
     if (phase === "day_nominate") {
       if (selectedPlayer.id === me?.id) {
@@ -928,7 +1019,9 @@ export default function PlayingView({
       }
       return {
         canConfirm: true,
-        label: hasActed ? "🗳️ Đổi đề cử" : "🗳️ Đề cử",
+        label: hasActed
+          ? "🗳️ Đổi đề cử"
+          : `🗳️ ${voteLabels.nominateConfirm || "Đề cử"}`,
         accent: "#d97706",
         onConfirm: handleAction,
         onClear: clearFn,
@@ -952,10 +1045,17 @@ export default function PlayingView({
 
   return (
     <div className={`playing-view-container ${isNight && !g.winner ? 'night-mode' : 'day-mode'} ${roleBgClass} ${g.winner && viewMode === '3d' ? 'replay-cinema-active' : ''}`}>
+      <StealthCamouflageOverlay
+        universeId={universeId}
+        phaseKey={g.nightDayPhase}
+        dayNumber={g.dayNumber}
+        myActionNeeded={Boolean(isMyTurn && !hasActed && !g.winner)}
+      />
       <AmbientSound
         isNight={isNight}
         isTense={g.nightDayPhase === 'day_final_vote' || g.nightDayPhase === 'hunter_revenge'}
         enabled={mcVoiceEnabled}
+        universeId={universeId}
       />
       
       {/* Top HUD bar */}
@@ -979,7 +1079,7 @@ export default function PlayingView({
               ⚡ 5 Phút
             </span>
           )}
-          <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${PHASE_LABELS[g.nightDayPhase] || g.nightDayPhase}`}</h2>
+          <h2 className="phase-title">{g.winner ? 'Trò Chơi Kết Thúc' : `Ngày ${g.dayNumber} — ${phaseLabels[g.nightDayPhase] || g.nightDayPhase}`}</h2>
         </div>
         <div className="hud-center">
           {isSpectator ? (
@@ -998,7 +1098,7 @@ export default function PlayingView({
             <span
               className="role-badge"
               style={{ cursor: me?.role ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              title={me?.role ? `${ROLE_DESCRIPTIONS[me.role] || ''} (Nhấn để xem lại nhiệm vụ)` : ''}
+              title={me?.role ? `${roleDescOf(me.role) || ''} (Nhấn để xem lại nhiệm vụ)` : ''}
               onClick={() => {
                 if (me?.role && !g.winner) {
                   setTutorialStep(1);
@@ -1006,34 +1106,50 @@ export default function PlayingView({
                 }
               }}
             >
-              {me?.role ? <RolePortrait roleKey={me.role} size={22} /> : '👻'}
-              <span>{me?.role ? ROLE_LABELS[me.role] : 'Đã tử nạn'}</span>
+              {me?.role ? (
+                universeId === 'classic' ? (
+                  <RolePortrait roleKey={me.role} size={22} />
+                ) : (
+                  <span>{roleEmojiOf(me.role)}</span>
+                )
+              ) : (
+                '👻'
+              )}
+              <span>
+                {me?.role
+                  ? roleLabelOf(me.role)
+                  : universeId === 'office'
+                    ? 'Hết lương'
+                    : universeId === 'school'
+                      ? 'Ra hành lang'
+                      : 'Đã tử nạn'}
+              </span>
             </span>
           )}
           {myLoverPartner && (
             <span
               className="role-badge"
-              title={`Bạn được kết duyên sinh tử với ${myLoverPartner.name}. Nếu 1 người chết, người kia sẽ chết theo!`}
+              title={`Bạn được ghép đôi cùng ${myLoverPartner.name}. Nếu 1 người rời cuộc, người kia sẽ đi theo!`}
               style={{
                 background: 'rgba(236, 72, 153, 0.22)',
                 borderColor: 'rgba(244, 114, 182, 0.65)',
                 color: '#fbcfe8',
               }}
             >
-              💘 {myLoverPartner.name} {!myLoverPartner.alive ? '💀' : ''}
+              {universeId === 'office' ? '🧋' : universeId === 'school' ? '💌' : '💘'} {myLoverPartner.name} {!myLoverPartner.alive ? '💀' : ''}
             </span>
           )}
           {revealedMayorPlayer && (
             <span
               className="role-badge"
-              title={`Trưởng Làng ${revealedMayorPlayer.name} đã công bố Quyền Trượng (Lá phiếu x2)`}
+              title={`${roleLabelOf('mayor')} ${revealedMayorPlayer.name} đã công bố quyền lực (Lá phiếu x2)`}
               style={{
                 background: 'rgba(245, 158, 11, 0.24)',
                 borderColor: 'rgba(253, 224, 71, 0.72)',
                 color: '#fef08a',
               }}
             >
-              👑 {revealedMayorPlayer.id === me?.id ? 'Phiếu x2' : `${revealedMayorPlayer.name} (x2)`}
+              {universeId === 'office' ? '🏅' : universeId === 'school' ? '⭐' : '👑'} {revealedMayorPlayer.id === me?.id ? 'Phiếu x2' : `${revealedMayorPlayer.name} (x2)`}
             </span>
           )}
           <HudPhaseCountdown
@@ -1044,21 +1160,36 @@ export default function PlayingView({
           />
         </div>
         <div className="hud-right">
+          <BossKeyTriggerButton universeId={universeId} />
           {/* Live Sói/Dân counter */}
-          <div className="hud-score" title={hasCursedMystery ? 'Có vai Kẻ Bị Nguyền hoặc Sói Đầu Đàn trong ván (số Sói có thể tăng nếu đồng hóa)' : 'Số Sói vs Dân ước tính còn sống'}>
-            <span className="hud-wolf">🐺 {aliveWolfCount}{hasCursedMystery ? '?' : ''}</span>
+          <div className="hud-score" title={hasCursedMystery ? 'Có vai ẩn đồng hóa trong ván (quân số phe đối lập có thể tăng)' : 'Tương quan hai phe còn trụ lại'}>
+            <span className="hud-wolf">{voteLabels.wolfCountIcon || '🐺'} {aliveWolfCount}{hasCursedMystery ? '?' : ''}</span>
             <span className="hud-vs">vs</span>
-            <span className="hud-village">👥 {aliveVillageCount}</span>
+            <span className="hud-village">{voteLabels.villageCountIcon || '👥'} {aliveVillageCount}</span>
           </div>
 
           {setMcVoiceEnabled && (
             <button
               type="button"
               className="btn-mc-voice"
-              onClick={() => setMcVoiceEnabled((prev) => !prev)}
-              title={mcVoiceEnabled ? 'Tắt tiếng Quản Trò MC' : 'Bật tiếng Quản Trò MC'}
+              onClick={() => {
+                if (uTheme.silentByDefault && onToggleStealthHeadphones) {
+                  onToggleStealthHeadphones();
+                } else {
+                  setMcVoiceEnabled((prev) => !prev);
+                }
+              }}
+              title={
+                uTheme.silentByDefault
+                  ? mcVoiceEnabled
+                    ? 'Đang bật âm thanh Tai nghe — Bấm để quay về Chế độ 0dB Im Lặng'
+                    : 'Đang ở Chế độ 0dB Im Lặng — Bấm khi đã đeo Tai Nghe để nghe giọng MC & Bot!'
+                  : mcVoiceEnabled
+                    ? 'Tắt tiếng Quản Trò MC'
+                    : 'Bật tiếng Quản Trò MC'
+              }
             >
-              {mcVoiceEnabled ? '🔊' : '🔇'}
+              {uTheme.silentByDefault ? (mcVoiceEnabled ? '🎧' : '🔇0dB') : mcVoiceEnabled ? '🔊' : '🔇'}
             </button>
           )}
 
@@ -1258,6 +1389,7 @@ export default function PlayingView({
                 >
                   <WerewolfScene3D
                     roomCode={room.code}
+                    universeId={universeId}
                     players={room.players}
                     me={me}
                     phase={g.nightDayPhase}
@@ -1299,6 +1431,7 @@ export default function PlayingView({
               <ParticleBackground isNight={isNight} />
               <PlayerCircle 
                 roomCode={room.code}
+                universeId={universeId}
                 players={room.players} 
                 me={me}
                 phase={g.nightDayPhase}
@@ -1337,16 +1470,46 @@ export default function PlayingView({
           {/* Spotlight Tarot 3D Mở Màn (Pha role_reveal 6s): Kính mờ gọn trên đỉnh sân khấu, không che khuất nhân vật 3D bên dưới! */}
           {g.nightDayPhase === "role_reveal" && !isSpectator && me?.role && !g.winner && (
             <div className="role-reveal-spotlight-card">
-              <RolePortrait roleKey={me.role} mode="card" size={64} glow />
+              {universeId === "classic" ? (
+                <RolePortrait roleKey={me.role} mode="card" size={64} glow />
+              ) : (
+                <div
+                  style={{
+                    width: 64,
+                    height: 82,
+                    borderRadius: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "2.15rem",
+                    background: "rgba(15, 23, 42, 0.94)",
+                    border: `2px solid ${uTheme.accentHex}`,
+                    boxShadow: `0 0 18px ${uTheme.panelBorderRgba}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  {roleEmojiOf(me.role)}
+                </div>
+              )}
               <div className="role-reveal-spotlight-body">
                 <div className="role-reveal-spotlight-kicker">
-                  <span>🎭 LÁ BÀI ĐỊNH MỆNH CỦA BẠN</span>
+                  <span>
+                    {universeId === "office"
+                      ? "🪪 THẺ CHỨC DANH BÍ MẬT CỦA BẠN"
+                      : universeId === "school"
+                        ? "🎫 THẺ VAI TRÒ LỚP HỌC CỦA BẠN"
+                        : "🎭 LÁ BÀI ĐỊNH MỆNH CỦA BẠN"}
+                  </span>
                   <span className={`role-reveal-faction-pill ${isWolfTeamRole(me.role) ? "wolf" : me.role === "tanner" ? "neutral" : "village"}`}>
-                    {isWolfTeamRole(me.role) ? "🐺 Phe Sói" : me.role === "tanner" ? "💀 Độc Lập" : "🛡️ Phe Dân Làng"}
+                    {isWolfTeamRole(me.role)
+                      ? uTheme.factions?.wolf || "🐺 Phe Sói"
+                      : me.role === "tanner"
+                        ? uTheme.factions?.neutral || "💀 Độc Lập"
+                        : uTheme.factions?.village || "🛡️ Phe Dân Làng"}
                   </span>
                 </div>
-                <div className="role-reveal-spotlight-title">{ROLE_LABELS[me.role]}</div>
-                <div className="role-reveal-spotlight-desc">{ROLE_DESCRIPTIONS[me.role]}</div>
+                <div className="role-reveal-spotlight-title">{roleLabelOf(me.role)}</div>
+                <div className="role-reveal-spotlight-desc">{roleDescOf(me.role)}</div>
               </div>
               {!(hasActed || g.roleRevealReadyIds?.[me.id]) && (
                 <button
@@ -1372,7 +1535,7 @@ export default function PlayingView({
               {showSeerPopover && seerHistory.length > 0 && (
                 <div className="seer-popover-card">
                   <div className="seer-popover-header">
-                    <span>🔮 Lịch sử soi các đêm</span>
+                    <span>{roleEmojiOf("seer")} Lịch sử kiểm tra</span>
                     <button type="button" className="dock-icon-close" onClick={() => setShowSeerPopover(false)}>✕</button>
                   </div>
                   <div className="seer-popover-list">
@@ -1380,7 +1543,11 @@ export default function PlayingView({
                       <div key={i} className={`seer-history-row ${h.result === 'wolf' ? 'sh-wolf' : 'sh-human'}`}>
                         <span className="sh-day">Đêm {h.day}</span>
                         <span className="sh-name">{h.targetName}</span>
-                        <span className="sh-result">{h.result === 'wolf' ? '🔴 SÓI' : '🔵 Tốt'}</span>
+                        <span className="sh-result">
+                          {h.result === 'wolf'
+                            ? voteLabels.seerWolfBadge || '🔴 SÓI'
+                            : voteLabels.seerGoodBadge || '🔵 Tốt'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1393,10 +1560,18 @@ export default function PlayingView({
                 /* ================= PHA MỞ MÀN ĐỘC LẬP: NHẬN VAI ĐỊNH MỆNH (6 GIÂY) ================= */
                 <div className="dock-row">
                   <span className="dock-hint" style={{ color: '#fef08a', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                    {me?.role ? <RolePortrait roleKey={me.role} size={28} glow /> : '🎭'}
+                    {me?.role ? (
+                      universeId === 'classic' ? (
+                        <RolePortrait roleKey={me.role} size={28} glow />
+                      ) : (
+                        <span>{roleEmojiOf(me.role)}</span>
+                      )
+                    ) : (
+                      '🎭'
+                    )}
                     <span>
-                      Vai của bạn: <strong>{ROLE_LABELS[me?.role] || '...'}</strong>
-                      {ROLE_DESCRIPTIONS[me?.role] ? ` — ${ROLE_DESCRIPTIONS[me.role]}` : ''}
+                      Vai của bạn: <strong>{roleLabelOf(me?.role) || '...'}</strong>
+                      {roleDescOf(me?.role) ? ` — ${roleDescOf(me.role)}` : ''}
                     </span>
                   </span>
                   {hasActed || g.roleRevealReadyIds?.[me?.id] ? (
@@ -1419,11 +1594,17 @@ export default function PlayingView({
                   )}
                 </div>
               ) : g.nightDayPhase === "hunter_revenge" ? (
-                /* ================= PHÁP TRƯỜNG / BÌNH MINH: THỢ SĂN BẮN ĐẠN BẠC CUỐI CÙNG ================= */
+                /* ================= PHÁP TRƯỜNG / BÌNH MINH: THỢ SĂN / SENIOR / CHIẾN THẦN THƯA CÔ ================= */
                 <div className="dock-row">
                   {isMyHunterRevenge ? (
                     hasActed ? (
-                      <span className="dock-hint dock-done">🏹 Đã bóp cò viên đạn bạc cuối cùng!</span>
+                      <span className="dock-hint dock-done">
+                        {universeId === "office"
+                          ? "✈️ Đã phóng Email CC toàn công ty!"
+                          : universeId === "school"
+                            ? "📢 Đã bắc loa chỉ điểm thành công!"
+                            : "🏹 Đã bóp cò viên đạn bạc cuối cùng!"}
+                      </span>
                     ) : selectedActionMeta?.canConfirm ? (
                       <>
                         <span className="dock-target-label">
@@ -1443,12 +1624,22 @@ export default function PlayingView({
                       </>
                     ) : (
                       <span className="dock-hint" style={{ color: '#fda4af' }}>
-                        🏹 Hơi thở cuối! Click vào 1 người còn sống trên vòng ghế để bắn trả thù!
+                        {universeId === "office"
+                          ? "✈️ 15 giây cuối! Click 1 ghế để gửi Email CC toàn công ty kéo bàn giao chung!"
+                          : universeId === "school"
+                            ? "📢 15 giây cuối! Click 1 bạn để bắc loa 'Em thưa cô bạn kia cũng vậy!'"
+                            : "🏹 Hơi thở cuối! Click vào 1 người còn sống trên vòng ghế để bắn trả thù!"}
                       </span>
                     )
                   ) : (
                     <span className="dock-hint" style={{ color: '#fda4af' }}>
-                      🏹 Thợ Săn <strong>{fallenHunterPlayer?.name || ''}</strong> đang giương nỏ ngắm bắn viên đạn bạc cuối cùng...
+                      {universeId === "office" ? (
+                        <>✈️ Senior <strong>{fallenHunterPlayer?.name || ''}</strong> đang soạn Email CC toàn công ty...</>
+                      ) : universeId === "school" ? (
+                        <>📢 <strong>{fallenHunterPlayer?.name || ''}</strong> đang giơ loa chuẩn bị chỉ điểm lên bảng chung...</>
+                      ) : (
+                        <>🏹 Thợ Săn <strong>{fallenHunterPlayer?.name || ''}</strong> đang giương nỏ ngắm bắn viên đạn bạc cuối cùng...</>
+                      )}
                     </span>
                   )}
                 </div>
@@ -1460,7 +1651,9 @@ export default function PlayingView({
                       <span className="dock-hint dock-done">✅ Đã ghi nhận lựa chọn! Chờ qua lượt...</span>
                       {g.nightDayPhase === "night_seer" && g.seerLastResult && (
                         <span className={`dock-chip ${g.seerLastResult.result === 'wolf' ? 'chip-danger' : 'chip-info'}`}>
-                          {g.seerLastResult.result === 'wolf' ? '🔴 SÓI!' : '🔵 Người tốt'}
+                          {g.seerLastResult.result === 'wolf'
+                            ? voteLabels.seerWolfBadge || '🔴 SÓI!'
+                            : voteLabels.seerGoodBadge || '🔵 Người tốt'}
                         </span>
                       )}
                       {me?.role === "seer" && seerHistory.length > 0 && (
@@ -1469,16 +1662,22 @@ export default function PlayingView({
                           className="dock-btn dock-btn-ghost"
                           onClick={() => setShowSeerPopover((v) => !v)}
                         >
-                          🔮 Đã soi ({seerHistory.length})
+                          {roleEmojiOf("seer")} Đã kiểm ({seerHistory.length})
                         </button>
                       )}
                     </div>
                   ) : g.nightDayPhase === "night_cupid" ? (
-                    /* Đêm 1: Thần Tình Yêu chọn 2 người để kết duyên */
+                    /* Đêm 1: Ghép đôi */
                     <div className="dock-row">
                       {cupidTargets.length === 0 ? (
                         <span className="dock-hint">
-                          💘 Đêm đầu tiên: Click chọn <strong>2 người</strong> trên vòng ghế để ghép đôi sinh tử!
+                          {universeId === "office" ? (
+                            <>🧋 Ca tối đầu: Click chọn <strong>2 đồng nghiệp</strong> để ký Hợp Đồng Liên Minh Trà Sữa!</>
+                          ) : universeId === "school" ? (
+                            <>💌 Tiết đầu: Click chọn <strong>2 bạn</strong> để gửi thư ghép Đôi Bạn Cùng Bàn!</>
+                          ) : (
+                            <>💘 Đêm đầu tiên: Click chọn <strong>2 người</strong> trên vòng ghế để ghép đôi sinh tử!</>
+                          )}
                         </span>
                       ) : (
                         <>
@@ -1494,7 +1693,7 @@ export default function PlayingView({
                                   color: '#fbcfe8',
                                 }}
                               >
-                                💘 #{idx + 1}: {tp?.name || tid}
+                                {universeId === "office" ? "🧋" : universeId === "school" ? "💌" : "💘"} #{idx + 1}: {tp?.name || tid}
                               </span>
                             );
                           })}
@@ -1505,7 +1704,11 @@ export default function PlayingView({
                               style={{ background: 'linear-gradient(135deg, #ec4899, #db2777)' }}
                               onClick={handleCupidConfirm}
                             >
-                              💘 Kết Duyên Sinh Tử
+                              {universeId === "office"
+                                ? "🧋 Chốt Liên Minh"
+                                : universeId === "school"
+                                  ? "💌 Ghép Đôi Bạn Thân"
+                                  : "💘 Kết Duyên Sinh Tử"}
                             </button>
                           ) : (
                             <span className="dock-hint">Chọn thêm 1 người nữa...</span>
@@ -1524,7 +1727,17 @@ export default function PlayingView({
                   ) : g.nightDayPhase === "night_witch" ? (
                     <div className="dock-row">
                       <span className="dock-hint">
-                        {g.witchInfo?.victimId ? "🩸 Có người bị cắn!" : "😮‍💨 Không ai bị cắn"}
+                        {g.witchInfo?.victimId
+                          ? universeId === "office"
+                            ? "📉 Có người bị cắt lương!"
+                            : universeId === "school"
+                              ? "📒 Có bạn bị ghi Sổ Đầu Bài!"
+                              : "🩸 Có người bị cắn!"
+                          : universeId === "office"
+                            ? "😮‍💨 Không ai bị cắt lương"
+                            : universeId === "school"
+                              ? "😮‍💨 Không ai bị ghi sổ"
+                              : "😮‍💨 Không ai bị cắn"}
                       </span>
                       {g.witchInfo?.victimId && (
                         <button
@@ -1532,9 +1745,16 @@ export default function PlayingView({
                           className="dock-btn dock-btn-save"
                           disabled={g.witchInfo?.usedSave}
                           onClick={() => handleWitch(true, null)}
-                          title={g.witchInfo?.usedSave ? "Đã dùng bình cứu" : "Cứu nạn nhân đêm nay"}
+                          title={g.witchInfo?.usedSave ? "Đã dùng quyền cứu" : "Cứu người bị nhắm tối nay"}
                         >
-                          💚 {g.witchInfo?.usedSave ? "Hết cứu" : "Cứu"}
+                          💚{" "}
+                          {g.witchInfo?.usedSave
+                            ? "Hết lượt"
+                            : universeId === "office"
+                              ? "+ Chuyên cần"
+                              : universeId === "school"
+                                ? "+ Điểm phát biểu"
+                                : "Cứu"}
                         </button>
                       )}
                       {!g.witchInfo?.usedPoison ? (
@@ -1544,13 +1764,29 @@ export default function PlayingView({
                             className="dock-btn dock-btn-poison"
                             onClick={() => handleWitch(false, selectedPlayer.id)}
                           >
-                            ☠️ Độc {selectedPlayer.name}
+                            {universeId === "office"
+                              ? `🧮 Trừ lương ${selectedPlayer.name}`
+                              : universeId === "school"
+                                ? `📒 Bút đỏ ${selectedPlayer.name}`
+                                : `☠️ Độc ${selectedPlayer.name}`}
                           </button>
                         ) : (
-                          <span className="dock-chip">☠️ Click ghế để độc</span>
+                          <span className="dock-chip">
+                            {universeId === "office"
+                              ? "🧮 Click ghế để trừ chuyên cần"
+                              : universeId === "school"
+                                ? "📒 Click ghế để dùng bút đỏ"
+                                : "☠️ Click ghế để độc"}
+                          </span>
                         )
                       ) : (
-                        <span className="dock-chip chip-muted">☠️ Hết độc</span>
+                        <span className="dock-chip chip-muted">
+                          {universeId === "office"
+                            ? "🧮 Đã dùng trừ"
+                            : universeId === "school"
+                              ? "📒 Đã dùng bút đỏ"
+                              : "☠️ Hết độc"}
+                        </span>
                       )}
                       <button
                         type="button"
@@ -1598,15 +1834,19 @@ export default function PlayingView({
 
                       {g.nightDayPhase === "night_wolf" && me?.role === "alpha_wolf" && (
                         g.alphaWolfInfo?.usedConvert ? (
-                          <span className="dock-chip chip-muted" title="Đã dùng quyền Huyết Nguyệt trong ván này">
-                            🩸 Hết Đồng Hóa
+                          <span className="dock-chip chip-muted" title="Đã dùng đặc quyền 1 lần trong ván này">
+                            {universeId === "office"
+                              ? "👑 Đã trao phong bì"
+                              : universeId === "school"
+                                ? "🕶️ Đã tuyển ngầm"
+                                : "🩸 Hết Đồng Hóa"}
                           </span>
                         ) : (
                           <button
                             type="button"
                             className="dock-btn"
                             onClick={handleAlphaToggle}
-                            title="1 lần/ván: Biến con mồi bị bầy Sói cắn đêm nay thành Ma Sói thay vì giết chết"
+                            title="1 lần/ván: Mua chuộc / đồng hóa người bị chọn tối nay sang phe của bạn!"
                             style={{
                               background: g.alphaWolfInfo?.convertTonight
                                 ? 'linear-gradient(135deg, #e11d48, #9f1239)'
@@ -1621,7 +1861,17 @@ export default function PlayingView({
                                 : 'none',
                             }}
                           >
-                            {g.alphaWolfInfo?.convertTonight ? '🩸 Huyết Nguyệt: BẬT' : '🩸 Đồng Hóa (1 lần)'}
+                            {g.alphaWolfInfo?.convertTonight
+                              ? universeId === "office"
+                                ? '👑 Mua chuộc: BẬT'
+                                : universeId === "school"
+                                  ? '🕶️ Tuyển ngầm: BẬT'
+                                  : '🩸 Huyết Nguyệt: BẬT'
+                              : universeId === "office"
+                                ? '👑 Phong Bì Tăng Lương (1 lần)'
+                                : universeId === "school"
+                                  ? '🕶️ Tuyển Sao Đỏ Ngầm (1 lần)'
+                                  : '🩸 Đồng Hóa (1 lần)'}
                           </button>
                         )
                       )}
@@ -1638,14 +1888,26 @@ export default function PlayingView({
                     </div>
                   )
                 ) : (
-                  <span className="dock-hint dock-muted">🌙 Màn đêm tĩnh lặng — bạn đang ngủ...</span>
+                  <span className="dock-hint dock-muted">
+                    {universeId === "office"
+                      ? "🌙 Văn phòng đang khóa sổ ca tối — chờ đến lượt bộ phận của bạn..."
+                      : universeId === "school"
+                        ? "🌙 Lớp đang tự học yên tĩnh — chờ đến lượt tổ của bạn..."
+                        : "🌙 Màn đêm tĩnh lặng — bạn đang ngủ..."}
+                  </span>
                 )
               ) : (
                 /* ================= BAN NGÀY ================= */
                 <div className="dock-row">
                   {g.nightDayPhase === "day_discuss" && (
                     <>
-                      <span className="dock-hint">💬 Thảo luận tìm Sói</span>
+                      <span className="dock-hint">
+                        {universeId === "office"
+                          ? "☕ Giải lao truy tìm nick Sếp"
+                          : universeId === "school"
+                            ? "🎒 Ra chơi tìm nick Giáo Viên"
+                            : "💬 Thảo luận tìm Sói"}
+                      </span>
                       <button
                         type="button"
                         className="dock-btn dock-btn-ghost"
@@ -1719,7 +1981,7 @@ export default function PlayingView({
                           });
                         }}
                       >
-                        🪢 Treo ({hangCount})
+                        {voteLabels.hangBtn || "🪢 Treo"} ({hangCount})
                       </button>
                       <button
                         type="button"
@@ -1730,10 +1992,10 @@ export default function PlayingView({
                           socketRef.current.emit("action:finalVote", { decision: "spare" }, () => setHasActed(true));
                         }}
                       >
-                        🕊️ Tha ({spareCount})
+                        {voteLabels.spareBtn || "🕊️ Tha"} ({spareCount})
                       </button>
                       <span className="dock-chip">
-                        {hangCount >= hangNeeded ? "🪢 Đủ phiếu!" : `Cần ${hangNeeded} Treo`}
+                        {hangCount >= hangNeeded ? "✅ Đủ quá bán!" : `Cần ${hangNeeded} phiếu`}
                       </span>
                     </>
                   )}
@@ -1751,7 +2013,7 @@ export default function PlayingView({
                       type="button"
                       className="dock-btn"
                       onClick={handleMayorReveal}
-                      title="Lộ diện Trưởng Làng vĩnh viễn và nhân đôi (x2) sức nặng lá phiếu của bạn!"
+                      title="Lộ diện chức vụ vĩnh viễn và nhân đôi (x2) sức nặng lá phiếu của bạn!"
                       style={{
                         background: 'linear-gradient(135deg, #f59e0b, #b45309)',
                         border: '1px solid #fde047',
@@ -1760,7 +2022,11 @@ export default function PlayingView({
                         boxShadow: '0 2px 12px rgba(245, 158, 11, 0.45)',
                       }}
                     >
-                      👑 Công Bố Quyền Trượng (x2)
+                      {universeId === "office"
+                        ? "🏅 Thẻ Công Đoàn (Phiếu x2)"
+                        : universeId === "school"
+                          ? "⭐ Sao Lớp Trưởng (Phiếu x2)"
+                          : "👑 Công Bố Quyền Trượng (x2)"}
                     </button>
                   )}
 
@@ -1842,48 +2108,52 @@ export default function PlayingView({
                     className={`ghost-tab-btn ${chatChannel === "village" ? "active" : ""}`}
                     onClick={() => setChatChannel("village")}
                   >
-                    💬 Kênh Làng ({chatLog.length})
+                    💬 {universeId === "office" ? "Phòng Họp" : universeId === "school" ? "Nhóm Lớp" : "Kênh Làng"} ({chatLog.length})
                   </button>
                   <button
                     type="button"
                     className={`ghost-tab-btn ${chatChannel === "ghost" ? "active" : ""}`}
                     onClick={() => setChatChannel("ghost")}
                   >
-                    👻 Cõi Âm ({ghostChatLog.length})
+                    {universeId === "office" ? "☕ Tổ Pantry" : universeId === "school" ? "🧋 Hành Lang" : "👻 Cõi Âm"} ({ghostChatLog.length})
                   </button>
                 </div>
                 <div className="ghost-bet-box">
                   {g.myGhostBet ? (
                     <span>
-                      🔮 Đã dự đoán:{" "}
+                      🎯 Đã dự đoán:{" "}
                       <strong>
                         {g.myGhostBet === "wolf"
-                          ? "🐺 Phe Sói"
+                          ? uTheme.factions?.wolf || "🐺 Phe Sói"
                           : g.myGhostBet === "lovers"
-                            ? "💘 Cặp Đôi"
+                            ? universeId === "office"
+                              ? "🧋 Liên Minh Trà Sữa"
+                              : universeId === "school"
+                                ? "💌 Đôi Bạn Cùng Bàn"
+                                : "💘 Cặp Đôi"
                             : g.myGhostBet === "tanner"
-                              ? "💀 Chán Đời"
-                              : "🏡 Phe Dân"}
+                              ? `${roleEmojiOf("tanner")} ${roleLabelOf("tanner")}`
+                              : uTheme.factions?.village || "🏡 Phe Dân"}
                       </strong>{" "}
                       (Đúng +35 XP!)
                     </span>
                   ) : (
                     <>
-                      <span>🔮 Dự đoán phe thắng (+35 XP):</span>
+                      <span>🎯 Dự đoán phe thắng (+35 XP):</span>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button
                           type="button"
                           className="btn-ghost-bet"
                           onClick={() => handleGhostBet("village")}
                         >
-                          🏡 Phe Dân
+                          {uTheme.factions?.village || "🏡 Phe Dân"}
                         </button>
                         <button
                           type="button"
                           className="btn-ghost-bet"
                           onClick={() => handleGhostBet("wolf")}
                         >
-                          🐺 Phe Sói
+                          {uTheme.factions?.wolf || "🐺 Phe Sói"}
                         </button>
                         {Number(g.roleCounts?.cupid) > 0 && (
                           <button
@@ -1891,7 +2161,7 @@ export default function PlayingView({
                             className="btn-ghost-bet"
                             onClick={() => handleGhostBet("lovers")}
                           >
-                            💘 Cặp Đôi
+                            {universeId === "office" ? "🧋 Liên Minh" : universeId === "school" ? "💌 Đôi Bạn" : "💘 Cặp Đôi"}
                           </button>
                         )}
                         {Number(g.roleCounts?.tanner) > 0 && (
@@ -1900,7 +2170,7 @@ export default function PlayingView({
                             className="btn-ghost-bet"
                             onClick={() => handleGhostBet("tanner")}
                           >
-                            💀 Chán Đời
+                            {roleEmojiOf("tanner")} {roleLabelOf("tanner")}
                           </button>
                         )}
                       </div>
@@ -1923,7 +2193,13 @@ export default function PlayingView({
             >
               {chatChannel === "ghost" && !isSpectator && me && !me.alive && ghostChatLog.length === 0 && (
                 <div style={{ padding: "14px 10px", textAlign: "center", fontSize: "0.78rem", color: "#c4b5fd" }}>
-                  👻 Chào mừng đến <strong>Cõi Âm</strong>! Chỉ những người đã ngã xuống mới đọc & trò chuyện được tại đây.
+                  {universeId === "office" ? (
+                    <>☕ Chào mừng đến <strong>Tổ Hóng Pantry</strong>! Các nhân sự đã bàn giao việc có thể trò chuyện thoải mái tại đây.</>
+                  ) : universeId === "school" ? (
+                    <>🧋 Chào mừng đến <strong>Hội Hóng Hành Lang</strong>! Các bạn đang trực ngoài lớp có thể tám chuyện riêng tại đây.</>
+                  ) : (
+                    <>👻 Chào mừng đến <strong>Cõi Âm</strong>! Chỉ những người đã ngã xuống mới đọc & trò chuyện được tại đây.</>
+                  )}
                 </div>
               )}
               {(chatChannel === "ghost" && !isSpectator && me && !me.alive ? ghostChatLog : chatLog)
@@ -1968,8 +2244,16 @@ export default function PlayingView({
                           {/* Tên + thời gian (trên bubble) */}
                           {!isMine && (
                             <div className="chat-header-row">
-                              {msg.type === 'wolf' && <span className="wolf-tag">🐺</span>}
-                              {msg.type === 'ghost' && <span className="wolf-tag">👻</span>}
+                              {msg.type === 'wolf' && (
+                                <span className="wolf-tag">
+                                  {universeId === 'office' ? '👔' : universeId === 'school' ? '👩‍🏫' : '🐺'}
+                                </span>
+                              )}
+                              {msg.type === 'ghost' && (
+                                <span className="wolf-tag">
+                                  {universeId === 'office' ? '☕' : universeId === 'school' ? '🧋' : '👻'}
+                                </span>
+                              )}
                               <span className="chat-sender-name">{msg.senderName}</span>
                               <span className="chat-time">{msg.time}</span>
                               {!isSpectator && msg.senderId && !senderPlayer?.isBot && (
@@ -2037,7 +2321,13 @@ export default function PlayingView({
                 <form onSubmit={handleWolfChat} className="chat-input-form wolf-input">
                   <input 
                     className="chat-input"
-                    placeholder="🐺 Chat bầy sói..." 
+                    placeholder={
+                      universeId === "office"
+                        ? "👔 Nhắn riêng Hội Sếp..."
+                        : universeId === "school"
+                          ? "👩‍🏫 Nhắn riêng Tổ Giáo Viên..."
+                          : "🐺 Chat bầy sói..."
+                    }
                     value={wolfChatInput}
                     onChange={e => setWolfChatInput(e.target.value)}
                   />
@@ -2046,7 +2336,7 @@ export default function PlayingView({
               )}
               {!isSpectator && !isNight && me?.alive && !g.winner && (
                 <div className="quick-debate-strip">
-                  {QUICK_DEBATE_CHIPS.map((phrase) => (
+                  {quickDebateChips.map((phrase) => (
                     <button
                       key={phrase}
                       type="button"
@@ -2073,7 +2363,13 @@ export default function PlayingView({
                 <form onSubmit={handleGhostChat} className="chat-input-form">
                   <input
                     className="chat-input"
-                    placeholder="👻 Trò chuyện Cõi Âm (chỉ linh hồn thấy)..."
+                    placeholder={
+                      universeId === "office"
+                        ? "☕ Trò chuyện Tổ Hóng Pantry..."
+                        : universeId === "school"
+                          ? "🧋 Trò chuyện Hội Hành Lang..."
+                          : "👻 Trò chuyện Cõi Âm (chỉ linh hồn thấy)..."
+                    }
                     value={ghostChatInput}
                     onChange={e => setGhostChatInput(e.target.value)}
                   />
@@ -2091,6 +2387,7 @@ export default function PlayingView({
       {g.winner && g.history && (
         <EndGameRecap 
           roomCode={room.code}
+          universeId={universeId}
           gameStartedAt={g.gameStartedAt}
           myPlayerId={me?.id || null}
           serverGoldenHour={room.serverGoldenHour || null}
@@ -2154,10 +2451,35 @@ export default function PlayingView({
             {tutorialStep === 1 && (
               <div className="tutorial-step-content">
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-                  <RolePortrait roleKey={me.role} mode="card" size={88} glow />
+                  {universeId === 'classic' ? (
+                    <RolePortrait roleKey={me.role} mode="card" size={88} glow />
+                  ) : (
+                    <div
+                      style={{
+                        width: 88,
+                        height: 88,
+                        borderRadius: 18,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '2.8rem',
+                        background: 'rgba(15, 23, 42, 0.95)',
+                        border: `2px solid ${uTheme.accentHex}`,
+                      }}
+                    >
+                      {roleEmojiOf(me.role)}
+                    </div>
+                  )}
                 </div>
-                <h2>Bạn là <span style={{ color: '#f59e0b' }}>{ROLE_LABELS[me.role]}</span></h2>
-                <p className="tutorial-team">Phe: {isWolfTeamRole(me.role) ? '🐺 Sói' : me.role === 'tanner' ? '💀 Trung Lập' : '👥 Dân Làng'}</p>
+                <h2>Bạn là <span style={{ color: '#f59e0b' }}>{roleLabelOf(me.role)}</span></h2>
+                <p className="tutorial-team">
+                  Phe:{' '}
+                  {isWolfTeamRole(me.role)
+                    ? uTheme.factions?.wolf || '🐺 Sói'
+                    : me.role === 'tanner'
+                      ? uTheme.factions?.neutral || '💀 Trung Lập'
+                      : uTheme.factions?.village || '👥 Dân Làng'}
+                </p>
               </div>
             )}
 
@@ -2166,7 +2488,7 @@ export default function PlayingView({
               <div className="tutorial-step-content">
                 <div className="role-tutorial-emoji">📋</div>
                 <h2>Nhiệm vụ của bạn</h2>
-                <p className="tutorial-desc">{ROLE_DESCRIPTIONS[me.role]}</p>
+                <p className="tutorial-desc">{roleDescOf(me.role)}</p>
               </div>
             )}
 
@@ -2180,9 +2502,13 @@ export default function PlayingView({
                     .filter(([, c]) => c > 0)
                     .map(([r, c]) => (
                       <div key={r} className={`role-count-chip ${r === me.role ? 'role-count-mine' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                        <RolePortrait roleKey={r} size={20} />
+                        {universeId === 'classic' ? (
+                          <RolePortrait roleKey={r} size={20} />
+                        ) : (
+                          <span>{roleEmojiOf(r)}</span>
+                        )}
                         <span>
-                          {ROLE_LABELS[r]} × {c}
+                          {roleLabelOf(r)} × {c}
                           {r === me.role && ' (Bạn!)'}
                         </span>
                       </div>

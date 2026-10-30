@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "presetId": "preset_school_sunset_3d",
+  "name": "🎒 Học Đường: Lớp Học Hoàng Hôn",
+  "description": "Lớp học nắng chiều hoàng hôn Anime, bảng phấn xanh, bục Cúp Thi Đua & Sổ Đầu Bài R=1.20m Zero-Clipping",
+  "moodHint": "school_sunset",
+  "slotMode": "procedural_anime_stage",
+  "updatedAtMs": 1793287200000,
+  "updatedAtIso": "2026-10-29T16:00:00.000Z",
+  "note": "V4.6 Vũ Trụ Học Đường — Render trực tiếp bởi SchoolSunsetStage3D (0% model trung cổ thừa)",
+  "totalNodes": 1,
+  "nodes": [
+    {
+      "id": "school-trophy-center",
+      "type": "school_trophy_pedestal",
+      "label": "Bục Cúp Thi Đua & Sổ Đầu Bài",
+      "category": "centerpiece",
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "seed": 0,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": false
+    }
+  ]
+}

@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { getSocketServerUrl } from "../config/runtimeEnv.js";
 
-const SERVER_URL = getSocketServerUrl();
-
 // Định danh thiết bị ẩn danh (chống mở 2 tab cày/soi bài trên bàn công khai Production - SEC-07)
 export function getDeviceId() {
   try {
@@ -55,7 +53,7 @@ export function useSocket() {
   const activeRoomCodeRef = useRef(null);
 
   useEffect(() => {
-    const socket = io(SERVER_URL, { autoConnect: true });
+    const socket = io(getSocketServerUrl(), { autoConnect: true });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -66,9 +64,14 @@ export function useSocket() {
       const session = getSession();
       if (session?.roomCode && session?.sessionToken) {
         setReconnectStatus('reconnecting');
+        const safetyTimer = window.setTimeout(() => {
+          clearSession();
+          setReconnectStatus(null);
+        }, 3500);
         socket.emit("room:reconnect", 
           { roomCode: session.roomCode, sessionToken: session.sessionToken },
           (res) => {
+            window.clearTimeout(safetyTimer);
             if (res?.ok) {
               // Update playerId in session (stays same but confirm)
               saveSession(session.roomCode, session.sessionToken, res.playerId, session.name);
@@ -79,7 +82,7 @@ export function useSocket() {
               setReconnectStatus(null);
             } else {
               // Token hết hạn / phòng đã đóng: chỉ thử vào lại nếu phòng đang ở sảnh chờ (SEC-03 chặn vào ngang bằng tên khi đang chơi)
-              if (session?.name && session?.roomCode && res?.phase !== "playing") {
+              if (session?.name && session?.roomCode && res?.phase === "lobby") {
                 socket.emit("room:join",
                   { roomCode: session.roomCode, name: session.name, deviceId: getDeviceId() },
                   (res2) => {
@@ -90,13 +93,13 @@ export function useSocket() {
                       setReconnectStatus(null);
                     } else {
                       clearSession();
-                      setReconnectStatus('failed');
+                      setReconnectStatus(null);
                     }
                   }
                 );
               } else {
                 clearSession();
-                setReconnectStatus('failed');
+                setReconnectStatus(null);
               }
             }
           }

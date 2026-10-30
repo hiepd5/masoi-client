@@ -360,10 +360,15 @@ function useOptionalRoleGlb(roleKey) {
 }
 
 /**
- * SOCKET 1: ĐẠO CỤ / TẠO HÌNH ĐẦU MƯỢT MÀ 8 VAI (0% HÌNH HỘP THÔ)
+ * SOCKET 1: ĐẠO CỤ / TẠO HÌNH ĐẦU MƯỢT MÀ 12 VAI × 3 VŨ TRỤ (CLASSIC | OFFICE | SCHOOL)
  */
-export function RoleHeadSocket3D({ roleKey, isGhost = false, opacity = 1 }) {
-  const glbClone = useOptionalRoleGlb(roleKey);
+export function RoleHeadSocket3D({
+  roleKey,
+  isGhost = false,
+  opacity = 1,
+  universeId = "classic",
+}) {
+  const glbClone = useOptionalRoleGlb(universeId === "classic" ? roleKey : null);
   const bellRef = useRef(null);
   const geos = useMemo(() => getSharedSculptGeometries(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
@@ -376,6 +381,182 @@ export function RoleHeadSocket3D({ roleKey, isGhost = false, opacity = 1 }) {
   });
 
   if (!roleKey) return null;
+
+  // ==================== ĐẠO CỤ ĐẦU 3D VŨ TRỤ CÔNG SỞ (OFFICE) ====================
+  if (universeId === "office") {
+    switch (roleKey) {
+      case "wolf":
+      case "alpha_wolf":
+        return (
+          <group position={[0, 0.15, 0.135]}>
+            {/* Kính Râm Đen Sếp Tổng Vi Hành / Vương Miện Chủ Tịch */}
+            {[-0.044, 0.044].map((gx, gi) => (
+              <mesh key={gi} position={[gx, 0, 0]}>
+                <boxGeometry args={[0.056, 0.03, 0.014]} />
+                <meshStandardMaterial color="#09090b" metalness={0.9} roughness={0.12} transparent={isGhost} opacity={opacity} />
+              </mesh>
+            ))}
+            <mesh position={[0, 0.006, 0]}>
+              <boxGeometry args={[0.036, 0.006, 0.012]} />
+              <meshStandardMaterial color="#fbbf24" metalness={0.92} roughness={0.18} />
+            </mesh>
+            {roleKey === "alpha_wolf" && (
+              <mesh position={[0, 0.135, -0.12]} rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.11, 0.014, 10, 24]} />
+                <meshStandardMaterial color="#fbbf24" emissive="#f59e0b" emissiveIntensity={0.85} metalness={0.92} roughness={0.16} />
+              </mesh>
+            )}
+          </group>
+        );
+      case "seer":
+        return (
+          <group position={[0, 0.165, 0.01]}>
+            {/* Tai nghe chụp đầu Cyan Chuyên Viên IT + Kính chống ánh sáng xanh */}
+            <mesh rotation={[0, 0, 0]} scale={[1.04, 1.06, 0.9]}>
+              <torusGeometry args={[0.136, 0.012, 8, 24, Math.PI]} />
+              <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.3} />
+            </mesh>
+            {[-0.136, 0.136].map((hx, hi) => (
+              <mesh key={hi} position={[hx, -0.025, 0.01]} rotation={[0, Math.PI / 2, 0]}>
+                <cylinderGeometry args={[0.036, 0.036, 0.028, 14]} />
+                <meshStandardMaterial color="#0284c7" emissive="#38bdf8" emissiveIntensity={1.1} roughness={0.2} />
+              </mesh>
+            ))}
+          </group>
+        );
+      case "witch":
+        return (
+          <group position={[0, 0.152, 0.134]}>
+            {/* Gọng Kính Mắt Mèo Vàng Kim Chị Kế Toán Trưởng */}
+            {[-0.044, 0.044].map((gx, gi) => (
+              <mesh key={gi} position={[gx, 0, 0]}>
+                <torusGeometry args={[0.024, 0.004, 8, 18]} />
+                <meshStandardMaterial color="#fbbf24" metalness={0.9} roughness={0.2} />
+              </mesh>
+            ))}
+          </group>
+        );
+      case "mayor":
+        return (
+          <group position={[0, 0.285, 0.02]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.11, 0.012, 10, 26]} />
+              <meshStandardMaterial color="#fde047" emissive="#f59e0b" emissiveIntensity={1.1} metalness={0.9} roughness={0.18} />
+            </mesh>
+          </group>
+        );
+      case "cursed":
+        return (
+          <group position={[0.03, 0.295, 0.02]}>
+            {/* Mầm cây Thực Tập Sinh Cơ Hội trên đỉnh đầu */}
+            <mesh position={[0, 0.025, 0]}>
+              <cylinderGeometry args={[0.005, 0.005, 0.05, 6]} />
+              <meshStandardMaterial color="#16a34a" />
+            </mesh>
+            {[-0.022, 0.022].map((lx, li) => (
+              <mesh key={li} position={[lx, 0.052, 0]} rotation={[0, 0, li === 0 ? 0.55 : -0.55]} scale={[1.3, 0.45, 0.7]}>
+                <sphereGeometry args={[0.02, 10, 8]} />
+                <meshStandardMaterial color="#4ade80" emissive="#22c55e" emissiveIntensity={0.45} />
+              </mesh>
+            ))}
+          </group>
+        );
+      case "cupid":
+        return (
+          <group position={[0, 0.28, 0.03]}>
+            <mesh scale={[1.1, 1.1, 0.55]}>
+              <octahedronGeometry args={[0.028, 0]} />
+              <meshStandardMaterial color="#f9a8d4" emissive="#ec4899" emissiveIntensity={1.4} />
+            </mesh>
+          </group>
+        );
+      case "tanner":
+        return (
+          <group position={[0, 0.235, 0.08]} rotation={[-0.35, 0, 0]}>
+            {/* Kính Mát Du Lịch Biển Cài Trán của Thánh Săn Đền Bù */}
+            {[-0.042, 0.042].map((gx, gi) => (
+              <mesh key={gi} position={[gx, 0, 0]}>
+                <sphereGeometry args={[0.024, 12, 10]} />
+                <meshStandardMaterial color="#f97316" emissive="#ea580c" emissiveIntensity={0.5} metalness={0.7} roughness={0.2} />
+              </mesh>
+            ))}
+          </group>
+        );
+      default:
+        return null;
+    }
+  }
+
+  // ==================== ĐẠO CỤ ĐẦU 3D VŨ TRỤ HỌC ĐƯỜNG (SCHOOL) ====================
+  if (universeId === "school") {
+    switch (roleKey) {
+      case "wolf":
+      case "alpha_wolf":
+        return (
+          <group position={[0, 0.152, 0.135]}>
+            {/* Kính Gọng Sừng Nghiêm Khắc Cô Chủ Nhiệm / Kính Đen Thầy Giám Thị */}
+            {[-0.044, 0.044].map((gx, gi) => (
+              <mesh key={gi} position={[gx, 0, 0]}>
+                {roleKey === "alpha_wolf" ? (
+                  <boxGeometry args={[0.056, 0.032, 0.014]} />
+                ) : (
+                  <torusGeometry args={[0.025, 0.0045, 8, 18]} />
+                )}
+                <meshStandardMaterial
+                  color={roleKey === "alpha_wolf" ? "#0f172a" : "#7f1d1d"}
+                  metalness={0.85}
+                  roughness={0.18}
+                />
+              </mesh>
+            ))}
+          </group>
+        );
+      case "seer":
+        return (
+          <group position={[0, 0.255, 0.01]} rotation={[-0.08, 0, 0.1]}>
+            {/* Mũ Ca-lô Sao Đỏ Trực Tuần Đính Sao Vàng */}
+            <mesh scale={[0.92, 0.48, 1.18]}>
+              <sphereGeometry args={[0.125, 18, 12]} />
+              <meshStandardMaterial color="#dc2626" roughness={0.62} />
+            </mesh>
+            <mesh position={[0, 0.01, 0.135]}>
+              <octahedronGeometry args={[0.02, 0]} />
+              <meshStandardMaterial color="#fde047" emissive="#f59e0b" emissiveIntensity={1.1} />
+            </mesh>
+          </group>
+        );
+      case "mayor":
+        return (
+          <group position={[0, 0.295, 0.03]}>
+            {/* Ngôi Sao Vàng Lớp Trưởng Gương Mẫu Lơ Lửng */}
+            <mesh>
+              <octahedronGeometry args={[0.034, 0]} />
+              <meshStandardMaterial color="#fde047" emissive="#f59e0b" emissiveIntensity={1.35} metalness={0.85} roughness={0.15} />
+            </mesh>
+          </group>
+        );
+      case "tough_guy":
+        return (
+          <group position={[0, 0.285, 0]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.115, 0.012, 8, 24]} />
+              <meshStandardMaterial color="#38bdf8" emissive="#0284c7" emissiveIntensity={0.95} />
+            </mesh>
+          </group>
+        );
+      case "cupid":
+        return (
+          <group position={[0, 0.28, 0.03]}>
+            <mesh scale={[1.1, 1.1, 0.55]}>
+              <octahedronGeometry args={[0.028, 0]} />
+              <meshStandardMaterial color="#f9a8d4" emissive="#ec4899" emissiveIntensity={1.4} />
+            </mesh>
+          </group>
+        );
+      default:
+        return null;
+    }
+  }
 
   if (glbClone) {
     const meta = ROLE_COSTUME_MANIFEST[roleKey] || {};
@@ -775,24 +956,134 @@ export function RoleTorsoSocket3D({
   opacity = 1,
   enduringFire = false,
   seed = 0,
+  universeId = "classic",
+  choreoActionType = null,
 }) {
   const orbRef = useRef(null);
   const geos = useMemo(() => getSharedSculptGeometries(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
-  const seerOrbGlb = useOptionalHandPropGlb(roleKey === "seer" ? "seer_orb" : null);
-  const witchElixirGlb = useOptionalHandPropGlb(roleKey === "witch" && !isGhost ? "witch_elixir" : null);
-  const witchPoisonGlb = useOptionalHandPropGlb(roleKey === "witch" && !isGhost ? "witch_poison" : null);
-  const tannerNooseGlb = useOptionalHandPropGlb(roleKey === "tanner" ? "tanner_noose" : null);
+  const isClassic = universeId === "classic";
+  const seerOrbGlb = useOptionalHandPropGlb(isClassic && roleKey === "seer" ? "seer_orb" : null);
+  const witchElixirGlb = useOptionalHandPropGlb(isClassic && roleKey === "witch" && !isGhost ? "witch_elixir" : null);
+  const witchPoisonGlb = useOptionalHandPropGlb(isClassic && roleKey === "witch" && !isGhost ? "witch_poison" : null);
+  const tannerNooseGlb = useOptionalHandPropGlb(isClassic && roleKey === "tanner" ? "tanner_noose" : null);
 
   useFrame((state) => {
     if (orbRef.current) {
       const t = state.clock.elapsedTime;
       orbRef.current.position.y = 0.41 + Math.sin(t * 2.6 + seed) * 0.032;
-      orbRef.current.rotation.y = t * 1.4;
+      orbRef.current.rotation.y = isClassic ? t * 1.4 : Math.sin(t * 1.5) * 0.25;
     }
   });
 
-  if (!roleKey) return null;
+  if (!roleKey && !(universeId === "office" && choreoActionType === "gallows_walk_hang")) return null;
+
+  if (!isClassic) {
+    const isOffice = universeId === "office";
+    return (
+      <group>
+        {/* Thùng Carton Bàn Giao Đồ Cá Nhân 3D khi Nhân Viên bị biểu quyết điều chuyển công tác (`gallows_walk_hang`) */}
+        {isOffice && choreoActionType === "gallows_walk_hang" && !isGhost && (
+          <group position={[0, 0.28, 0.25]}>
+            {/* Thân thùng Carton giấy Kraft */}
+            <mesh castShadow>
+              <boxGeometry args={[0.32, 0.22, 0.24]} />
+              <meshStandardMaterial color="#d97706" roughness={0.82} />
+            </mesh>
+            {/* Băng keo dán ngang thùng */}
+            <mesh position={[0, -0.02, 0.122]}>
+              <boxGeometry args={[0.325, 0.036, 0.006]} />
+              <meshStandardMaterial color="#fef3c7" roughness={0.65} />
+            </mesh>
+            {/* Chậu sen đá nhỏ + Cốc cà phê thò lên miệng thùng */}
+            <mesh position={[-0.075, 0.135, 0]}>
+              <cylinderGeometry args={[0.042, 0.032, 0.065, 10]} />
+              <meshStandardMaterial color="#f8fafc" roughness={0.35} />
+            </mesh>
+            <mesh position={[0.075, 0.145, 0.01]}>
+              <sphereGeometry args={[0.052, 12, 10]} />
+              <meshStandardMaterial color="#22c55e" roughness={0.6} />
+            </mesh>
+          </group>
+        )}
+
+        {/* Thẻ Nhân Viên / Còi Giám Thị / Băng Đỏ Sao Đỏ đeo ngực/tay */}
+        {(roleKey === "wolf" || roleKey === "alpha_wolf" || roleKey === "villager") && !isGhost && (
+          <group position={[0.075, 0.34, 0.155]}>
+            <mesh>
+              <boxGeometry args={[0.052, 0.072, 0.01]} />
+              <meshStandardMaterial
+                color={roleKey === "villager" ? "#38bdf8" : "#ef4444"}
+                emissive={roleKey === "villager" ? "#0284c7" : "#dc2626"}
+                emissiveIntensity={0.65}
+              />
+            </mesh>
+          </group>
+        )}
+
+        {/* IT Laptop Hologram / Kính Lúp Sao Đỏ lơ lửng trước ngực */}
+        {roleKey === "seer" && (
+          <group ref={orbRef} position={[0, 0.41, 0.28]}>
+            {isOffice ? (
+              <group rotation={[-0.28, 0, 0]}>
+                <mesh>
+                  <boxGeometry args={[0.2, 0.13, 0.012]} />
+                  <meshStandardMaterial color="#0ea5e9" emissive="#38bdf8" emissiveIntensity={1.25} roughness={0.15} />
+                </mesh>
+                <mesh position={[0, -0.07, 0.055]} rotation={[1.25, 0, 0]}>
+                  <boxGeometry args={[0.2, 0.12, 0.01]} />
+                  <meshStandardMaterial color="#334155" metalness={0.75} roughness={0.28} />
+                </mesh>
+              </group>
+            ) : (
+              <group>
+                <mesh>
+                  <torusGeometry args={[0.068, 0.011, 10, 24]} />
+                  <meshStandardMaterial color="#fbbf24" metalness={0.88} roughness={0.2} />
+                </mesh>
+                <mesh>
+                  <circleGeometry args={[0.064, 20]} />
+                  <meshBasicMaterial color="#bae6fd" transparent opacity={0.62} side={THREE.DoubleSide} />
+                </mesh>
+                <mesh position={[0, -0.1, 0]}>
+                  <cylinderGeometry args={[0.01, 0.012, 0.09, 10]} />
+                  <meshStandardMaterial color="#78350f" roughness={0.7} />
+                </mesh>
+              </group>
+            )}
+          </group>
+        )}
+
+        {/* Kế Toán Trưởng / Thư Ký Sổ Đầu Bài: 2 Thẻ +Thưởng (Xanh) & -Phạt (Đỏ) bên hông */}
+        {roleKey === "witch" && !isGhost && (
+          <group position={[0, 0.21, 0.18]}>
+            <mesh position={[-0.095, 0, 0]} rotation={[0, 0, 0.15]}>
+              <boxGeometry args={[0.065, 0.09, 0.018]} />
+              <meshStandardMaterial color="#10b981" emissive="#059669" emissiveIntensity={1.1} />
+            </mesh>
+            <mesh position={[0.095, 0, 0]} rotation={[0, 0, -0.15]}>
+              <boxGeometry args={[0.065, 0.09, 0.018]} />
+              <meshStandardMaterial color="#f43f5e" emissive="#e11d48" emissiveIntensity={1.1} />
+            </mesh>
+          </group>
+        )}
+
+        {/* Quầng Lửa Chịu Đòn của Chiến Thần Quỹ Đen / Học Bá Điểm 10 */}
+        {roleKey === "tough_guy" && enduringFire && (
+          <sprite position={[0, 0.36, 0.1]} scale={[0.72, 0.72, 1]}>
+            <spriteMaterial
+              map={glowTex}
+              color="#38bdf8"
+              transparent
+              opacity={0.7}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </sprite>
+        )}
+      </group>
+    );
+  }
 
   return (
     <group>
@@ -988,34 +1279,204 @@ export function RoleHandSocket3D({
   opacity = 1,
   showTrialTorch = false,
   boneAttached = false,
+  universeId = "classic",
 }) {
   const geos = useMemo(() => getSharedSculptGeometries(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
+  const isClassic = universeId === "classic";
   const guardShieldGlb = useOptionalHandPropGlb(
-    roleKey === "guard" && side === "left" ? "guard_shield" : null
+    isClassic && roleKey === "guard" && side === "left" ? "guard_shield" : null
   );
   const trialTorchGlb = useOptionalHandPropGlb(
-    showTrialTorch && side === "right" && !isGhost ? "trial_torch" : null
+    isClassic && showTrialTorch && side === "right" && !isGhost ? "trial_torch" : null
   );
   const witchElixirGlb = useOptionalHandPropGlb(
-    roleKey === "witch" && side === "left" && boneAttached && !isGhost ? "witch_elixir" : null
+    isClassic && roleKey === "witch" && side === "left" && boneAttached && !isGhost ? "witch_elixir" : null
   );
   const witchPoisonGlb = useOptionalHandPropGlb(
-    roleKey === "witch" && side === "right" && boneAttached && !isGhost ? "witch_poison" : null
+    isClassic && roleKey === "witch" && side === "right" && boneAttached && !isGhost ? "witch_poison" : null
   );
   const seerOrbGlb = useOptionalHandPropGlb(
-    roleKey === "seer" && side === "center" && !isGhost ? "seer_orb" : null
+    isClassic && roleKey === "seer" && side === "center" && !isGhost ? "seer_orb" : null
   );
   // === 3 CỔNG VŨ KHÍ CẦM TAY MỚI V3.3 (#25 -> #27) ===
   const hunterCrossbowGlb = useOptionalHandPropGlb(
-    roleKey === "hunter" && side === "right" && !isGhost ? "hunter_crossbow" : null
+    isClassic && roleKey === "hunter" && side === "right" && !isGhost ? "hunter_crossbow" : null
   );
   const cupidBowGlb = useOptionalHandPropGlb(
-    roleKey === "cupid" && side === "left" && !isGhost ? "cupid_bow" : null
+    isClassic && roleKey === "cupid" && side === "left" && !isGhost ? "cupid_bow" : null
   );
   const mayorScepterGlb = useOptionalHandPropGlb(
-    roleKey === "mayor" && side === "right" && !isGhost ? "mayor_scepter" : null
+    isClassic && roleKey === "mayor" && side === "right" && !isGhost ? "mayor_scepter" : null
   );
+
+  // ==================== ĐẠO CỤ CẦM TAY 3D VŨ TRỤ CÔNG SỞ & HỌC ĐƯỜNG ====================
+  if (!isClassic) {
+    const isOffice = universeId === "office";
+
+    // Giơ Thẻ Đỏ HR (Office) / Bảng Cầm Tay Biểu Quyết Sao Đỏ (School) thay cho Đuốc Lửa Trung Cổ!
+    if (showTrialTorch && side === "right" && !isGhost) {
+      const pos = boneAttached ? [0, -0.02, 0.05] : [0, -0.36, 0.06];
+      const rot = boneAttached ? [0.4, 0, 0] : [1.0, 0, 0];
+      return (
+        <group position={pos} rotation={rot}>
+          {isOffice ? (
+            <>
+              <mesh position={[0, 0.16, 0]}>
+                <boxGeometry args={[0.15, 0.22, 0.02]} />
+                <meshStandardMaterial color="#dc2626" emissive="#ef4444" emissiveIntensity={0.95} roughness={0.28} />
+              </mesh>
+              <mesh position={[0, 0.26, 0.012]}>
+                <boxGeometry args={[0.068, 0.024, 0.02]} />
+                <meshStandardMaterial color="#fbbf24" metalness={0.88} roughness={0.18} />
+              </mesh>
+            </>
+          ) : (
+            <>
+              {/* Cán gỗ cầm tay + Bảng tròn/vuông Sao Đỏ Học Đường */}
+              <mesh position={[0, 0.08, 0]}>
+                <cylinderGeometry args={[0.012, 0.012, 0.18, 10]} />
+                <meshStandardMaterial color="#b45309" roughness={0.65} />
+              </mesh>
+              <mesh position={[0, 0.22, 0]}>
+                <boxGeometry args={[0.18, 0.15, 0.022]} />
+                <meshStandardMaterial color="#e11d48" emissive="#f43f5e" emissiveIntensity={0.85} roughness={0.32} />
+              </mesh>
+              <mesh position={[0, 0.22, 0.014]}>
+                <octahedronGeometry args={[0.036, 0]} />
+                <meshStandardMaterial color="#fde047" emissive="#f59e0b" emissiveIntensity={1.1} />
+              </mesh>
+            </>
+          )}
+        </group>
+      );
+    }
+
+    if (!roleKey || isGhost) return null;
+
+    // Sếp / Giáo Viên: Bìa Kỷ Luật Đỏ / Thước Kẻ Gỗ cầm tay phải
+    if ((roleKey === "wolf" || roleKey === "alpha_wolf") && side === "right") {
+      const pos = boneAttached ? [0, -0.02, 0.05] : [0, -0.38, 0.05];
+      return (
+        <group position={pos} rotation={[0.85, 0, 0]}>
+          {isOffice ? (
+            <mesh position={[0, 0.1, 0]}>
+              <boxGeometry args={[0.14, 0.19, 0.022]} />
+              <meshStandardMaterial color="#991b1b" emissive="#dc2626" emissiveIntensity={0.55} roughness={0.4} />
+            </mesh>
+          ) : (
+            <mesh position={[0, 0.16, 0]}>
+              <boxGeometry args={[0.032, 0.34, 0.01]} />
+              <meshStandardMaterial color="#d97706" roughness={0.55} />
+            </mesh>
+          )}
+        </group>
+      );
+    }
+
+    // Team Lead / Lớp Phó: Bìa Hồ Sơ Khiên KPI / Sách Giáo Khoa Dày Đỡ Lời bên tay trái
+    if (roleKey === "guard" && side === "left") {
+      const pos = boneAttached ? [0.06, 0.04, 0.08] : [0.085, -0.25, 0.065];
+      return (
+        <group position={pos} rotation={[0.2, 0.35, 0]}>
+          <mesh>
+            <boxGeometry args={[0.035, 0.3, 0.24]} />
+            <meshStandardMaterial
+              color={isOffice ? "#0284c7" : "#1d4ed8"}
+              emissive="#38bdf8"
+              emissiveIntensity={0.45}
+              roughness={0.35}
+            />
+          </mesh>
+        </group>
+      );
+    }
+
+    // Kế Toán / Thư Ký Sổ Đầu Bài: Máy Tính Cầm Tay / Bút Đỏ Chấm Điểm bên tay phải
+    if (roleKey === "witch" && side === "right") {
+      const pos = boneAttached ? [-0.02, -0.02, 0.05] : [0, -0.37, 0.05];
+      return (
+        <group position={pos} rotation={[1.1, 0, 0]}>
+          {isOffice ? (
+            <mesh position={[0, 0.08, 0]}>
+              <boxGeometry args={[0.11, 0.15, 0.022]} />
+              <meshStandardMaterial color="#10b981" emissive="#059669" emissiveIntensity={0.75} roughness={0.3} />
+            </mesh>
+          ) : (
+            <mesh position={[0, 0.12, 0]}>
+              <cylinderGeometry args={[0.014, 0.01, 0.24, 10]} />
+              <meshStandardMaterial color="#e11d48" emissive="#f43f5e" emissiveIntensity={0.7} />
+            </mesh>
+          )}
+        </group>
+      );
+    }
+
+    // Senior Giữ Pass Server (USB Đỏ) / Chiến Thần Thưa Cô (Loa Cầm Tay Megaphone)
+    if (roleKey === "hunter" && side === "right") {
+      const pos = boneAttached ? [-0.02, -0.02, 0.07] : [0, -0.36, 0.08];
+      return (
+        <group position={pos} rotation={[0.95, 0, 0]}>
+          {isOffice ? (
+            <mesh position={[0, 0.08, 0]}>
+              <boxGeometry args={[0.05, 0.13, 0.028]} />
+              <meshStandardMaterial color="#ef4444" emissive="#dc2626" emissiveIntensity={1.1} metalness={0.6} />
+            </mesh>
+          ) : (
+            <mesh position={[0, 0.12, 0]} rotation={[Math.PI, 0, 0]}>
+              <coneGeometry args={[0.085, 0.2, 14]} />
+              <meshStandardMaterial color="#ef4444" roughness={0.35} />
+            </mesh>
+          )}
+        </group>
+      );
+    }
+
+    // Bà Tám Trà Nước (Ly Trà Sữa Trân Châu) / Bà Mối Bàn Cuối (Thư Tình Hồng) bên tay trái
+    if (roleKey === "cupid" && side === "left") {
+      const pos = boneAttached ? [0.03, 0, 0.06] : [0.04, -0.35, 0.07];
+      return (
+        <group position={pos} rotation={[0.5, 0, 0]}>
+          {isOffice ? (
+            <group>
+              <mesh position={[0, 0.06, 0]}>
+                <cylinderGeometry args={[0.042, 0.032, 0.12, 14]} />
+                <meshStandardMaterial color="#fed7aa" roughness={0.25} />
+              </mesh>
+              <mesh position={[0.01, 0.14, 0]} rotation={[0, 0, -0.15]}>
+                <cylinderGeometry args={[0.006, 0.006, 0.08, 8]} />
+                <meshStandardMaterial color="#ec4899" />
+              </mesh>
+            </group>
+          ) : (
+            <mesh position={[0, 0.06, 0]}>
+              <boxGeometry args={[0.14, 0.1, 0.016]} />
+              <meshStandardMaterial color="#fbcfe8" emissive="#ec4899" emissiveIntensity={0.65} />
+            </mesh>
+          )}
+        </group>
+      );
+    }
+
+    // Chủ Tịch Công Đoàn (Cúp/Micro Vàng) / Lớp Trưởng (Huy Hiệu Cờ Thi Đua) bên tay phải
+    if (roleKey === "mayor" && side === "right") {
+      const pos = boneAttached ? [-0.02, -0.04, 0.05] : [0, -0.37, 0.06];
+      return (
+        <group position={pos} rotation={[0.9, 0, 0]}>
+          <mesh position={[0, 0.12, 0]}>
+            <cylinderGeometry args={[0.014, 0.012, 0.22, 10]} />
+            <meshStandardMaterial color="#fbbf24" metalness={0.9} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.25, 0]}>
+            <octahedronGeometry args={[0.045, 0]} />
+            <meshStandardMaterial color="#fef08a" emissive="#f59e0b" emissiveIntensity={1.25} />
+          </mesh>
+        </group>
+      );
+    }
+
+    return null;
+  }
 
   // ĐUỐC PHÁN QUYẾT SẮT RÈN (Ưu tiên prop_hand_trial_torch.glb khi người chơi giơ đuốc bỏ phiếu Treo Cổ)
   if (showTrialTorch && side === "right" && !isGhost) {

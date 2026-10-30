@@ -1,0 +1,407 @@
+/* ============================================================================
+   STEALTH CAMOUFLAGE OVERLAY V4.6 — BOSS KEY 0.05s (EXCEL KPI / PDF ĐỀ CƯƠNG)
+   ============================================================================ */
+
+.boss-key-trigger-pill {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 6px 11px !important;
+  border-radius: 999px !important;
+  font-size: 0.74rem !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.boss-key-trigger-pill.mode-excel {
+  background: linear-gradient(135deg, #065f46, #047857) !important;
+  border: 1px solid rgba(110, 231, 183, 0.7) !important;
+  color: #ecfdf5 !important;
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.28);
+}
+
+.boss-key-trigger-pill.mode-pdf {
+  background: linear-gradient(135deg, #1e40af, #2563eb) !important;
+  border: 1px solid rgba(147, 197, 253, 0.75) !important;
+  color: #eff6ff !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+}
+
+.boss-key-trigger-pill:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+/* --- PATROL MICRO-ALERT TOAST --- */
+.stealth-patrol-toast {
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 9500;
+  max-width: 360px;
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1.5px solid rgba(251, 191, 36, 0.78);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: stealthToastPop 0.2s ease-out;
+}
+
+@keyframes stealthToastPop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.stealth-patrol-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fde047;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stealth-patrol-sub {
+  font-size: 0.73rem;
+  color: #e2e8f0;
+  line-height: 1.35;
+}
+
+.stealth-patrol-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn-stealth-instant {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 5px 11px !important;
+  border-radius: 8px !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  cursor: pointer;
+  background: #f59e0b !important;
+  color: #0f172a !important;
+  border: none !important;
+}
+
+.btn-stealth-dismiss {
+  width: auto !important;
+  margin: 0 !important;
+  padding: 5px 9px !important;
+  border-radius: 8px !important;
+  font-size: 0.71rem !important;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+}
+
+/* ============================================================================
+   FULLSCREEN CAMOUFLAGE LAYER (0ms TRANSITION FOR INSTANT 0.05s COVER)
+   ============================================================================ */
+.stealth-camouflage-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif;
+  user-select: text;
+}
+
+/* ---------------- 1. MICROSOFT EXCEL KPI MODE ---------------- */
+.stealth-camouflage-fullscreen.mode-excel {
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.excel-top-titlebar {
+  height: 36px;
+  background: #107c41;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  font-size: 12.5px;
+}
+
+.excel-title-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.excel-autosave-pill {
+  background: rgba(255, 255, 255, 0.16);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.excel-ribbon-tabs {
+  height: 32px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #d1d5db;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  font-size: 12.5px;
+  color: #374151;
+}
+
+.excel-ribbon-tab.active {
+  color: #107c41;
+  font-weight: 700;
+  border-bottom: 2.5px solid #107c41;
+  padding-bottom: 5px;
+}
+
+.excel-formula-bar {
+  height: 30px;
+  background: #f9fafb;
+  border-bottom: 1px solid #d1d5db;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.excel-cell-ref {
+  width: 58px;
+  padding: 2px 6px;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  font-weight: 600;
+  text-align: center;
+  color: #111827;
+}
+
+.excel-fx-tag {
+  font-style: italic;
+  font-weight: 700;
+  color: #6b7280;
+  padding: 0 4px;
+}
+
+.excel-formula-input {
+  flex: 1;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  padding: 2px 8px;
+  color: #111827;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.excel-grid-scroll {
+  flex: 1;
+  overflow: auto;
+  background: #ffffff;
+}
+
+.excel-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.excel-table th,
+.excel-table td {
+  border: 1px solid #e5e7eb;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.excel-table thead th {
+  background: #f3f4f6;
+  color: #4b5563;
+  font-weight: 600;
+  text-align: center;
+  position: sticky;
+  top: 0;
+}
+
+.excel-row-num {
+  width: 38px;
+  background: #f3f4f6;
+  color: #6b7280;
+  text-align: center;
+  font-weight: 600;
+}
+
+.excel-cell-header {
+  background: #e6f4ea;
+  color: #065f46;
+  font-weight: 700;
+}
+
+.excel-cell.selected {
+  outline: 2px solid #107c41;
+  outline-offset: -2px;
+  background: #f0fdf4;
+}
+
+.excel-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.excel-status-ok {
+  color: #047857;
+  font-weight: 600;
+}
+
+.excel-status-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.excel-bottom-statusbar {
+  height: 28px;
+  background: #107c41;
+  color: #ecfdf5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  font-size: 11.5px;
+}
+
+.excel-resume-hint {
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 2px 9px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+/* ---------------- 2. STUDY PDF VIEWER MODE ---------------- */
+.stealth-camouflage-fullscreen.mode-pdf {
+  background: #525659;
+  color: #111827;
+}
+
+.pdf-top-toolbar {
+  height: 44px;
+  background: #323639;
+  color: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.pdf-doc-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.pdf-a4-sheet {
+  width: 100%;
+  max-width: 780px;
+  background: #ffffff;
+  color: #111827;
+  padding: 36px 44px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  border-radius: 2px;
+  line-height: 1.6;
+}
+
+.pdf-a4-header {
+  text-align: center;
+  border-bottom: 2px solid #1e3a8a;
+  padding-bottom: 12px;
+  margin-bottom: 20px;
+}
+
+.pdf-a4-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #1e3a8a;
+  letter-spacing: 0.4px;
+}
+
+.pdf-a4-header p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #4b5563;
+}
+
+.pdf-question-block {
+  margin-bottom: 18px;
+  font-size: 13.5px;
+}
+
+.pdf-question-title {
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 6px;
+}
+
+.pdf-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  padding-left: 8px;
+}
+
+.pdf-opt-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.pdf-opt-item.picked {
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.pdf-footer-meta {
+  margin-top: 28px;
+  padding-top: 10px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: #6b7280;
+}
+
+.pdf-resume-chip {
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #374151;
+}

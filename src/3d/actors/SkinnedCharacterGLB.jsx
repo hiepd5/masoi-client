@@ -13,7 +13,7 @@ import {
   subscribeCharacterManifest,
 } from "../config/characterManifest.js";
 import { SEAT_TOP_Y } from "../utils/seatLayout.js";
-import { RoleHandSocket3D, RoleHeadSocket3D } from "./RoleSocketAttachment3D.jsx";
+import { RoleHandSocket3D, RoleHeadSocket3D, RoleTorsoSocket3D } from "./RoleSocketAttachment3D.jsx";
 import { CINEMATIC_SHARED_UNIFORMS } from "../shaders/villageCinematicShaders.js";
 
 function enhanceCharacterMaterialPBR(mat) {
@@ -85,49 +85,49 @@ export function clearCharacterAssetCache() {
   characterAssetCache.clear();
 }
 
-// Bộ từ điển 20 xương chuẩn hóa tương thích Kép: Auto-Rig Nội Bộ / Tripo Studio Auto-Rig / Mixamo / Blender Rigify
+// Bộ từ điển 20 xương chuẩn hóa tương thích Kép: Auto-Rig Nội Bộ / Tripo Studio / Mixamo / Blender Rigify / VRoid Studio (.VRM J_Bip_*)
 const BONE_PATTERNS = {
-  hips: /^(mixamorig:?hips|hips|pelvis|bip001_?pelvis|root_?hip|def[-_]spine)$/i,
-  spine: /^(mixamorig:?spine|spine|spine_?01|def[-_]spine\.?001)$/i,
-  chest: /^(mixamorig:?spine[12]|chest|upper_?chest|torso|spine_?02|def[-_]spine\.?00[23])$/i,
-  neck: /^(mixamorig:?neck|neck|neck_?01|def[-_]spine\.?004)$/i,
-  head: /^(mixamorig:?head|head|head_?01|def[-_]spine\.?00[56])$/i,
-  jaw: /^(mixamorig:?jaw|jaw|chin|mandible|wolf_?jaw|def[-_]jaw)$/i,
+  hips: /^(mixamorig:?hips|hips|pelvis|bip001_?pelvis|root_?hip|def[-_]spine|j_bip_c_hips)$/i,
+  spine: /^(mixamorig:?spine|spine|spine_?01|def[-_]spine\.?001|j_bip_c_spine)$/i,
+  chest: /^(mixamorig:?spine[12]|chest|upper_?chest|torso|spine_?02|def[-_]spine\.?00[23]|j_bip_c_(upper)?chest)$/i,
+  neck: /^(mixamorig:?neck|neck|neck_?01|def[-_]spine\.?004|j_bip_c_neck)$/i,
+  head: /^(mixamorig:?head|head|head_?01|def[-_]spine\.?00[56]|j_bip_c_head)$/i,
+  jaw: /^(mixamorig:?jaw|jaw|chin|mandible|wolf_?jaw|def[-_]jaw|j_bip_c_jaw)$/i,
   tail: /^(mixamorig:?tail1?|tail|tail_?01|wolf_?tail|def[-_]tail\.?001?)$/i,
-  leftUpLeg: /^(mixamorig:?leftupleg|leftupleg|thigh[_.]?l|l[_.]?thigh|upleg[_.]?l|left_?thigh|def[-_]thigh\.l)$/i,
-  rightUpLeg: /^(mixamorig:?rightupleg|rightupleg|thigh[_.]?r|r[_.]?thigh|upleg[_.]?r|right_?thigh|def[-_]thigh\.r)$/i,
-  leftLeg: /^(mixamorig:?leftleg|leftleg|calf[_.]?l|shin[_.]?l|l[_.]?calf|lowerleg[_.]?l|left_?shin|def[-_]shin\.l)$/i,
-  rightLeg: /^(mixamorig:?rightleg|rightleg|calf[_.]?r|shin[_.]?r|r[_.]?calf|lowerleg[_.]?r|right_?shin|def[-_]shin\.r)$/i,
-  leftFoot: /^(mixamorig:?leftfoot|leftfoot|foot[_.]?l|l[_.]?foot|ankle[_.]?l|def[-_]foot\.l)$/i,
-  rightFoot: /^(mixamorig:?rightfoot|rightfoot|foot[_.]?r|r[_.]?foot|ankle[_.]?r|def[-_]foot\.r)$/i,
-  leftArm: /^(mixamorig:?leftarm|leftarm|upperarm[_.]?l|l[_.]?upperarm|arm[_.]?l|left_?upper_?arm|def[-_]upper_arm\.l)$/i,
-  rightArm: /^(mixamorig:?rightarm|rightarm|upperarm[_.]?r|r[_.]?upperarm|arm[_.]?r|right_?upper_?arm|def[-_]upper_arm\.r)$/i,
-  leftForeArm: /^(mixamorig:?leftforearm|leftforearm|lowerarm[_.]?l|forearm[_.]?l|l[_.]?forearm|def[-_]forearm\.l)$/i,
-  rightForeArm: /^(mixamorig:?rightforearm|rightforearm|lowerarm[_.]?r|forearm[_.]?r|r[_.]?forearm|def[-_]forearm\.r)$/i,
-  leftHand: /^(mixamorig:?lefthand|lefthand|hand[_.]?l|l[_.]?hand|wrist[_.]?l|def[-_]hand\.l)$/i,
-  rightHand: /^(mixamorig:?righthand|righthand|hand[_.]?r|r[_.]?hand|wrist[_.]?r|def[-_]hand\.r)$/i,
+  leftUpLeg: /^(mixamorig:?leftupleg|leftupleg|thigh[_.]?l|l[_.]?thigh|upleg[_.]?l|left_?thigh|def[-_]thigh\.l|j_bip_l_upperleg)$/i,
+  rightUpLeg: /^(mixamorig:?rightupleg|rightupleg|thigh[_.]?r|r[_.]?thigh|upleg[_.]?r|right_?thigh|def[-_]thigh\.r|j_bip_r_upperleg)$/i,
+  leftLeg: /^(mixamorig:?leftleg|leftleg|calf[_.]?l|shin[_.]?l|l[_.]?calf|lowerleg[_.]?l|left_?shin|def[-_]shin\.l|j_bip_l_lowerleg)$/i,
+  rightLeg: /^(mixamorig:?rightleg|rightleg|calf[_.]?r|shin[_.]?r|r[_.]?calf|lowerleg[_.]?r|right_?shin|def[-_]shin\.r|j_bip_r_lowerleg)$/i,
+  leftFoot: /^(mixamorig:?leftfoot|leftfoot|foot[_.]?l|l[_.]?foot|ankle[_.]?l|def[-_]foot\.l|j_bip_l_foot)$/i,
+  rightFoot: /^(mixamorig:?rightfoot|rightfoot|foot[_.]?r|r[_.]?foot|ankle[_.]?r|def[-_]foot\.r|j_bip_r_foot)$/i,
+  leftArm: /^(mixamorig:?leftarm|leftarm|upperarm[_.]?l|l[_.]?upperarm|arm[_.]?l|left_?upper_?arm|def[-_]upper_arm\.l|j_bip_l_upperarm)$/i,
+  rightArm: /^(mixamorig:?rightarm|rightarm|upperarm[_.]?r|r[_.]?upperarm|arm[_.]?r|right_?upper_?arm|def[-_]upper_arm\.r|j_bip_r_upperarm)$/i,
+  leftForeArm: /^(mixamorig:?leftforearm|leftforearm|lowerarm[_.]?l|forearm[_.]?l|l[_.]?forearm|def[-_]forearm\.l|j_bip_l_lowerarm)$/i,
+  rightForeArm: /^(mixamorig:?rightforearm|rightforearm|lowerarm[_.]?r|forearm[_.]?r|r[_.]?forearm|def[-_]forearm\.r|j_bip_r_lowerarm)$/i,
+  leftHand: /^(mixamorig:?lefthand|lefthand|hand[_.]?l|l[_.]?hand|wrist[_.]?l|def[-_]hand\.l|j_bip_l_hand)$/i,
+  rightHand: /^(mixamorig:?righthand|righthand|hand[_.]?r|r[_.]?hand|wrist[_.]?r|def[-_]hand\.r|j_bip_r_hand)$/i,
 };
 
 const BONE_SUBSTRING_FALLBACKS = {
-  hips: ["hips", "pelvis"],
-  spine: ["spine"],
-  chest: ["chest", "spine2", "spine1", "torso"],
-  neck: ["neck"],
-  head: ["head"],
+  hips: ["j_bip_c_hips", "hips", "pelvis"],
+  spine: ["j_bip_c_spine", "spine"],
+  chest: ["j_bip_c_upperchest", "j_bip_c_chest", "chest", "spine2", "spine1", "torso"],
+  neck: ["j_bip_c_neck", "neck"],
+  head: ["j_bip_c_head", "head"],
   jaw: ["jaw", "mandible", "chin"],
   tail: ["tail"],
-  leftUpLeg: ["leftupleg", "thigh_l", "thigh.l", "l_thigh", "upleg_l"],
-  rightUpLeg: ["rightupleg", "thigh_r", "thigh.r", "r_thigh", "upleg_r"],
-  leftLeg: ["leftleg", "calf_l", "calf.l", "shin_l", "shin.l", "l_calf"],
-  rightLeg: ["rightleg", "calf_r", "calf.r", "shin_r", "shin.r", "r_calf"],
-  leftFoot: ["leftfoot", "foot_l", "foot.l", "l_foot", "ankle_l"],
-  rightFoot: ["rightfoot", "foot_r", "foot.r", "r_foot", "ankle_r"],
-  leftArm: ["leftarm", "upperarm_l", "upperarm.l", "l_upperarm"],
-  rightArm: ["rightarm", "upperarm_r", "upperarm.r", "r_upperarm"],
-  leftForeArm: ["leftforearm", "forearm_l", "forearm.l", "lowerarm_l", "l_forearm"],
-  rightForeArm: ["rightforearm", "forearm_r", "forearm.r", "lowerarm_r", "r_forearm"],
-  leftHand: ["lefthand", "hand_l", "hand.l", "l_hand", "wrist_l"],
-  rightHand: ["righthand", "hand_r", "hand.r", "r_hand", "wrist_r"],
+  leftUpLeg: ["j_bip_l_upperleg", "leftupleg", "thigh_l", "thigh.l", "l_thigh", "upleg_l"],
+  rightUpLeg: ["j_bip_r_upperleg", "rightupleg", "thigh_r", "thigh.r", "r_thigh", "upleg_r"],
+  leftLeg: ["j_bip_l_lowerleg", "leftleg", "calf_l", "calf.l", "shin_l", "shin.l", "l_calf"],
+  rightLeg: ["j_bip_r_lowerleg", "rightleg", "calf_r", "calf.r", "shin_r", "shin.r", "r_calf"],
+  leftFoot: ["j_bip_l_foot", "leftfoot", "foot_l", "foot.l", "l_foot", "ankle_l"],
+  rightFoot: ["j_bip_r_foot", "rightfoot", "foot_r", "foot.r", "r_foot", "ankle_r"],
+  leftArm: ["j_bip_l_upperarm", "leftarm", "upperarm_l", "upperarm.l", "l_upperarm"],
+  rightArm: ["j_bip_r_upperarm", "rightarm", "upperarm_r", "upperarm.r", "r_upperarm"],
+  leftForeArm: ["j_bip_l_lowerarm", "leftforearm", "forearm_l", "forearm.l", "lowerarm_l", "l_forearm"],
+  rightForeArm: ["j_bip_r_lowerarm", "rightforearm", "forearm_r", "forearm.r", "lowerarm_r", "r_forearm"],
+  leftHand: ["j_bip_l_hand", "lefthand", "hand_l", "hand.l", "l_hand", "wrist_l"],
+  rightHand: ["j_bip_r_hand", "righthand", "hand_r", "hand.r", "r_hand", "wrist_r"],
 };
 
 const WORLD_X = new THREE.Vector3(1, 0, 0);
@@ -331,6 +331,8 @@ export default function SkinnedCharacterGLB({
   seatTransform,
   visibleCostumeRole = null,
   showTrialTorchSocket = false,
+  universeId = "classic",
+  choreoActionType = null,
   seed = 0,
 }) {
   const slotMeta = CHARACTER_SLOTS[slotKey] || CHARACTER_SLOTS.villager_cloak;
@@ -346,12 +348,29 @@ export default function SkinnedCharacterGLB({
     const clonedRoot = cloneSkeleton(templateEntry.scene);
     const rigInfo = mapHumanoidBones(clonedRoot);
     const emissiveMats = [];
+    const faceMorphTargets = [];
 
     clonedRoot.traverse((obj) => {
       if (obj.isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
         obj.frustumCulled = false;
+        if (obj.morphTargetDictionary && Array.isArray(obj.morphTargetInfluences)) {
+          const dict = obj.morphTargetDictionary;
+          let blinkIdx = -1;
+          let mouthIdx = -1;
+          Object.entries(dict).forEach(([mName, mIdx]) => {
+            if (blinkIdx < 0 && /(fcl_eye_close|blink|eye_?close|wink)/i.test(mName)) {
+              blinkIdx = mIdx;
+            }
+            if (mouthIdx < 0 && /(fcl_mth_a|fcl_mth_o|^aa$|mouth_?open|vrc\.v_aa)/i.test(mName)) {
+              mouthIdx = mIdx;
+            }
+          });
+          if (blinkIdx >= 0 || mouthIdx >= 0) {
+            faceMorphTargets.push({ mesh: obj, blinkIdx, mouthIdx });
+          }
+        }
         if (obj.material) {
           const mat = obj.material.clone();
           if (slotMeta.tintableCloak && tunicColor) {
@@ -417,7 +436,7 @@ export default function SkinnedCharacterGLB({
       }
     }
 
-    return { clonedRoot, rigInfo, emissiveMats, mixer, sitAction, hasNativeSitClip };
+    return { clonedRoot, rigInfo, emissiveMats, faceMorphTargets, mixer, sitAction, hasNativeSitClip };
   }, [templateEntry, slotMeta.tintableCloak, slotMeta.tintStrength, tunicColor, effectiveIsDead, seed]);
 
   useEffect(() => {
@@ -467,9 +486,25 @@ export default function SkinnedCharacterGLB({
 
   useFrame((state, delta) => {
     if (!clonedBundle || effectiveIsDead) return;
-    const { rigInfo, emissiveMats, mixer, sitAction, hasNativeSitClip, clonedRoot } = clonedBundle;
+    const { rigInfo, emissiveMats, faceMorphTargets, mixer, sitAction, hasNativeSitClip, clonedRoot } = clonedBundle;
     const { bones, restQuats, localAxes, adductLZ, adductRZ } = rigInfo;
     const t = state.clock.elapsedTime;
+
+    // Chớp mắt tự nhiên & Nhép môi theo Mic LiveKit cho nhân vật VRoid / VRM Anime (.GLB/.VRM)
+    if (faceMorphTargets && faceMorphTargets.length > 0) {
+      const blinkCycle = (t + Math.abs(seed) * 2.7) % 4.1;
+      const blinkVal = isSleeping
+        ? 1.0
+        : blinkCycle < 0.14
+          ? Math.sin((blinkCycle / 0.14) * Math.PI)
+          : 0.0;
+      const mouthVal = isSpeaking ? 0.22 + Math.abs(Math.sin(t * 13.5 + seed)) * 0.65 : 0.0;
+      for (let i = 0; i < faceMorphTargets.length; i += 1) {
+        const fm = faceMorphTargets[i];
+        if (fm.blinkIdx >= 0) fm.mesh.morphTargetInfluences[fm.blinkIdx] = blinkVal;
+        if (fm.mouthIdx >= 0) fm.mesh.morphTargetInfluences[fm.mouthIdx] = mouthVal;
+      }
+    }
     const breath = t * 2.1 + seed;
     const st = animStateRef.current;
     const choreo = choreoPoseRef?.current || null;
@@ -959,11 +994,11 @@ export default function SkinnedCharacterGLB({
         position={[-centerX * normScale, -minY * normScale, -centerZ * normScale]}
       />
 
-      {/* KHE ĐẦU THÔNG MINH (CHỈ BẬT KHI DÙNG PROXY MA-NƠ-CANH — TỰ ẨN 100% NGAY KHI LẮP .GLB THẬT!) */}
-      {proxyHeadRoleKey && (
+      {/* KHE ĐẦU THÔNG MINH (CHỈ BẬT KHI DÙNG PROXY MA-NƠ-CANH HOẶC VŨ TRỤ MỚI — TỰ ẨN KHI LẮP .GLB VAI THẬT TRUNG CỔ!) */}
+      {(proxyHeadRoleKey || (universeId !== "classic" && visibleCostumeRole)) && (
         <group ref={headSocketRef} position={[0, standingHeight * 0.72, 0.02]}>
           <group position={[0, -0.1, 0]}>
-            <RoleHeadSocket3D roleKey={proxyHeadRoleKey} />
+            <RoleHeadSocket3D roleKey={proxyHeadRoleKey || visibleCostumeRole} universeId={universeId} />
           </group>
         </group>
       )}
@@ -975,6 +1010,7 @@ export default function SkinnedCharacterGLB({
             roleKey={visibleCostumeRole}
             side="left"
             boneAttached={hasRig}
+            universeId={universeId}
           />
         </group>
       )}
@@ -987,6 +1023,7 @@ export default function SkinnedCharacterGLB({
             side="right"
             showTrialTorch={showTrialTorchSocket}
             boneAttached={hasRig}
+            universeId={universeId}
           />
         </group>
       )}
@@ -994,7 +1031,18 @@ export default function SkinnedCharacterGLB({
       {/* KHE QUẢ CẦU PHA LÊ GIỮA HAI BÀN TAY TIÊN TRI (`seer`) */}
       {showSeerOrb && (
         <group ref={centerOrbSocketRef} position={[0, shoulderY, 0.26]}>
-          <RoleHandSocket3D roleKey="seer" side="center" boneAttached={hasRig} />
+          <RoleHandSocket3D roleKey="seer" side="center" boneAttached={hasRig} universeId={universeId} />
+        </group>
+      )}
+
+      {/* KHE ÔM THÙNG CARTON KHI NHÂN VIÊN BỊ BIỂU QUYẾT BÀN GIAO VIỆC (`gallows_walk_hang`) */}
+      {universeId === "office" && choreoActionType === "gallows_walk_hang" && (
+        <group position={[0, shoulderY - 0.24, 0.08]}>
+          <RoleTorsoSocket3D
+            roleKey={visibleCostumeRole}
+            universeId={universeId}
+            choreoActionType={choreoActionType}
+          />
         </group>
       )}
     </group>

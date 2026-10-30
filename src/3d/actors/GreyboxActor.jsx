@@ -3,8 +3,14 @@ import { useFrame } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, getPublicCitizenPersona } from "../../config/roles.config.js";
+import {
+  getUniverseRoleEmoji,
+  getUniverseRoleLabel,
+  normalizeUniverseId,
+} from "../../config/universeThemes.config.js";
 import { ROLE_COSTUME_MANIFEST } from "../config/roleCostumeManifest.js";
 import { resolveActiveCharacterSlot } from "../config/characterManifest.js";
+import { ANIME_AVATAR_3D_LOOKS } from "../../config/citizenAvatars.config.js";
 import { SEAT_TOP_Y } from "../utils/seatLayout.js";
 import SmartPropGLB from "../props/SmartPropGLB.jsx";
 import SkinnedCharacterGLB, { useOptionalCharacterGlb } from "./SkinnedCharacterGLB.jsx";
@@ -96,6 +102,144 @@ function ProceduralOakChair() {
   );
 }
 
+let sharedAnimeGradientTex = null;
+function getAnimeToonGradientMap() {
+  if (sharedAnimeGradientTex) return sharedAnimeGradientTex;
+  const colors = new Uint8Array([
+    138, 138, 152, 255,
+    208, 208, 218, 255,
+    255, 255, 255, 255,
+  ]);
+  const tex = new THREE.DataTexture(colors, 3, 1, THREE.RGBAFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  sharedAnimeGradientTex = tex;
+  return tex;
+}
+
+/**
+ * Ghế Xoay Văn Phòng Công Thái Học 3D (Cao mặt ghế đúng SEAT_TOP_Y = 0.48m)
+ */
+function ProceduralOfficeSwivelChair() {
+  return (
+    <group>
+      {/* Trụ thủy lực trung tâm + chân sao 5 cánh bánh xe */}
+      <mesh position={[0, 0.22, 0]} castShadow>
+        <cylinderGeometry args={[0.036, 0.045, 0.38, 12]} />
+        <meshStandardMaterial color="#1e293b" metalness={0.82} roughness={0.25} />
+      </mesh>
+      {[0, 1, 2, 3, 4].map((idx) => {
+        const ang = (idx / 5) * Math.PI * 2;
+        return (
+          <group key={idx} rotation={[0, ang, 0]}>
+            <mesh position={[0, 0.045, 0.14]} rotation={[0.14, 0, 0]}>
+              <boxGeometry args={[0.042, 0.028, 0.28]} />
+              <meshStandardMaterial color="#0f172a" metalness={0.65} roughness={0.35} />
+            </mesh>
+            <mesh position={[0, 0.022, 0.265]}>
+              <sphereGeometry args={[0.024, 10, 10]} />
+              <meshStandardMaterial color="#334155" roughness={0.5} />
+            </mesh>
+          </group>
+        );
+      })}
+      {/* Đệm ngồi công thái học bo tròn tại SEAT_TOP_Y */}
+      <mesh position={[0, SEAT_TOP_Y - 0.032, 0.01]} scale={[1.08, 0.26, 1.02]} castShadow receiveShadow>
+        <sphereGeometry args={[0.26, 20, 14]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.62} />
+      </mesh>
+      {/* Tay vịn chữ L 2 bên */}
+      {[-0.255, 0.255].map((ax, i) => (
+        <group key={i} position={[ax, SEAT_TOP_Y + 0.11, -0.02]}>
+          <mesh position={[0, -0.06, 0]}>
+            <boxGeometry args={[0.028, 0.14, 0.036]} />
+            <meshStandardMaterial color="#334155" metalness={0.6} roughness={0.35} />
+          </mesh>
+          <mesh position={[0, 0.02, 0.03]}>
+            <boxGeometry args={[0.052, 0.026, 0.24]} />
+            <meshStandardMaterial color="#0f172a" roughness={0.5} />
+          </mesh>
+        </group>
+      ))}
+      {/* Tựa lưng lưới uốn cong vừa tầm vai (không che Camera qua vai) */}
+      <mesh position={[0, SEAT_TOP_Y + 0.18, -0.22]} rotation={[-0.08, 0, 0]}>
+        <boxGeometry args={[0.06, 0.34, 0.035]} />
+        <meshStandardMaterial color="#38bdf8" metalness={0.6} roughness={0.3} />
+      </mesh>
+      <mesh position={[0, SEAT_TOP_Y + 0.26, -0.205]} rotation={[-0.06, 0, 0]} castShadow>
+        <boxGeometry args={[0.44, 0.32, 0.042]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.68} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Ghế Gỗ Khung Thép Học Sinh 3D (Cao mặt ghế đúng SEAT_TOP_Y = 0.48m)
+ */
+function ProceduralSchoolStudentChair() {
+  return (
+    <group>
+      {/* Mặt ghế gỗ dẻ gai sáng ấm */}
+      <mesh position={[0, SEAT_TOP_Y - 0.022, 0]} castShadow receiveShadow>
+        <boxGeometry args={[0.48, 0.042, 0.46]} />
+        <meshStandardMaterial color="#d97706" roughness={0.58} />
+      </mesh>
+      {/* 4 chân ống thép sơn tĩnh điện xanh xám */}
+      {[
+        [-0.2, -0.19],
+        [0.2, -0.19],
+        [-0.2, 0.19],
+        [0.2, 0.19],
+      ].map(([lx, lz], i) => (
+        <mesh key={i} position={[lx, (SEAT_TOP_Y - 0.04) / 2, lz]} castShadow>
+          <cylinderGeometry args={[0.02, 0.02, SEAT_TOP_Y - 0.04, 10]} />
+          <meshStandardMaterial color="#475569" metalness={0.65} roughness={0.35} />
+        </mesh>
+      ))}
+      {/* 2 thanh tựa lưng thép + bản tựa gỗ sáng */}
+      {[-0.19, 0.19].map((bx, i) => (
+        <mesh key={i} position={[bx, SEAT_TOP_Y + 0.19, -0.2]} castShadow>
+          <cylinderGeometry args={[0.018, 0.018, 0.38, 10]} />
+          <meshStandardMaterial color="#475569" metalness={0.65} roughness={0.35} />
+        </mesh>
+      ))}
+      <mesh position={[0, SEAT_TOP_Y + 0.28, -0.2]} castShadow>
+        <boxGeometry args={[0.45, 0.18, 0.036]} />
+        <meshStandardMaterial color="#ea580c" roughness={0.55} />
+      </mesh>
+    </group>
+  );
+}
+
+const ANIME_OFFICE_SUIT_PALETTE = [
+  "#1e3a5f", // Navy Executive
+  "#334155", // Slate Charcoal
+  "#3b2f4a", // Plum Blazer
+  "#1f4e5f", // Teal Corporate
+  "#475569", // Cool Grey Suit
+  "#2c3e50", // Midnight Indigo
+];
+
+const ANIME_HAIR_PALETTE = [
+  "#231815", // Espresso Black
+  "#5c3317", // Warm Chestnut
+  "#1e293b", // Anime Midnight Blue
+  "#854d0e", // Honey Ash Brown
+  "#6b2138", // Wine Auburn
+  "#3f2e26", // Mocha Dark
+];
+
+const ANIME_EYE_PALETTE = [
+  "#0284c7", // Sky Azure
+  "#d97706", // Golden Amber
+  "#059669", // Emerald Jade
+  "#7c3aed", // Violet Star
+  "#db2777", // Rose Quartz
+];
+
 // Bảng màu Vải Dạ Trung Cổ Trầm Sang (10 sắc độ tách biệt rõ từng ghế nhưng ăn nhập 100% với lửa trại & gỗ đá Bắc Âu!)
 const VILLAGER_TUNIC_PALETTE = [
   "#7f2936", // Đỏ Rượu Burgundy Cổ
@@ -157,8 +301,11 @@ export default function GreyboxActor({
   seatMap = null,
   gallowsSpot = null,
   suppressInlineHtml = false,
+  universeId = "classic",
   onSelect,
 }) {
+  const cleanUniverse = normalizeUniverseId(universeId);
+  const isAnimeUniverse = cleanUniverse === "office" || cleanUniverse === "school";
   const [hovered, setHovered] = useState(false);
   const [metamorphWolfActive, setMetamorphWolfActive] = useState(false);
 
@@ -174,6 +321,8 @@ export default function GreyboxActor({
   const choreoPoseRef = useRef(null);
   const spineRef = useRef(null);
   const headRef = useRef(null);
+  const animeEyesRef = useRef(null);
+  const animeMouthRef = useRef(null);
   const leftArmRef = useRef(null);
   const rightArmRef = useRef(null);
   const ghostSpiritRef = useRef(null);
@@ -215,8 +364,8 @@ export default function GreyboxActor({
   // ==================== MA TRẬN BẢO MẬT TẠO HÌNH ZERO-LEAK (12 VAI V3.3 + SẢNH CHỜ SÓI 3D) ====================
   const authorizedWolfForm = useMemo(() => {
     if (isEmptyLobbySeat) return false;
-    // Ở Sảnh Chờ (phase === 'lobby'): mọi người bước vào ghế nóng đều mặc tạo hình Ma Sói 3D sống động!
-    if (isLobbyPhase && !hasWinner) return true;
+    // Ở Sảnh Chờ (phase === 'lobby'): Classic mặc tạo hình Ma Sói 3D, còn Công Sở/Học Đường mặc Vest/Đồng phục nhân viên-học sinh tươi sáng!
+    if (isLobbyPhase && !hasWinner) return !isAnimeUniverse;
     if (metamorphWolfActive && hasWinner) return true;
     if (hasWinner) {
       if (recapActorState && recapActorState.isRevealed === false) return false;
@@ -229,7 +378,7 @@ export default function GreyboxActor({
         ((isMe && (myRole === "wolf" || myRole === "alpha_wolf")) || isWolfTeammate)) ||
       (actualIsDead && (player.role === "wolf" || player.role === "alpha_wolf"))
     );
-  }, [isEmptyLobbySeat, isLobbyPhase, metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
+  }, [isEmptyLobbySeat, isLobbyPhase, isAnimeUniverse, metamorphWolfActive, hasWinner, recapActorState, player.role, isNight, actualIsDead, isMe, myRole, isWolfTeammate]);
 
   // Vai trò thực tế được phép gắn Phụ kiện 3D lên nhân vật trên màn hình của người đang xem:
   // - Ở Sảnh chờ (`isLobbyPhase`) & Trong trận (mắt người khác nhìn vào): trả về `null` để ngồi đúng Avatar 3D Dân Làng / Người Thật (`player.citizenModelId`)!
@@ -276,8 +425,9 @@ export default function GreyboxActor({
         seatIndex: seatTransform?.seatIdx ?? 0,
         roomCode,
         preferAltWolf: Boolean(metamorphWolfActive),
+        universeId: cleanUniverse,
       }),
-    [hasWinner, visibleCostumeRole, player?.citizenModelId, seatTransform?.seatIdx, roomCode, metamorphWolfActive]
+    [hasWinner, visibleCostumeRole, player?.citizenModelId, seatTransform?.seatIdx, roomCode, metamorphWolfActive, cleanUniverse]
   );
   const characterGlbEntry = useOptionalCharacterGlb(activeCharSlot);
   const isStandingSmartMesh = Boolean(
@@ -290,7 +440,31 @@ export default function GreyboxActor({
       : 1.54;
   const htmlBadgeZ = isStandingSmartMesh ? 0.12 : 0;
   const organicGeos = useMemo(() => getOrganicBodyGeos(), []);
+  const animeGradientMap = useMemo(() => getAnimeToonGradientMap(), []);
   const glowHaloTex = useMemo(() => getSoftGlowHaloTexture(), []);
+
+  const seatIdxNum = Math.abs(Number(seatTransform?.seatIdx) || 0);
+  const customAnimeLook =
+    isAnimeUniverse && player?.citizenModelId
+      ? ANIME_AVATAR_3D_LOOKS[player.citizenModelId] || null
+      : null;
+  const animeHairStyle =
+    customAnimeLook && typeof customAnimeLook.hairStyle === "number"
+      ? customAnimeLook.hairStyle
+      : seatIdxNum % 4;
+  const animeHairColor = isWolfVisual && isAnimeUniverse
+    ? (cleanUniverse === "office" ? "#111827" : "#451a03")
+    : customAnimeLook?.hairColor || ANIME_HAIR_PALETTE[seatIdxNum % ANIME_HAIR_PALETTE.length];
+  const animeEyeColor = isWolfVisual && isAnimeUniverse
+    ? "#dc2626"
+    : customAnimeLook?.eyeColor || ANIME_EYE_PALETTE[seatIdxNum % ANIME_EYE_PALETTE.length];
+  const animeTieColor = isWolfVisual
+    ? "#dc2626"
+    : customAnimeLook?.tieColor
+      ? customAnimeLook.tieColor
+      : cleanUniverse === "school"
+        ? (seatIdxNum % 2 === 0 ? "#e11d48" : "#2563eb")
+        : (seatIdxNum % 3 === 0 ? "#0284c7" : seatIdxNum % 3 === 1 ? "#f59e0b" : "#10b981");
 
   const revealedRole = hasWinner
     ? recapActorState?.isRevealed === false
@@ -301,18 +475,42 @@ export default function GreyboxActor({
       : player.role;
   const roleAccentColor = revealedRole ? ROLE_COLORS[revealedRole] || "#fbbf24" : "#94a3b8";
 
-  // Màu trang phục thân nhân vật (khóa cứng theo publicPersonaSeed của roomCode + seatIdx — Chốt #10)
+  // Màu trang phục thân nhân vật (khóa cứng theo publicPersonaSeed của roomCode + seatIdx — Chốt #10, hoặc khớp 1:1 Avatar Anime đã chọn)
   const tunicColor = useMemo(() => {
     if (effectiveIsDead) return "#1e3a5f";
+    if (cleanUniverse === "office") {
+      if (isWolfVisual) return "#111827";
+      if (customAnimeLook?.suitColor) return customAnimeLook.suitColor;
+      return ANIME_OFFICE_SUIT_PALETTE[seatIdxNum % ANIME_OFFICE_SUIT_PALETTE.length];
+    }
+    if (cleanUniverse === "school") {
+      if (isWolfVisual) return visibleCostumeRole === "alpha_wolf" ? "#1e293b" : "#7f1d1d";
+      if (customAnimeLook?.suitColor) return customAnimeLook.suitColor;
+      return seatIdxNum % 2 === 0 ? "#f8fafc" : "#eff6ff";
+    }
     if (isWolfVisual) return "#691414";
     if (hasWinner && visibleCostumeRole && ROLE_COSTUME_MANIFEST[visibleCostumeRole]) {
       return ROLE_COSTUME_MANIFEST[visibleCostumeRole].tunicColor;
     }
     return publicPersona.tunicHex || VILLAGER_TUNIC_PALETTE[seatTransform.seatIdx % VILLAGER_TUNIC_PALETTE.length];
-  }, [effectiveIsDead, isWolfVisual, hasWinner, visibleCostumeRole, publicPersona.tunicHex, seatTransform.seatIdx]);
+  }, [effectiveIsDead, cleanUniverse, isWolfVisual, customAnimeLook, seatIdxNum, visibleCostumeRole, hasWinner, publicPersona.tunicHex, seatTransform.seatIdx]);
 
-  const skinColor = effectiveIsDead ? "#7dd3fc" : isWolfVisual ? "#27272a" : "#d9a97c";
-  const pantsColor = effectiveIsDead ? "#0c4a6e" : isWolfVisual ? "#18181b" : "#222933";
+  const skinColor = effectiveIsDead
+    ? "#7dd3fc"
+    : isAnimeUniverse
+      ? "#fde2cc"
+      : isWolfVisual
+        ? "#27272a"
+        : "#d9a97c";
+  const pantsColor = effectiveIsDead
+    ? "#0c4a6e"
+    : cleanUniverse === "school"
+      ? "#1e293b"
+      : cleanUniverse === "office"
+        ? "#0f172a"
+        : isWolfVisual
+          ? "#18181b"
+          : "#222933";
   const cloakTrimColor = useMemo(() => {
     const c = new THREE.Color(tunicColor);
     c.multiplyScalar(0.68);
@@ -357,6 +555,7 @@ export default function GreyboxActor({
         seatMap,
         gallowsSpot,
         tClock: t,
+        universeId: cleanUniverse,
       });
 
       // Chuyển hình trực tiếp Kẻ Bị Nguyền -> Ma Sói đúng khoảnh khắc 42% (ngửa cổ hú trăng!)
@@ -525,6 +724,17 @@ export default function GreyboxActor({
       headRef.current.rotation.x = THREE.MathUtils.lerp(headRef.current.rotation.x, targetPitch, damp);
     }
 
+    // 2B. Chớp mắt tự nhiên & Nhép môi Anime 3D theo LiveKit Mic
+    if (animeEyesRef.current) {
+      const blinkMod = (t + Math.abs(seed) * 2.9) % 3.9;
+      const eyeScaleY = isSleeping ? 0.08 : blinkMod < 0.13 ? 0.1 : 1.0;
+      animeEyesRef.current.scale.y = THREE.MathUtils.lerp(animeEyesRef.current.scale.y, eyeScaleY, 0.45);
+    }
+    if (animeMouthRef.current) {
+      const mouthScaleY = isSpeaking ? 0.75 + Math.abs(Math.sin(t * 14 + seed)) * 1.45 : 0.35;
+      animeMouthRef.current.scale.y = THREE.MathUtils.lerp(animeMouthRef.current.scale.y, mouthScaleY, 0.4);
+    }
+
     // 3. Đôi cánh tay (Chỉ tay / Diễn thuyết Mic / Sói chém vuốt / Bảo Vệ giương khiên / Chán Đời dang tay)
     if (rightArmRef.current && leftArmRef.current) {
       let targetRightX = -0.48;
@@ -629,15 +839,21 @@ export default function GreyboxActor({
         />
       </mesh>
 
-      {/* ============ 1. GHẾ GỖ SỒI CHUẨN CAO 0.48m (LÙI NHẸ -0.34m KHI NHÂN VẬT ĐỨNG SMART MESH ĐỂ 0% XUYÊN GHẾ!) ============ */}
+      {/* ============ 1. GHẾ NGỒI 3D ĐÚNG VŨ TRỤ (CAO 0.48m — XOAY VĂN PHÒNG / GHẾ HỌC SINH / GHẾ GỖ SỒI) ============ */}
       <group position={[0, 0, isStandingSmartMesh ? -0.34 : 0]}>
-        <SmartPropGLB
-          propKey="prop_chair"
-          calib={chairCalib}
-          reloadToken={reloadToken}
-          disableRaycast={architectMode}
-          fallback={<ProceduralOakChair />}
-        />
+        {cleanUniverse === "office" ? (
+          <ProceduralOfficeSwivelChair />
+        ) : cleanUniverse === "school" ? (
+          <ProceduralSchoolStudentChair />
+        ) : (
+          <SmartPropGLB
+            propKey="prop_chair"
+            calib={chairCalib}
+            reloadToken={reloadToken}
+            disableRaycast={architectMode}
+            fallback={<ProceduralOakChair />}
+          />
+        )}
       </group>
 
       {/* Ghế trống chờ khách ở Sảnh Chờ 3D: chỉ dựng Ghế Gỗ Sồi + Nhãn ghế mờ tinh tế, ai bước vào sẽ hóa Sói ngồi lên ngay! */}
@@ -703,17 +919,31 @@ export default function GreyboxActor({
         </mesh>
       )}
 
-      {/* Ngọn nến tắt trước ghế nếu người chơi đã tử nạn */}
+      {/* Dấu mốc trước ghế nếu người chơi đã rời vòng đấu */}
       {effectiveIsDead && (
         <group position={[0, 0, 0.46]}>
-          <mesh position={[0, 0.08, 0]}>
-            <cylinderGeometry args={[0.035, 0.042, 0.16, 10]} />
-            <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
-          </mesh>
-          <mesh position={[0, 0.17, 0]}>
-            <cylinderGeometry args={[0.006, 0.006, 0.03, 6]} />
-            <meshBasicMaterial color="#1e293b" />
-          </mesh>
+          {cleanUniverse === "office" ? (
+            <mesh position={[0, 0.045, 0]} rotation={[-0.25, 0, 0]}>
+              <boxGeometry args={[0.24, 0.08, 0.04]} />
+              <meshStandardMaterial color="#334155" roughness={0.5} />
+            </mesh>
+          ) : cleanUniverse === "school" ? (
+            <mesh position={[0, 0.03, 0]}>
+              <boxGeometry args={[0.24, 0.05, 0.18]} />
+              <meshStandardMaterial color="#b91c1c" roughness={0.6} />
+            </mesh>
+          ) : (
+            <>
+              <mesh position={[0, 0.08, 0]}>
+                <cylinderGeometry args={[0.035, 0.042, 0.16, 10]} />
+                <meshStandardMaterial color="#cbd5e1" roughness={0.7} />
+              </mesh>
+              <mesh position={[0, 0.17, 0]}>
+                <cylinderGeometry args={[0.006, 0.006, 0.03, 6]} />
+                <meshBasicMaterial color="#1e293b" />
+              </mesh>
+            </>
+          )}
         </group>
       )}
 
@@ -781,6 +1011,8 @@ export default function GreyboxActor({
                   seatTransform={seatTransform}
                   visibleCostumeRole={visibleCostumeRole}
                   showTrialTorchSocket={showTrialTorchSocket}
+                  universeId={cleanUniverse}
+                  choreoActionType={choreoActionSpec?.actionType || null}
                   seed={seed}
                 />
                 {isSleeping && (
@@ -859,199 +1091,446 @@ export default function GreyboxActor({
                 ))}
               </group>
 
-              {/* Cụm Xương Sống & Tà Áo Choàng Vải Dạ Rủ Mềm (LatheGeometry 24 cạnh — 0% khối hộp!) */}
+              {/* Cụm Xương Sống & Trang Phục (Anime Cel-Toon Blazer/Đồng Phục cho Công Sở/Học Đường | Áo Choàng Bắc Âu cho Classic) */}
               <group ref={spineRef} position={[0, SEAT_TOP_Y, 0]}>
-                <mesh
-                  geometry={organicGeos.tunicGeo}
-                  position={[0, 0.01, -0.01]}
-                  scale={[isWolfVisual ? 1.24 : 1.04, 1, 0.86]}
-                  castShadow={!effectiveIsDead}
-                >
-                  <meshStandardMaterial
-                    ref={tunicMatRef}
-                    color={tunicColor}
-                    emissive={
-                      recapPose === "hitRecoil"
-                        ? "#ef4444"
-                        : isWolfVictim
-                          ? "#ef4444"
-                          : "#000000"
-                    }
-                    emissiveIntensity={recapPose === "hitRecoil" ? 0.65 : isWolfVictim ? 0.45 : 0}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.88}
-                    side={THREE.DoubleSide}
-                  />
-                </mesh>
-
-              {/* Choàng vai lông/vải dạ cổ tròn mượt */}
-              <mesh
-                geometry={organicGeos.mantleGeo}
-                position={[0, 0.01, -0.015]}
-                scale={[isWolfVisual ? 1.28 : 1.06, 1, 0.88]}
-                castShadow={!effectiveIsDead}
-              >
-                <meshStandardMaterial
-                  color={isWolfVisual ? "#221317" : cloakTrimColor}
-                  transparent={effectiveIsDead}
-                  opacity={bodyOpacity}
-                  roughness={0.92}
-                  side={THREE.DoubleSide}
-                />
-              </mesh>
-
-              {/* Đai thắt lưng da tròn + Khuy đồng chạm tròn Bắc Âu (0% boxGeometry!) */}
-              {!effectiveIsDead && (
-                <group position={[0, 0.195, -0.01]}>
-                  <mesh rotation={[Math.PI / 2, 0, 0]} scale={[isWolfVisual ? 1.2 : 1.02, 0.86, 1]}>
-                    <torusGeometry args={[0.184, 0.021, 10, 26]} />
-                    <meshStandardMaterial color="#231710" roughness={0.78} />
-                  </mesh>
-                  <mesh position={[0, 0, 0.168]} rotation={[Math.PI / 2, 0, 0]}>
-                    <torusGeometry args={[0.028, 0.0085, 10, 20]} />
-                    <meshStandardMaterial color="#d97706" metalness={0.84} roughness={0.28} />
-                  </mesh>
-                </group>
-              )}
-
-              {/* SOCKET ĐẠO CỤ THÂN/VAI/THẮT LƯNG */}
-              {!effectiveIsDead && visibleCostumeRole && (
-                <RoleTorsoSocket3D
-                  roleKey={visibleCostumeRole}
-                  enduringFire={enduringFire}
-                  seed={seed}
-                />
-              )}
-
-              {/* Cụm Đầu & Mũ Trùm Ẩn Danh Mềm Mại (Head Group) */}
-              <group ref={headRef} position={[0, 0.58, -0.01]}>
-                <mesh position={[0, 0.028, -0.008]} rotation={[Math.PI / 2, 0, 0]} scale={[1.04, 0.96, 1]}>
-                  <torusGeometry args={[0.125, 0.032, 10, 24]} />
-                  <meshStandardMaterial
-                    color={cloakTrimColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.9}
-                  />
-                </mesh>
-
-                <mesh position={[0, 0.145, 0.015]} castShadow={!effectiveIsDead}>
-                  <sphereGeometry args={[0.122, 22, 20]} />
-                  <meshStandardMaterial
-                    color={skinColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.7}
-                  />
-                </mesh>
-
-                {/* Mũ trùm ẩn danh vòm vải mềm */}
-                {!isWolfVisual && visibleCostumeRole !== "guard" && (
-                  <group>
+                {isAnimeUniverse ? (
+                  <>
+                    {/* Thân Áo Vest Công Sở / Sơ Mi Đồng Phục Học Đường Cel-Shaded */}
                     <mesh
-                      position={[0, 0.162, -0.016]}
-                      scale={[1.07, 1.12, 1.15]}
+                      geometry={organicGeos.tunicGeo}
+                      position={[0, 0.01, -0.005]}
+                      scale={[isWolfVisual ? 1.12 : 0.98, 0.98, 0.82]}
                       castShadow={!effectiveIsDead}
                     >
-                      <sphereGeometry args={[0.142, 22, 18, 0, Math.PI * 2, 0, Math.PI * 0.76]} />
-                      <meshStandardMaterial
+                      <meshToonMaterial
+                        ref={tunicMatRef}
                         color={tunicColor}
+                        gradientMap={animeGradientMap}
+                        emissive={
+                          recapPose === "hitRecoil" || isWolfVictim ? "#ef4444" : "#000000"
+                        }
+                        emissiveIntensity={recapPose === "hitRecoil" ? 0.55 : isWolfVictim ? 0.4 : 0}
                         transparent={effectiveIsDead}
                         opacity={bodyOpacity}
-                        roughness={0.9}
                         side={THREE.DoubleSide}
                       />
                     </mesh>
-                    {visibleCostumeRole !== "witch" && visibleCostumeRole !== "villager" && (
-                      <mesh
-                        position={[0, 0.22, -0.092]}
-                        rotation={[-0.78, 0, 0]}
-                        castShadow={!effectiveIsDead}
-                      >
-                        <capsuleGeometry args={[0.056, 0.11, 8, 14]} />
-                        <meshStandardMaterial
-                          color={cloakTrimColor}
-                          transparent={effectiveIsDead}
-                          opacity={bodyOpacity}
-                          roughness={0.92}
+
+                    {/* Cổ áo Sơ Mi Trắng chữ V + Cà vạt / Nơ Đồng Phục Anime */}
+                    {!effectiveIsDead && (
+                      <group position={[0, 0.44, 0.135]}>
+                        <mesh position={[0, 0.03, -0.01]} scale={[1.1, 1, 0.5]}>
+                          <coneGeometry args={[0.078, 0.14, 4]} />
+                          <meshToonMaterial color="#ffffff" gradientMap={animeGradientMap} />
+                        </mesh>
+                        {/* Cà vạt lụa / Nơ cổ học sinh */}
+                        <mesh position={[0, -0.065, 0.018]} scale={[0.55, 1.35, 0.28]}>
+                          <octahedronGeometry args={[0.048, 0]} />
+                          <meshToonMaterial color={animeTieColor} gradientMap={animeGradientMap} />
+                        </mesh>
+                        {/* Cổ áo Thủy Thủ / Ve Áo Blazer */}
+                        {cleanUniverse === "school" && !isWolfVisual ? (
+                          <mesh position={[0, 0.065, -0.095]} rotation={[Math.PI / 2 + 0.18, 0, 0]}>
+                            <torusGeometry args={[0.138, 0.022, 8, 20]} />
+                            <meshToonMaterial color="#1e3a8a" gradientMap={animeGradientMap} />
+                          </mesh>
+                        ) : (
+                          [-0.065, 0.065].map((lx, li) => (
+                            <mesh
+                              key={li}
+                              position={[lx, -0.02, 0.004]}
+                              rotation={[0, 0, li === 0 ? -0.25 : 0.25]}
+                            >
+                              <boxGeometry args={[0.034, 0.17, 0.016]} />
+                              <meshToonMaterial color={cloakTrimColor} gradientMap={animeGradientMap} />
+                            </mesh>
+                          ))
+                        )}
+                      </group>
+                    )}
+
+                    {/* Chân Váy Xếp Ly Học Đường (cho ghế lẻ ở Học Đường) hoặc Đai Thắt Lưng Lịch Lãm */}
+                    {!effectiveIsDead && (
+                      <mesh position={[0, 0.16, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                        <torusGeometry args={[0.176, 0.018, 8, 24]} />
+                        <meshToonMaterial
+                          color={cleanUniverse === "school" ? "#1e3a8a" : "#0f172a"}
+                          gradientMap={animeGradientMap}
                         />
                       </mesh>
                     )}
-                  </group>
+                  </>
+                ) : (
+                  <>
+                    <mesh
+                      geometry={organicGeos.tunicGeo}
+                      position={[0, 0.01, -0.01]}
+                      scale={[isWolfVisual ? 1.24 : 1.04, 1, 0.86]}
+                      castShadow={!effectiveIsDead}
+                    >
+                      <meshStandardMaterial
+                        ref={tunicMatRef}
+                        color={tunicColor}
+                        emissive={
+                          recapPose === "hitRecoil"
+                            ? "#ef4444"
+                            : isWolfVictim
+                              ? "#ef4444"
+                              : "#000000"
+                        }
+                        emissiveIntensity={recapPose === "hitRecoil" ? 0.65 : isWolfVictim ? 0.45 : 0}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                        roughness={0.88}
+                        side={THREE.DoubleSide}
+                      />
+                    </mesh>
+
+                    {/* Choàng vai lông/vải dạ cổ tròn mượt */}
+                    <mesh
+                      geometry={organicGeos.mantleGeo}
+                      position={[0, 0.01, -0.015]}
+                      scale={[isWolfVisual ? 1.28 : 1.06, 1, 0.88]}
+                      castShadow={!effectiveIsDead}
+                    >
+                      <meshStandardMaterial
+                        color={isWolfVisual ? "#221317" : cloakTrimColor}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                        roughness={0.92}
+                        side={THREE.DoubleSide}
+                      />
+                    </mesh>
+
+                    {/* Đai thắt lưng da tròn + Khuy đồng chạm tròn Bắc Âu (0% boxGeometry!) */}
+                    {!effectiveIsDead && (
+                      <group position={[0, 0.195, -0.01]}>
+                        <mesh rotation={[Math.PI / 2, 0, 0]} scale={[isWolfVisual ? 1.2 : 1.02, 0.86, 1]}>
+                          <torusGeometry args={[0.184, 0.021, 10, 26]} />
+                          <meshStandardMaterial color="#231710" roughness={0.78} />
+                        </mesh>
+                        <mesh position={[0, 0, 0.168]} rotation={[Math.PI / 2, 0, 0]}>
+                          <torusGeometry args={[0.028, 0.0085, 10, 20]} />
+                          <meshStandardMaterial color="#d97706" metalness={0.84} roughness={0.28} />
+                        </mesh>
+                      </group>
+                    )}
+                  </>
                 )}
 
-                {/* Hai mắt biểu cảm */}
-                {!isSleeping && !effectiveIsDead && (
+              {/* SOCKET ĐẠO CỤ THÂN/VAI/THẮT LƯNG + THÙNG CARTON BÀN GIAO */}
+              {!effectiveIsDead &&
+                (visibleCostumeRole ||
+                  (cleanUniverse === "office" && choreoActionSpec?.actionType === "gallows_walk_hang")) && (
+                  <RoleTorsoSocket3D
+                    roleKey={visibleCostumeRole}
+                    enduringFire={enduringFire}
+                    seed={seed}
+                    universeId={cleanUniverse}
+                    choreoActionType={choreoActionSpec?.actionType || null}
+                  />
+                )}
+
+              {/* Cụm Đầu Nhân Vật (Anime Cel-Shaded Tóc Lớp + Mắt Chớp Tự Động + Miệng Nhép Mic cho Công Sở/Học Đường) */}
+              <group ref={headRef} position={[0, 0.58, -0.01]}>
+                {isAnimeUniverse ? (
                   <>
-                    <mesh position={[-0.044, 0.152, 0.128]}>
-                      <sphereGeometry args={[isWolfVisual ? 0.021 : 0.016, 12, 12]} />
-                      <meshBasicMaterial color={isWolfVisual ? "#f59e0b" : "#1e293b"} />
+                    {/* Cổ thon Anime */}
+                    <mesh position={[0, 0.035, 0.005]}>
+                      <cylinderGeometry args={[0.044, 0.05, 0.08, 14]} />
+                      <meshToonMaterial
+                        color={skinColor}
+                        gradientMap={animeGradientMap}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                      />
                     </mesh>
-                    <mesh position={[0.044, 0.152, 0.128]}>
-                      <sphereGeometry args={[isWolfVisual ? 0.021 : 0.016, 12, 12]} />
-                      <meshBasicMaterial color={isWolfVisual ? "#f59e0b" : "#1e293b"} />
+
+                    {/* Gương mặt Anime bo cằm V-line nhẹ */}
+                    <mesh position={[0, 0.15, 0.02]} scale={[1.02, 1.06, 0.98]} castShadow={!effectiveIsDead}>
+                      <sphereGeometry args={[0.126, 24, 20]} />
+                      <meshToonMaterial
+                        color={skinColor}
+                        gradientMap={animeGradientMap}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                      />
                     </mesh>
+
+                    {/* Mái tóc Anime đa lớp (4 kiểu dáng cá tính theo từng ghế) */}
+                    {!effectiveIsDead && (
+                      <group position={[0, 0.165, 0.01]}>
+                        {/* Vòm tóc chính */}
+                        <mesh position={[0, 0.015, -0.014]} scale={[1.08, 1.1, 1.12]} castShadow>
+                          <sphereGeometry args={[0.132, 22, 18, 0, Math.PI * 2, 0, Math.PI * 0.66]} />
+                          <meshToonMaterial color={animeHairColor} gradientMap={animeGradientMap} side={THREE.DoubleSide} />
+                        </mesh>
+                        {/* 3 lọn tóc mái Anime rủ trước trán */}
+                        {[-0.052, 0, 0.052].map((bx, bi) => (
+                          <mesh
+                            key={bi}
+                            position={[bx, 0.042, 0.118]}
+                            rotation={[0.25, 0, (bi - 1) * -0.18]}
+                            scale={[0.85, 1.15, 0.45]}
+                          >
+                            <coneGeometry args={[0.036, 0.095, 8]} />
+                            <meshToonMaterial color={animeHairColor} gradientMap={animeGradientMap} />
+                          </mesh>
+                        ))}
+                        {/* Hai lọn tóc mai ôm má cho kiểu Bob / Nữ sinh / Đuôi ngựa */}
+                        {(animeHairStyle === 1 || animeHairStyle === 3) &&
+                          [-0.118, 0.118].map((sx, si) => (
+                            <mesh
+                              key={si}
+                              position={[sx, -0.045, 0.045]}
+                              rotation={[0.12, 0, si === 0 ? 0.1 : -0.1]}
+                            >
+                              <capsuleGeometry args={[0.024, 0.11, 8, 10]} />
+                              <meshToonMaterial color={animeHairColor} gradientMap={animeGradientMap} />
+                            </mesh>
+                          ))}
+                        {/* Đuôi tóc Ponytail năng động (animeHairStyle === 3) */}
+                        {animeHairStyle === 3 && (
+                          <mesh position={[0, 0.04, -0.155]} rotation={[-0.65, 0, 0]}>
+                            <coneGeometry args={[0.048, 0.19, 12]} />
+                            <meshToonMaterial color={animeHairColor} gradientMap={animeGradientMap} />
+                          </mesh>
+                        )}
+                        {/* Chỏm tóc Ahoge Anime tinh nghịch (animeHairStyle === 0) */}
+                        {animeHairStyle === 0 && (
+                          <mesh position={[0.02, 0.16, 0.02]} rotation={[0, 0, -0.38]}>
+                            <coneGeometry args={[0.018, 0.075, 8]} />
+                            <meshToonMaterial color={animeHairColor} gradientMap={animeGradientMap} />
+                          </mesh>
+                        )}
+                      </group>
+                    )}
+
+                    {/* Đôi mắt Anime to tròn long lanh + Lông mày + Má ửng hồng + Miệng Lip-Sync */}
+                    {!effectiveIsDead && (
+                      <>
+                        <group ref={animeEyesRef} position={[0, 0.148, 0.134]}>
+                          {[-0.046, 0.046].map((ex, ei) => (
+                            <group key={ei} position={[ex, 0, 0]}>
+                              {/* Tròng trắng */}
+                              <mesh scale={[1.05, 1.22, 0.38]}>
+                                <sphereGeometry args={[0.024, 14, 12]} />
+                                <meshBasicMaterial color="#ffffff" />
+                              </mesh>
+                              {/* Tròng màu Anime */}
+                              <mesh position={[0, -0.002, 0.006]} scale={[0.85, 1.05, 0.35]}>
+                                <sphereGeometry args={[0.019, 14, 12]} />
+                                <meshBasicMaterial color={animeEyeColor} />
+                              </mesh>
+                              {/* Đồng tử + Đốm sáng Catchlight trắng */}
+                              <mesh position={[0, -0.003, 0.011]} scale={[0.55, 0.7, 0.25]}>
+                                <sphereGeometry args={[0.015, 10, 10]} />
+                                <meshBasicMaterial color="#0f172a" />
+                              </mesh>
+                              <mesh position={[0.006, 0.008, 0.014]}>
+                                <sphereGeometry args={[0.0055, 8, 8]} />
+                                <meshBasicMaterial color="#ffffff" />
+                              </mesh>
+                            </group>
+                          ))}
+                        </group>
+
+                        {/* Lông mày biểu cảm */}
+                        {[-0.046, 0.046].map((bx, bi) => (
+                          <mesh
+                            key={bi}
+                            position={[bx, 0.184, 0.136]}
+                            rotation={[0, 0, isWolfVisual ? (bi === 0 ? -0.22 : 0.22) : (bi === 0 ? 0.08 : -0.08)]}
+                          >
+                            <boxGeometry args={[0.036, 0.0065, 0.008]} />
+                            <meshBasicMaterial color={animeHairColor} />
+                          </mesh>
+                        ))}
+
+                        {/* Đôi má hồng Anime nhẹ nhàng */}
+                        {!isWolfVisual &&
+                          [-0.072, 0.072].map((cx, ci) => (
+                            <mesh key={ci} position={[cx, 0.122, 0.124]} scale={[1.3, 0.65, 0.3]}>
+                              <sphereGeometry args={[0.014, 8, 8]} />
+                              <meshBasicMaterial color="#fda4af" transparent opacity={0.55} />
+                            </mesh>
+                          ))}
+
+                        {/* Miệng Anime nhép theo giọng nói LiveKit */}
+                        <mesh ref={animeMouthRef} position={[0, 0.102, 0.138]} scale={[1, 0.35, 0.35]}>
+                          <sphereGeometry args={[0.016, 10, 10]} />
+                          <meshBasicMaterial color="#e11d48" />
+                        </mesh>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <mesh position={[0, 0.028, -0.008]} rotation={[Math.PI / 2, 0, 0]} scale={[1.04, 0.96, 1]}>
+                      <torusGeometry args={[0.125, 0.032, 10, 24]} />
+                      <meshStandardMaterial
+                        color={cloakTrimColor}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                        roughness={0.9}
+                      />
+                    </mesh>
+
+                    <mesh position={[0, 0.145, 0.015]} castShadow={!effectiveIsDead}>
+                      <sphereGeometry args={[0.122, 22, 20]} />
+                      <meshStandardMaterial
+                        color={skinColor}
+                        transparent={effectiveIsDead}
+                        opacity={bodyOpacity}
+                        roughness={0.7}
+                      />
+                    </mesh>
+
+                    {/* Mũ trùm ẩn danh vòm vải mềm */}
+                    {!isWolfVisual && visibleCostumeRole !== "guard" && (
+                      <group>
+                        <mesh
+                          position={[0, 0.162, -0.016]}
+                          scale={[1.07, 1.12, 1.15]}
+                          castShadow={!effectiveIsDead}
+                        >
+                          <sphereGeometry args={[0.142, 22, 18, 0, Math.PI * 2, 0, Math.PI * 0.76]} />
+                          <meshStandardMaterial
+                            color={tunicColor}
+                            transparent={effectiveIsDead}
+                            opacity={bodyOpacity}
+                            roughness={0.9}
+                            side={THREE.DoubleSide}
+                          />
+                        </mesh>
+                        {visibleCostumeRole !== "witch" && visibleCostumeRole !== "villager" && (
+                          <mesh
+                            position={[0, 0.22, -0.092]}
+                            rotation={[-0.78, 0, 0]}
+                            castShadow={!effectiveIsDead}
+                          >
+                        <capsuleGeometry args={[0.056, 0.11, 8, 14]} />
+                            <meshStandardMaterial
+                              color={cloakTrimColor}
+                              transparent={effectiveIsDead}
+                              opacity={bodyOpacity}
+                              roughness={0.92}
+                            />
+                          </mesh>
+                        )}
+                      </group>
+                    )}
+
+                    {/* Hai mắt biểu cảm */}
+                    {!isSleeping && !effectiveIsDead && (
+                      <>
+                        <mesh position={[-0.044, 0.152, 0.128]}>
+                          <sphereGeometry args={[isWolfVisual ? 0.021 : 0.016, 12, 12]} />
+                          <meshBasicMaterial color={isWolfVisual ? "#f59e0b" : "#1e293b"} />
+                        </mesh>
+                        <mesh position={[0.044, 0.152, 0.128]}>
+                          <sphereGeometry args={[isWolfVisual ? 0.021 : 0.016, 12, 12]} />
+                          <meshBasicMaterial color={isWolfVisual ? "#f59e0b" : "#1e293b"} />
+                        </mesh>
+                      </>
+                    )}
                   </>
                 )}
 
                 {isSleeping && <SleepingMotes3D seed={seed} />}
 
                 {!effectiveIsDead && visibleCostumeRole && (
-                  <RoleHeadSocket3D roleKey={visibleCostumeRole} />
+                  <RoleHeadSocket3D roleKey={visibleCostumeRole} universeId={cleanUniverse} />
                 )}
               </group>
 
-              {/* Cánh Tay Trái giải phẫu bo tròn (CapsuleGeometry) */}
-              <group ref={leftArmRef} position={[isWolfVisual ? 0.245 : 0.2, 0.48, 0]}>
+              {/* Cánh Tay Trái giải phẫu bo tròn */}
+              <group ref={leftArmRef} position={[isWolfVisual && !isAnimeUniverse ? 0.245 : 0.2, 0.48, 0]}>
                 <mesh position={[0, -0.17, 0]} castShadow={!effectiveIsDead}>
-                  <capsuleGeometry args={[0.054, 0.24, 10, 16]} />
-                  <meshStandardMaterial
-                    color={tunicColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.88}
-                  />
+                  <capsuleGeometry args={[0.05, 0.24, 10, 16]} />
+                  {isAnimeUniverse ? (
+                    <meshToonMaterial
+                      color={tunicColor}
+                      gradientMap={animeGradientMap}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                    />
+                  ) : (
+                    <meshStandardMaterial
+                      color={tunicColor}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                      roughness={0.88}
+                    />
+                  )}
                 </mesh>
                 <mesh position={[0, -0.365, 0]}>
-                  <sphereGeometry args={[0.044, 14, 14]} />
-                  <meshStandardMaterial
-                    color={skinColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.72}
-                  />
+                  <sphereGeometry args={[0.042, 14, 14]} />
+                  {isAnimeUniverse ? (
+                    <meshToonMaterial
+                      color={skinColor}
+                      gradientMap={animeGradientMap}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                    />
+                  ) : (
+                    <meshStandardMaterial
+                      color={skinColor}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                      roughness={0.72}
+                    />
+                  )}
                 </mesh>
                 {!effectiveIsDead && visibleCostumeRole && (
-                  <RoleHandSocket3D roleKey={visibleCostumeRole} side="left" />
+                  <RoleHandSocket3D roleKey={visibleCostumeRole} side="left" universeId={cleanUniverse} />
                 )}
               </group>
 
-              {/* Cánh Tay Phải giải phẫu bo tròn (CapsuleGeometry) */}
-              <group ref={rightArmRef} position={[isWolfVisual ? -0.245 : -0.2, 0.48, 0]}>
+              {/* Cánh Tay Phải giải phẫu bo tròn */}
+              <group ref={rightArmRef} position={[isWolfVisual && !isAnimeUniverse ? -0.245 : -0.2, 0.48, 0]}>
                 <mesh position={[0, -0.17, 0]} castShadow={!effectiveIsDead}>
-                  <capsuleGeometry args={[0.054, 0.24, 10, 16]} />
-                  <meshStandardMaterial
-                    color={tunicColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.88}
-                  />
+                  <capsuleGeometry args={[0.05, 0.24, 10, 16]} />
+                  {isAnimeUniverse ? (
+                    <meshToonMaterial
+                      color={tunicColor}
+                      gradientMap={animeGradientMap}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                    />
+                  ) : (
+                    <meshStandardMaterial
+                      color={tunicColor}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                      roughness={0.88}
+                    />
+                  )}
                 </mesh>
                 <mesh position={[0, -0.365, 0]}>
-                  <sphereGeometry args={[0.044, 14, 14]} />
-                  <meshStandardMaterial
-                    color={skinColor}
-                    transparent={effectiveIsDead}
-                    opacity={bodyOpacity}
-                    roughness={0.72}
-                  />
+                  <sphereGeometry args={[0.042, 14, 14]} />
+                  {isAnimeUniverse ? (
+                    <meshToonMaterial
+                      color={skinColor}
+                      gradientMap={animeGradientMap}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                    />
+                  ) : (
+                    <meshStandardMaterial
+                      color={skinColor}
+                      transparent={effectiveIsDead}
+                      opacity={bodyOpacity}
+                      roughness={0.72}
+                    />
+                  )}
                 </mesh>
                 {!effectiveIsDead && (visibleCostumeRole || showTrialTorchSocket) && (
                   <RoleHandSocket3D
                     roleKey={visibleCostumeRole}
                     side="right"
                     showTrialTorch={showTrialTorchSocket}
+                    universeId={cleanUniverse}
                   />
                 )}
               </group>
@@ -1059,51 +1538,84 @@ export default function GreyboxActor({
           </>
         )}
 
-        {/* ============ 3B. HỒN MA LINH HỒN SƯƠNG MỜ KHI TỬ NẠN (SPECTRAL GHOST SOUL) ============ */}
+        {/* ============ 3B. TRẠNG THÁI RỜI VÒNG ĐẤU: HOLOGGRAM STANDBY (OFFICE/SCHOOL) vs HỒN MA (CLASSIC) ============ */}
         {effectiveIsDead && (
           <group ref={ghostSpiritRef} position={[0, SEAT_TOP_Y + 0.52, 0]}>
-            <mesh geometry={organicGeos.ghostRobeGeo} position={[0, 0.02, 0]}>
-              <meshStandardMaterial
-                color="#38bdf8"
-                emissive="#0ea5e9"
-                emissiveIntensity={0.68}
-                transparent
-                opacity={0.44}
-                side={THREE.DoubleSide}
-                depthWrite={false}
-              />
-            </mesh>
-            <mesh position={[0, 0.46, 0]}>
-              <sphereGeometry args={[0.112, 18, 18]} />
-              <meshStandardMaterial
-                color="#bae6fd"
-                emissive="#38bdf8"
-                emissiveIntensity={0.75}
-                transparent
-                opacity={0.56}
-                depthWrite={false}
-              />
-            </mesh>
-            <sprite position={[0, 0.34, 0]} scale={[0.78, 0.78, 1]}>
-              <spriteMaterial
-                map={glowHaloTex}
-                color="#38bdf8"
-                transparent
-                opacity={0.42}
-                blending={THREE.AdditiveBlending}
-                depthWrite={false}
-              />
-            </sprite>
-            {[-0.038, 0.038].map((gx, gi) => (
-              <mesh key={gi} position={[gx, 0.465, 0.102]}>
-                <sphereGeometry args={[0.015, 10, 10]} />
-                <meshBasicMaterial color="#ffffff" />
-              </mesh>
-            ))}
-            {visibleCostumeRole && (
-              <group position={[0, 0.32, 0]}>
-                <RoleHeadSocket3D roleKey={visibleCostumeRole} isGhost opacity={0.62} />
+            {cleanUniverse !== "classic" ? (
+              <group>
+                {/* Khối Hologram Standby sạch đẹp (0% hình bóng ma trơi kinh dị!) */}
+                <mesh position={[0, 0.24, 0]} rotation={[0, Math.PI / 4, 0]}>
+                  <octahedronGeometry args={[0.11, 0]} />
+                  <meshStandardMaterial
+                    color={cleanUniverse === "office" ? "#38bdf8" : "#fbbf24"}
+                    emissive={cleanUniverse === "office" ? "#0284c7" : "#f59e0b"}
+                    emissiveIntensity={0.95}
+                    transparent
+                    opacity={0.58}
+                    wireframe
+                  />
+                </mesh>
+                <mesh position={[0, 0.08, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                  <ringGeometry args={[0.16, 0.22, 24]} />
+                  <meshBasicMaterial
+                    color={cleanUniverse === "office" ? "#38bdf8" : "#fbbf24"}
+                    transparent
+                    opacity={0.48}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+                {visibleCostumeRole && (
+                  <group position={[0, 0.28, 0]}>
+                    <RoleHeadSocket3D roleKey={visibleCostumeRole} isGhost opacity={0.72} universeId={cleanUniverse} />
+                  </group>
+                )}
               </group>
+            ) : (
+              <>
+                <mesh geometry={organicGeos.ghostRobeGeo} position={[0, 0.02, 0]}>
+                  <meshStandardMaterial
+                    color="#38bdf8"
+                    emissive="#0ea5e9"
+                    emissiveIntensity={0.68}
+                    transparent
+                    opacity={0.44}
+                    side={THREE.DoubleSide}
+                    depthWrite={false}
+                  />
+                </mesh>
+                <mesh position={[0, 0.46, 0]}>
+                  <sphereGeometry args={[0.112, 18, 18]} />
+                  <meshStandardMaterial
+                    color="#bae6fd"
+                    emissive="#38bdf8"
+                    emissiveIntensity={0.75}
+                    transparent
+                    opacity={0.56}
+                    depthWrite={false}
+                  />
+                </mesh>
+                <sprite position={[0, 0.34, 0]} scale={[0.78, 0.78, 1]}>
+                  <spriteMaterial
+                    map={glowHaloTex}
+                    color="#38bdf8"
+                    transparent
+                    opacity={0.42}
+                    blending={THREE.AdditiveBlending}
+                    depthWrite={false}
+                  />
+                </sprite>
+                {[-0.038, 0.038].map((gx, gi) => (
+                  <mesh key={gi} position={[gx, 0.465, 0.102]}>
+                    <sphereGeometry args={[0.015, 10, 10]} />
+                    <meshBasicMaterial color="#ffffff" />
+                  </mesh>
+                ))}
+                {visibleCostumeRole && (
+                  <group position={[0, 0.32, 0]}>
+                    <RoleHeadSocket3D roleKey={visibleCostumeRole} isGhost opacity={0.62} universeId={cleanUniverse} />
+                  </group>
+                )}
+              </>
             )}
           </group>
         )}
@@ -1162,7 +1674,13 @@ export default function GreyboxActor({
                 boxShadow: "0 6px 18px rgba(0, 0, 0, 0.72)",
               }}
             >
-              {recapActorState.isWolfWhisper ? "🐺 " : "💬 "}
+              {recapActorState.isWolfWhisper
+                ? cleanUniverse === "office"
+                  ? "👔 "
+                  : cleanUniverse === "school"
+                    ? "👩‍🏫 "
+                    : "🐺 "
+                : "💬 "}
               {recapActorState.replayChatBubble}
             </div>
           )}
@@ -1323,11 +1841,15 @@ export default function GreyboxActor({
                   {player.isHost ? "👑" : player.ready ? "🟢" : "⏳"}
                 </span>
               )}
-              {effectiveIsDead && <span>👻</span>}
-              {isHunterPending && <span title="Thợ Săn đang ngắm bắn trả thù!">🏹</span>}
+              {effectiveIsDead && <span>{cleanUniverse === "office" ? "🪫" : cleanUniverse === "school" ? "📒" : "👻"}</span>}
+              {isHunterPending && (
+                <span title="Đang tung kỹ năng phản đòn!">
+                  {cleanUniverse === "office" ? "📁" : cleanUniverse === "school" ? "📢" : "🏹"}
+                </span>
+              )}
               {isMayorRevealed && !hasWinner && (
                 <span
-                  title="Trưởng Làng đã công bố Quyền Trượng (Lá phiếu x2)"
+                  title="Quyền biểu quyết x2"
                   style={{
                     background: "linear-gradient(135deg, #f59e0b, #b45309)",
                     color: "#0f172a",
@@ -1337,13 +1859,17 @@ export default function GreyboxActor({
                     borderRadius: "999px",
                   }}
                 >
-                  👑x2
+                  {cleanUniverse === "office" ? "🏅x2" : cleanUniverse === "school" ? "⭐x2" : "👑x2"}
                 </span>
               )}
-              {isMyLoverPartner && !hasWinner && <span title="Nửa kia Tình Nhân của bạn">💘</span>}
+              {isMyLoverPartner && !hasWinner && <span title="Đồng minh ghép đôi của bạn">💘</span>}
               {isCupidSelected && !hasWinner && <span title="Đã chọn ghép đôi">💘</span>}
               {isDefendant && !hasWinner && <span title="Đang trên Ghế Nóng">⚖️</span>}
-              {isWolfVictim && !hasWinner && <span title="Bị Sói cắn đêm nay">🩸</span>}
+              {isWolfVictim && !hasWinner && (
+                <span title="Mục tiêu bị nhắm đêm nay">
+                  {cleanUniverse === "office" ? "📉" : cleanUniverse === "school" ? "📝" : "🩸"}
+                </span>
+              )}
               <span>{player.name}</span>
               {isMe && <span>★</span>}
               {isLobbyPhase && canLobbyKick && onLobbyKick && (
@@ -1377,8 +1903,14 @@ export default function GreyboxActor({
               )}
               {(actualIsDead || (hasWinner && revealedRole)) && (revealedRole || player.role) && (
                 <span style={{ fontSize: "10.5px", fontWeight: 700, opacity: 0.95 }}>
-                  {ROLE_EMOJIS[revealedRole || player.role]}{" "}
-                  {hasWinner ? ROLE_LABELS[revealedRole || player.role] : ""}
+                  {cleanUniverse === "classic"
+                    ? ROLE_EMOJIS[revealedRole || player.role]
+                    : getUniverseRoleEmoji(revealedRole || player.role, cleanUniverse)}{" "}
+                  {hasWinner
+                    ? cleanUniverse === "classic"
+                      ? ROLE_LABELS[revealedRole || player.role]
+                      : getUniverseRoleLabel(revealedRole || player.role, cleanUniverse)
+                    : ""}
                 </span>
               )}
               {!hasWinner && wolfPicksOnThis > 0 && (
@@ -1392,7 +1924,8 @@ export default function GreyboxActor({
                     borderRadius: "999px",
                   }}
                 >
-                  {wolfPicksOnThis}🐺
+                  {wolfPicksOnThis}
+                  {cleanUniverse === "office" ? "👔" : cleanUniverse === "school" ? "👩‍🏫" : "🐺"}
                 </span>
               )}
               {!hasWinner && seerResult && phase === "night_seer" && (
@@ -1406,7 +1939,13 @@ export default function GreyboxActor({
                     borderRadius: "999px",
                   }}
                 >
-                  {seerResult === "wolf" ? "🔴SÓI" : "🔵Tốt"}
+                  {seerResult === "wolf"
+                    ? cleanUniverse === "office"
+                      ? "🔴SẾP"
+                      : cleanUniverse === "school"
+                        ? "🔴GV"
+                        : "🔴SÓI"
+                    : "🔵Tốt"}
                 </span>
               )}
               {!hasWinner && nominationVoters.length > 0 && phase === "day_nominate" && (
@@ -1434,7 +1973,17 @@ export default function GreyboxActor({
                     borderRadius: "999px",
                   }}
                 >
-                  {myFinalVote === "hang" ? "🪢" : "🕊️"}
+                  {myFinalVote === "hang"
+                    ? cleanUniverse === "office"
+                      ? "📋"
+                      : cleanUniverse === "school"
+                        ? "📒"
+                        : "🪢"
+                    : cleanUniverse === "office"
+                      ? "🤝"
+                      : cleanUniverse === "school"
+                        ? "🙋"
+                        : "🕊️"}
                 </span>
               )}
             </div>

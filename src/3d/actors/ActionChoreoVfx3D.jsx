@@ -75,16 +75,33 @@ function getSharedVfxGeos() {
     boltShaft: new THREE.CylinderGeometry(0.016, 0.028, 0.78, 8),
     boltTip: new THREE.ConeGeometry(0.045, 0.16, 8),
     tetherCord: new THREE.CylinderGeometry(0.016, 0.016, 1.0, 8, 1, true),
+    coinDisc: new THREE.CylinderGeometry(0.145, 0.145, 0.036, 22),
+    ledgerBook: new THREE.BoxGeometry(0.24, 0.048, 0.18),
+    stampBlock: new THREE.CylinderGeometry(0.24, 0.28, 0.16, 22),
+    stampHandle: new THREE.CylinderGeometry(0.075, 0.105, 0.24, 14),
+    stampRect: new THREE.PlaneGeometry(0.72, 0.44),
+    rulerBar: new THREE.BoxGeometry(0.085, 0.76, 0.026),
+    firewallPanel: new THREE.PlaneGeometry(1.22, 1.08),
+    chalkboardPanel: new THREE.BoxGeometry(1.18, 0.88, 0.046),
+    paperPlaneWing: new THREE.ConeGeometry(0.24, 0.58, 3),
+    bonusCard: new THREE.BoxGeometry(0.26, 0.16, 0.022),
+    vipBadge: new THREE.BoxGeometry(0.26, 0.36, 0.028),
   };
   return sharedVfxGeos;
 }
 
 /**
- * 1. GÓI VFX PHÙ THỦY NÉM BÌNH ĐỘC TÍM (`witch_poison_throw`)
- * - `u = 0.37..0.55`: Bình độc pha lê tím rời tay phải Phù Thủy, bay cầu vồng cao +1.85m, xoay nhào lộn kèm vệt sao tím.
- * - `u = 0.54..0.96`: Đập vỡ tung tại ghế nạn nhân -> 8 mảnh thủy tinh tím văng tứ phía + vòng cổ ngữ độc lan rộng + 5 đám khói kịch độc bốc lên!
+ * 1. GÓI VFX PHÙ THỦY NÉM BÌNH ĐỘC / KẾ TOÁN KHẤU TRỪ LƯƠNG / THƯ KÝ GHI SỔ ĐẦU BÀI (`witch_poison_throw`)
  */
-function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex, mistTex }) {
+function WitchPoisonThrowVfx({
+  actorSeat,
+  targetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  mistTex,
+  universeId = "classic",
+}) {
   const rootRef = useRef(null);
   const flaskGroupRef = useRef(null);
   const trailRefs = useRef([]);
@@ -230,29 +247,57 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
     }
   });
 
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const mainFxColor = isOffice ? "#f59e0b" : isSchool ? "#e11d48" : "#a855f7";
+  const subFxColor = isOffice ? "#fde047" : isSchool ? "#fbbf24" : "#d8b4fe";
+
   return (
     <group ref={rootRef} visible={false}>
-      {/* Bình Độc 3D đang bay */}
+      {/* Đạo cụ 3D đang bay Parabol: Đồng Vàng Lương (Office) / Sổ Đầu Bài Đỏ (School) / Bình Độc Tím (Classic) */}
       <group ref={flaskGroupRef} visible={false}>
-        <mesh geometry={geos.flaskBody} raycast={NOOP_RAYCAST}>
-          <meshStandardMaterial
-            color="#a855f7"
-            emissive="#9333ea"
-            emissiveIntensity={1.65}
-            roughness={0.18}
-            metalness={0.12}
-          />
-        </mesh>
-        <mesh position={[0, 0.095, 0]} geometry={geos.flaskNeck} raycast={NOOP_RAYCAST}>
-          <meshStandardMaterial color="#e9d5ff" roughness={0.25} />
-        </mesh>
-        <mesh position={[0, 0.138, 0]} geometry={geos.flaskCork} raycast={NOOP_RAYCAST}>
-          <meshStandardMaterial color="#78350f" roughness={0.85} />
-        </mesh>
+        {isOffice ? (
+          <mesh geometry={geos.coinDisc} rotation={[Math.PI / 2, 0, 0]} raycast={NOOP_RAYCAST}>
+            <meshStandardMaterial
+              color="#fbbf24"
+              emissive="#f59e0b"
+              emissiveIntensity={1.35}
+              metalness={0.88}
+              roughness={0.16}
+            />
+          </mesh>
+        ) : isSchool ? (
+          <mesh geometry={geos.ledgerBook} raycast={NOOP_RAYCAST}>
+            <meshStandardMaterial
+              color="#dc2626"
+              emissive="#e11d48"
+              emissiveIntensity={1.15}
+              roughness={0.35}
+            />
+          </mesh>
+        ) : (
+          <>
+            <mesh geometry={geos.flaskBody} raycast={NOOP_RAYCAST}>
+              <meshStandardMaterial
+                color="#a855f7"
+                emissive="#9333ea"
+                emissiveIntensity={1.65}
+                roughness={0.18}
+                metalness={0.12}
+              />
+            </mesh>
+            <mesh position={[0, 0.095, 0]} geometry={geos.flaskNeck} raycast={NOOP_RAYCAST}>
+              <meshStandardMaterial color="#e9d5ff" roughness={0.25} />
+            </mesh>
+            <mesh position={[0, 0.138, 0]} geometry={geos.flaskCork} raycast={NOOP_RAYCAST}>
+              <meshStandardMaterial color="#78350f" roughness={0.85} />
+            </mesh>
+          </>
+        )}
         <sprite scale={[0.58, 0.58, 1]} raycast={NOOP_RAYCAST}>
           <spriteMaterial
             map={glowTex}
-            color="#d8b4fe"
+            color={subFxColor}
             transparent
             opacity={0.9}
             blending={THREE.AdditiveBlending}
@@ -261,7 +306,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         </sprite>
       </group>
 
-      {/* Đuôi sao giả kim */}
+      {/* Đuôi sao bay */}
       {[0, 1, 2, 3, 4].map((idx) => (
         <sprite
           key={`ptrail_${idx}`}
@@ -273,7 +318,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         >
           <spriteMaterial
             map={glowTex}
-            color={idx % 2 === 0 ? "#c084fc" : "#e879f9"}
+            color={idx % 2 === 0 ? mainFxColor : subFxColor}
             transparent
             opacity={0.75}
             blending={THREE.AdditiveBlending}
@@ -282,7 +327,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         </sprite>
       ))}
 
-      {/* Vòng cổ ngữ độc tím dưới chân ghế nạn nhân */}
+      {/* Vòng chấn động dưới chân ghế mục tiêu */}
       <mesh
         ref={ringRef}
         visible={false}
@@ -292,7 +337,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
       >
         <meshBasicMaterial
           ref={ringMatRef}
-          color="#a855f7"
+          color={mainFxColor}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -301,11 +346,11 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         />
       </mesh>
 
-      {/* Chớp nổ vỡ bình */}
+      {/* Chớp nổ */}
       <sprite ref={flashSpriteRef} visible={false} raycast={NOOP_RAYCAST}>
         <spriteMaterial
           map={glowTex}
-          color="#f0abfc"
+          color={subFxColor}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -313,7 +358,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         />
       </sprite>
 
-      {/* 8 mảnh thủy tinh tím văng tứ phía */}
+      {/* 8 mảnh vàng lương / sao / thủy tinh văng tứ phía */}
       {shardSeeds.map((_, idx) => (
         <mesh
           key={`pshard_${idx}`}
@@ -325,7 +370,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
           raycast={NOOP_RAYCAST}
         >
           <meshBasicMaterial
-            color={idx % 2 === 0 ? "#d8b4fe" : "#a855f7"}
+            color={idx % 2 === 0 ? subFxColor : mainFxColor}
             blending={THREE.AdditiveBlending}
             transparent
             opacity={0.92}
@@ -334,7 +379,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         </mesh>
       ))}
 
-      {/* 5 đám khói sương kịch độc tím bốc lên */}
+      {/* 5 đám sương bốc lên theo màu vũ trụ */}
       {[0, 1, 2, 3, 4].map((idx) => (
         <sprite
           key={`pmist_${idx}`}
@@ -346,7 +391,7 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         >
           <spriteMaterial
             map={mistTex}
-            color={idx % 2 === 0 ? "#a855f7" : "#d946ef"}
+            color={idx % 2 === 0 ? mainFxColor : subFxColor}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -359,18 +404,29 @@ function WitchPoisonThrowVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
 }
 
 /**
- * 2. GÓI VFX PHÙ THỦY TUNG TIÊN DƯỢC CỨU MẠNG (`witch_elixir_cast`)
- * - `u = 0.42..0.58`: Tinh cầu Tiên Dược Ngọc Lục Bảo bay vòm từ tay trái Phù Thủy sang người được cứu.
- * - `u = 0.56..0.96`: Cột sáng Hồi Sinh Xanh Ngọc + 2 vòng cổ ngữ vàng kim + 8 đom đóm sinh mệnh bay lên!
+ * 2. GÓI VFX PHÙ THỦY TUNG TIÊN DƯỢC / KẾ TOÁN THƯỞNG CHUYÊN CẦN / THƯ KÝ HOA ĐIỂM 10 (`witch_elixir_cast`)
  */
-function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+function WitchElixirCastVfx({
+  actorSeat,
+  targetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  universeId = "classic",
+}) {
   const rootRef = useRef(null);
   const orbRef = useRef(null);
+  const cardPropRef = useRef(null);
   const pillarRef = useRef(null);
   const pillarMatRef = useRef(null);
   const ringARef = useRef(null);
   const ringBRef = useRef(null);
   const sparkRefs = useRef([]);
+
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const healMain = isSchool ? "#ec4899" : "#10b981";
+  const healSub = isOffice ? "#fbbf24" : isSchool ? "#fde047" : "#6ee7b7";
 
   useFrame((state) => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -397,6 +453,13 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
         orbRef.current.position.set(px, py, pz);
         const s = 0.55 + Math.sin(k * Math.PI) * 0.25;
         orbRef.current.scale.set(s, s, 1);
+        if (cardPropRef.current) {
+          cardPropRef.current.visible = true;
+          cardPropRef.current.position.set(px, py, pz);
+          cardPropRef.current.rotation.set(0.3, k * Math.PI * 4, 0.25);
+        }
+      } else if (cardPropRef.current) {
+        cardPropRef.current.visible = false;
       }
     }
 
@@ -456,7 +519,7 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
       <sprite ref={orbRef} visible={false} raycast={NOOP_RAYCAST}>
         <spriteMaterial
           map={glowTex}
-          color="#34d399"
+          color={healMain}
           transparent
           opacity={0.95}
           blending={THREE.AdditiveBlending}
@@ -464,10 +527,28 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
         />
       </sprite>
 
+      {(isOffice || isSchool) && (
+        <mesh
+          ref={cardPropRef}
+          visible={false}
+          geometry={isOffice ? geos.bonusCard : geos.shard}
+          scale={isSchool ? [2.8, 2.8, 1.2] : [1, 1, 1]}
+          raycast={NOOP_RAYCAST}
+        >
+          <meshStandardMaterial
+            color={isOffice ? "#10b981" : "#f472b6"}
+            emissive={isOffice ? "#fbbf24" : "#ec4899"}
+            emissiveIntensity={1.25}
+            metalness={0.65}
+            roughness={0.2}
+          />
+        </mesh>
+      )}
+
       <mesh ref={pillarRef} visible={false} geometry={geos.pillarCyl} raycast={NOOP_RAYCAST}>
         <meshBasicMaterial
           ref={pillarMatRef}
-          color="#10b981"
+          color={healMain}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -484,7 +565,7 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
         raycast={NOOP_RAYCAST}
       >
         <meshBasicMaterial
-          color="#6ee7b7"
+          color={healSub}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -521,7 +602,7 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
         >
           <spriteMaterial
             map={glowTex}
-            color={idx % 2 === 0 ? "#6ee7b7" : "#fde047"}
+            color={idx % 2 === 0 ? healSub : "#fde047"}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -534,9 +615,7 @@ function WitchElixirCastVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
 }
 
 /**
- * 3. GÓI VFX MA SÓI BẬT NHẢY & BỔ TRẢO CHÉO X (`wolf_pounce`)
- * - `u = 0.16..0.43`: Vệt huyết ảnh đỏ thẫm bám theo quỹ đạo nhảy Bezier của Sói.
- * - `u = 0.42..0.72`: Chấn động bụi tuyết khi đáp đất + 2 Đòn Móng Vuốt Ba Lưỡi Chữ X đỏ rực trước ngực nạn nhân + tia lửa máu!
+ * 3. GÓI VFX MA SÓI BỔ TRẢO CHÉO X (CLASSIC) | MỘC ĐỎ CẮT KPI (OFFICE) | THƯỚC GỖ & SAO SỔ ĐẦU BÀI (SCHOOL)
  */
 function WolfPounceSlashVfx({
   actorSeat,
@@ -546,32 +625,42 @@ function WolfPounceSlashVfx({
   choreoTiming,
   geos,
   glowTex,
+  universeId = "classic",
 }) {
   const rootRef = useRef(null);
   const leapTrailRefs = useRef([]);
   const landRingRef = useRef(null);
   const slashGroupARef = useRef(null);
   const slashGroupBRef = useRef(null);
+  const modernPropRef = useRef(null);
+  const modernSealRef = useRef(null);
   const sparkRefs = useRef([]);
+
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const isClassic = !isOffice && !isSchool;
+  const outerColA = isOffice ? "#f59e0b" : isSchool ? "#e11d48" : "#ef4444";
+  const innerColA = isOffice ? "#fef08a" : isSchool ? "#fecdd3" : "#fecaca";
+  const outerColB = isOffice ? "#d97706" : isSchool ? "#be123c" : "#dc2626";
 
   const slashMats = useMemo(
     () => ({
       outerA: new THREE.MeshBasicMaterial({
-        color: "#ef4444",
+        color: outerColA,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
       innerA: new THREE.MeshBasicMaterial({
-        color: "#fecaca",
+        color: innerColA,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
       outerB: new THREE.MeshBasicMaterial({
-        color: "#dc2626",
+        color: outerColB,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -585,7 +674,7 @@ function WolfPounceSlashVfx({
         depthWrite: false,
       }),
     }),
-    []
+    [outerColA, innerColA, outerColB]
   );
 
   useFrame(() => {
@@ -608,7 +697,7 @@ function WolfPounceSlashVfx({
       preferredSide
     );
 
-    // Vệt huyết ảnh khi Sói đang phóng trên không: u = 0.15..0.44
+    // Vệt sáng di chuyển: Classic nhảy cao 2m; Office/School bước bộ sát mặt sàn (y = 0.85m)
     for (let i = 0; i < 4; i += 1) {
       const spr = leapTrailRefs.current[i];
       if (!spr) continue;
@@ -618,65 +707,101 @@ function WolfPounceSlashVfx({
       if (showLeap) {
         const k = clamp01((lagU - 0.14) / 0.29);
         const sample = sampleQuadraticBezierXZ(curve, easeOutCubic(k));
-        const y = 0.85 + Math.sin(k * Math.PI) * 1.18;
+        const y = isClassic ? 0.85 + Math.sin(k * Math.PI) * 1.18 : 0.82;
         spr.position.set(sample.x, y, sample.z);
-        const s = (1 - i * 0.18) * 0.72;
+        const s = (1 - i * 0.18) * (isClassic ? 0.72 : 0.48);
         spr.scale.set(s, s, 1);
-        spr.material.opacity = (1 - i * 0.22) * 0.62;
+        spr.material.opacity = (1 - i * 0.22) * (isClassic ? 0.62 : 0.42);
       }
     }
 
-    // Vòng chấn động đáp sầm xuống đất trước mặt nạn nhân: u = 0.42..0.70
+    // Vòng chấn động trước bàn/ghế mục tiêu: u = 0.42..0.72
     const showLand = u >= 0.42 && u <= 0.72;
     if (landRingRef.current) {
       landRingRef.current.visible = showLand;
       if (showLand) {
         const kl = (u - 0.42) / 0.3;
-        landRingRef.current.position.set(land.x, 0.032, land.z);
-        const rs = 0.42 + easeOutCubic(kl) * 1.28;
+        landRingRef.current.position.set(isClassic ? land.x : targetSeat.x, 0.036, isClassic ? land.z : targetSeat.z);
+        const rs = 0.42 + easeOutCubic(kl) * 1.35;
         landRingRef.current.scale.set(rs, rs, 1);
-        landRingRef.current.material.opacity = (1 - kl) * 0.78;
+        landRingRef.current.material.opacity = (1 - kl) * 0.82;
       }
     }
 
-    // Tâm điểm trảo cào ngay trước ngực nạn nhân
     const slashX = THREE.MathUtils.lerp(land.x, targetSeat.x, 0.62);
     const slashZ = THREE.MathUtils.lerp(land.z, targetSeat.z, 0.62);
     const faceYaw = land.faceTargetYaw;
 
-    // Nhát cào chéo 1 (Tay phải Sói): u = 0.43..0.59
-    const showSlashA = u >= 0.43 && u <= 0.6;
-    if (slashGroupARef.current) {
-      slashGroupARef.current.visible = showSlashA;
-      if (showSlashA) {
-        const ka = (u - 0.43) / 0.17;
-        slashGroupARef.current.position.set(slashX, 1.02, slashZ);
-        slashGroupARef.current.rotation.set(0, faceYaw, Math.PI * 0.26);
-        const sc = 0.72 + easeOutCubic(ka) * 0.45;
-        slashGroupARef.current.scale.setScalar(sc);
-        const op = Math.sin(ka * Math.PI);
-        slashMats.outerA.opacity = op * 0.94;
-        slashMats.innerA.opacity = op * 0.98;
+    if (isClassic) {
+      const showSlashA = u >= 0.43 && u <= 0.6;
+      if (slashGroupARef.current) {
+        slashGroupARef.current.visible = showSlashA;
+        if (showSlashA) {
+          const ka = (u - 0.43) / 0.17;
+          slashGroupARef.current.position.set(slashX, 1.02, slashZ);
+          slashGroupARef.current.rotation.set(0, faceYaw, Math.PI * 0.26);
+          const sc = 0.72 + easeOutCubic(ka) * 0.45;
+          slashGroupARef.current.scale.setScalar(sc);
+          const op = Math.sin(ka * Math.PI);
+          slashMats.outerA.opacity = op * 0.94;
+          slashMats.innerA.opacity = op * 0.98;
+        }
+      }
+
+      const showSlashB = u >= 0.51 && u <= 0.71;
+      if (slashGroupBRef.current) {
+        slashGroupBRef.current.visible = showSlashB;
+        if (showSlashB) {
+          const kb = (u - 0.51) / 0.2;
+          slashGroupBRef.current.position.set(slashX, 0.98, slashZ);
+          slashGroupBRef.current.rotation.set(0, faceYaw, -Math.PI * 0.26);
+          const sc = 0.72 + easeOutCubic(kb) * 0.48;
+          slashGroupBRef.current.scale.setScalar(sc);
+          const op = Math.sin(kb * Math.PI);
+          slashMats.outerB.opacity = op * 0.94;
+          slashMats.innerB.opacity = op * 0.98;
+        }
+      }
+    } else {
+      if (slashGroupARef.current) slashGroupARef.current.visible = false;
+      if (slashGroupBRef.current) slashGroupBRef.current.visible = false;
+
+      // Mộc Đỏ CẮT KPI giáng thẳng xuống (Office) hoặc Thước Gỗ gõ & Sao Đỏ Sổ Đầu Bài (School) (0% vết cào móng vuốt!)
+      const activeStrike = u >= 0.42 && u <= 0.72;
+      if (modernPropRef.current) {
+        modernPropRef.current.visible = activeStrike;
+        if (activeStrike) {
+          const ks = clamp01((u - 0.42) / 0.3);
+          if (isOffice) {
+            // Con dấu KPI khổng lồ giáng từ y=1.82 xuống y=0.92 rồi nẩy nhẹ
+            const slamDrop = ks < 0.32 ? easeOutCubic(ks / 0.32) : 1 - clamp01((ks - 0.65) / 0.35) * 0.45;
+            const py = THREE.MathUtils.lerp(1.85, 0.92, slamDrop);
+            modernPropRef.current.position.set(slashX, py, slashZ);
+            modernPropRef.current.rotation.set(0, faceYaw, 0);
+            modernPropRef.current.scale.setScalar(1.08);
+          } else {
+            // Thước gỗ Cô Chủ Nhiệm gõ nhịp dứt khoát
+            const tap = Math.sin(ks * Math.PI * 3);
+            modernPropRef.current.position.set(slashX, 1.18, slashZ);
+            modernPropRef.current.rotation.set(0.35 + tap * 0.55, faceYaw, -0.35);
+            modernPropRef.current.scale.setScalar(1.05);
+          }
+        }
+      }
+      if (modernSealRef.current) {
+        const showSeal = u >= 0.48 && u <= 0.74;
+        modernSealRef.current.visible = showSeal;
+        if (showSeal) {
+          const kSeal = clamp01((u - 0.48) / 0.26);
+          modernSealRef.current.position.set(targetSeat.x, 0.88, targetSeat.z);
+          modernSealRef.current.rotation.set(-0.25, faceYaw, isOffice ? -0.18 : kSeal * 1.2);
+          const sc = 0.72 + easeOutCubic(kSeal) * 0.52;
+          modernSealRef.current.scale.setScalar(sc);
+          modernSealRef.current.material.opacity = (1 - kSeal * 0.82) * 0.95;
+        }
       }
     }
 
-    // Nhát cào chéo 2 tạo chữ X (Tay trái Sói): u = 0.51..0.70
-    const showSlashB = u >= 0.51 && u <= 0.71;
-    if (slashGroupBRef.current) {
-      slashGroupBRef.current.visible = showSlashB;
-      if (showSlashB) {
-        const kb = (u - 0.51) / 0.2;
-        slashGroupBRef.current.position.set(slashX, 0.98, slashZ);
-        slashGroupBRef.current.rotation.set(0, faceYaw, -Math.PI * 0.26);
-        const sc = 0.72 + easeOutCubic(kb) * 0.48;
-        slashGroupBRef.current.scale.setScalar(sc);
-        const op = Math.sin(kb * Math.PI);
-        slashMats.outerB.opacity = op * 0.94;
-        slashMats.innerB.opacity = op * 0.98;
-      }
-    }
-
-    // Tia lửa đỏ bắn tung tóe khi móng vuốt cào trúng: u = 0.44..0.72
     const showSparks = u >= 0.44 && u <= 0.72;
     for (let i = 0; i < 6; i += 1) {
       const sp = sparkRefs.current[i];
@@ -713,7 +838,7 @@ function WolfPounceSlashVfx({
         >
           <spriteMaterial
             map={glowTex}
-            color="#ef4444"
+            color={outerColA}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -730,7 +855,7 @@ function WolfPounceSlashVfx({
         raycast={NOOP_RAYCAST}
       >
         <meshBasicMaterial
-          color="#f87171"
+          color={outerColA}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -739,7 +864,7 @@ function WolfPounceSlashVfx({
         />
       </mesh>
 
-      {/* Bộ 3 móng vuốt chéo phải */}
+      {/* Bộ 3 móng vuốt chéo chữ X (CHỈ DÀNH CHO CLASSIC MA SÓI) */}
       <group ref={slashGroupARef} visible={false}>
         {clawOffsets.map((off, idx) => (
           <group key={`ca_${idx}`} position={[off, 0, idx === 1 ? 0.04 : 0]}>
@@ -749,7 +874,6 @@ function WolfPounceSlashVfx({
         ))}
       </group>
 
-      {/* Bộ 3 móng vuốt chéo trái (tạo X-Slash) */}
       <group ref={slashGroupBRef} visible={false}>
         {clawOffsets.map((off, idx) => (
           <group key={`cb_${idx}`} position={[off, 0, idx === 1 ? 0.04 : 0]}>
@@ -758,6 +882,43 @@ function WolfPounceSlashVfx({
           </group>
         ))}
       </group>
+
+      {/* Đạo cụ đòn đánh 3D Độc Lập cho Công Sở (Mộc Đỏ Cắt KPI) & Học Đường (Thước Gỗ + Ấn Sổ Đầu Bài) */}
+      {!isClassic && (
+        <>
+          <group ref={modernPropRef} visible={false}>
+            {isOffice ? (
+              <>
+                <mesh geometry={geos.stampBlock} raycast={NOOP_RAYCAST}>
+                  <meshStandardMaterial color="#dc2626" emissive="#ef4444" emissiveIntensity={1.1} metalness={0.5} roughness={0.28} />
+                </mesh>
+                <mesh geometry={geos.stampHandle} position={[0, 0.18, 0]} raycast={NOOP_RAYCAST}>
+                  <meshStandardMaterial color="#fbbf24" metalness={0.88} roughness={0.18} />
+                </mesh>
+              </>
+            ) : (
+              <mesh geometry={geos.rulerBar} raycast={NOOP_RAYCAST}>
+                <meshStandardMaterial color="#d97706" emissive="#f59e0b" emissiveIntensity={0.65} roughness={0.42} />
+              </mesh>
+            )}
+          </group>
+          <mesh
+            ref={modernSealRef}
+            visible={false}
+            geometry={isOffice ? geos.stampRect : geos.hexRing}
+            raycast={NOOP_RAYCAST}
+          >
+            <meshBasicMaterial
+              color={isOffice ? "#ef4444" : "#f43f5e"}
+              transparent
+              opacity={0}
+              side={THREE.DoubleSide}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+        </>
+      )}
 
       {[0, 1, 2, 3, 4, 5].map((idx) => (
         <sprite
@@ -770,7 +931,7 @@ function WolfPounceSlashVfx({
         >
           <spriteMaterial
             map={glowTex}
-            color={idx % 2 === 0 ? "#fca5a5" : "#fb923c"}
+            color={idx % 2 === 0 ? innerColA : outerColA}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -792,6 +953,7 @@ function GuardShieldBarrierVfx({
   choreoTiming,
   geos,
   glowTex,
+  universeId = "classic",
 }) {
   const rootRef = useRef(null);
   const domeGroupRef = useRef(null);
@@ -800,6 +962,12 @@ function GuardShieldBarrierVfx({
   const floorHexRef = useRef(null);
   const clashFlashRef = useRef(null);
   const sparkRefs = useRef([]);
+
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const isClassic = !isOffice && !isSchool;
+  const shieldCol = isSchool ? "#10b981" : isOffice ? "#06b6d4" : "#38bdf8";
+  const wireCol = isSchool ? "#a7f3d0" : isOffice ? "#67e8f9" : "#bae6fd";
 
   useFrame((state) => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -825,18 +993,22 @@ function GuardShieldBarrierVfx({
       if (activeDome) {
         const kd = isClash ? (u - 0.27) / 0.49 : (u - 0.18) / 0.68;
         const env = Math.sin(clamp01(kd) * Math.PI);
-        const fwd = isClash ? 0.34 : 0;
+        const fwd = isClash ? (isClassic ? 0.34 : 0.42) : 0.38;
         domeGroupRef.current.position.set(
           shieldSpot.x + Math.sin(faceOutwardYaw) * fwd,
-          isClash ? 0.96 : 0.45,
+          isClassic ? (isClash ? 0.96 : 0.45) : 1.02,
           shieldSpot.z + Math.cos(faceOutwardYaw) * fwd
         );
-        // Xoay vòm bán cầu chắn thẳng ra phía trước mặt Bảo Vệ (nếu clash) hoặc chụp bảo vệ trên ghế (nếu patrol)
-        domeGroupRef.current.rotation.set(isClash ? Math.PI * 0.5 : 0, faceOutwardYaw, 0);
-        const sc = isClash ? 0.92 + env * 0.18 : 1.05;
+        if (isClassic) {
+          domeGroupRef.current.rotation.set(isClash ? Math.PI * 0.5 : 0, faceOutwardYaw, 0);
+        } else {
+          // Màn hình Tường Lửa KPI (Office) / Bảng Phấn Xanh Đỡ Lời (School) dựng thẳng trước mặt!
+          domeGroupRef.current.rotation.set(0, faceOutwardYaw, 0);
+        }
+        const sc = isClash ? 0.92 + env * 0.18 : 1.02;
         domeGroupRef.current.scale.setScalar(sc);
-        domeSolidMatRef.current.opacity = env * (isClash ? 0.34 : 0.22);
-        domeWireMatRef.current.opacity = env * 0.72;
+        domeSolidMatRef.current.opacity = isSchool ? env * 0.88 : env * (isClash ? 0.38 : 0.26);
+        domeWireMatRef.current.opacity = env * 0.78;
       }
     }
 
@@ -850,7 +1022,6 @@ function GuardShieldBarrierVfx({
       }
     }
 
-    // Chớp nổ & 8 tia lửa xanh-vàng khi Sói đập sầm vào Khiên lúc u = 0.35..0.60
     const showImpact = isClash && u >= 0.34 && u <= 0.62;
     const ki = showImpact ? (u - 0.34) / 0.28 : 0;
     const cx = shieldSpot.x + Math.sin(faceOutwardYaw) * 0.52;
@@ -888,28 +1059,60 @@ function GuardShieldBarrierVfx({
   return (
     <group ref={rootRef} visible={false}>
       <group ref={domeGroupRef} visible={false}>
-        <mesh geometry={geos.shieldDome} raycast={NOOP_RAYCAST}>
-          <meshBasicMaterial
-            ref={domeSolidMatRef}
-            color="#38bdf8"
-            transparent
-            opacity={0}
-            side={THREE.DoubleSide}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
-        <mesh geometry={geos.shieldDome} scale={[1.02, 1.02, 1.02]} raycast={NOOP_RAYCAST}>
-          <meshBasicMaterial
-            ref={domeWireMatRef}
-            color="#bae6fd"
-            wireframe
-            transparent
-            opacity={0}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
+        {isSchool ? (
+          <>
+            {/* Bảng Phấn Xanh Lớp Học viền gỗ bảo vệ bạn học! */}
+            <mesh geometry={geos.chalkboardPanel} raycast={NOOP_RAYCAST}>
+              <meshStandardMaterial
+                ref={domeSolidMatRef}
+                color="#065f46"
+                emissive="#047857"
+                emissiveIntensity={0.55}
+                roughness={0.55}
+                transparent
+                opacity={0}
+              />
+            </mesh>
+            <mesh geometry={geos.chalkboardPanel} scale={[1.05, 1.07, 0.7]} raycast={NOOP_RAYCAST}>
+              <meshBasicMaterial
+                ref={domeWireMatRef}
+                color="#fbbf24"
+                wireframe
+                transparent
+                opacity={0}
+              />
+            </mesh>
+          </>
+        ) : (
+          <>
+            <mesh geometry={isOffice ? geos.firewallPanel : geos.shieldDome} raycast={NOOP_RAYCAST}>
+              <meshBasicMaterial
+                ref={domeSolidMatRef}
+                color={shieldCol}
+                transparent
+                opacity={0}
+                side={THREE.DoubleSide}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh
+              geometry={isOffice ? geos.firewallPanel : geos.shieldDome}
+              scale={[1.03, 1.03, 1.03]}
+              raycast={NOOP_RAYCAST}
+            >
+              <meshBasicMaterial
+                ref={domeWireMatRef}
+                color={wireCol}
+                wireframe
+                transparent
+                opacity={0}
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+          </>
+        )}
       </group>
 
       <mesh
@@ -920,7 +1123,7 @@ function GuardShieldBarrierVfx({
         raycast={NOOP_RAYCAST}
       >
         <meshBasicMaterial
-          color="#38bdf8"
+          color={shieldCol}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -951,7 +1154,7 @@ function GuardShieldBarrierVfx({
         >
           <spriteMaterial
             map={glowTex}
-            color={idx % 2 === 0 ? "#7dd3fc" : "#fde047"}
+            color={idx % 2 === 0 ? wireCol : "#fde047"}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -964,15 +1167,28 @@ function GuardShieldBarrierVfx({
 }
 
 /**
- * 5. GÓI VFX TIÊN TRI PHÓNG TIA PHA LÊ THẤU THỊ (`seer_divine_cast`)
+ * 5. GÓI VFX TIÊN TRI SOI PHA LÊ (CLASSIC) | LASER MATRIX IP (OFFICE) | ĐÈN PIN SAO ĐỎ (SCHOOL)
  */
-function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+function SeerDivinationBeamVfx({
+  actorSeat,
+  targetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  universeId = "classic",
+}) {
   const rootRef = useRef(null);
   const beamGroupRef = useRef(null);
   const beamOuterMatRef = useRef(null);
   const beamCoreMatRef = useRef(null);
   const targetHaloRef = useRef(null);
   const pulseOrbRefs = useRef([]);
+
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const beamOuterCol = isOffice ? "#10b981" : isSchool ? "#f59e0b" : "#818cf8";
+  const beamCoreCol = isOffice ? "#a7f3d0" : isSchool ? "#fef9c3" : "#e0e7ff";
+  const haloCol = isOffice ? "#34d399" : isSchool ? "#fbbf24" : "#a5b4fc";
 
   useFrame((state) => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -1001,7 +1217,7 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
     if (beamGroupRef.current && beamOuterMatRef.current && beamCoreMatRef.current) {
       beamGroupRef.current.position.copy(TMP_VEC_A).addScaledVector(TMP_DIR, len * 0.5);
       beamGroupRef.current.quaternion.copy(TMP_QUAT);
-      beamGroupRef.current.scale.set(1, len, 1);
+      beamGroupRef.current.scale.set(isSchool ? 1.45 : 1, len, isSchool ? 1.45 : 1);
       beamOuterMatRef.current.opacity = env * 0.45;
       beamCoreMatRef.current.opacity = env * 0.88;
     }
@@ -1031,7 +1247,7 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
         <mesh geometry={geos.beamCyl} raycast={NOOP_RAYCAST}>
           <meshBasicMaterial
             ref={beamOuterMatRef}
-            color="#818cf8"
+            color={beamOuterCol}
             transparent
             opacity={0}
             side={THREE.DoubleSide}
@@ -1042,7 +1258,7 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
         <mesh geometry={geos.beamCore} raycast={NOOP_RAYCAST}>
           <meshBasicMaterial
             ref={beamCoreMatRef}
-            color="#e0e7ff"
+            color={beamCoreCol}
             transparent
             opacity={0}
             side={THREE.DoubleSide}
@@ -1059,7 +1275,7 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
         raycast={NOOP_RAYCAST}
       >
         <meshBasicMaterial
-          color="#a5b4fc"
+          color={haloCol}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -1078,7 +1294,7 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
         >
           <spriteMaterial
             map={glowTex}
-            color={idx === 1 ? "#38bdf8" : "#c084fc"}
+            color={idx === 1 ? beamCoreCol : haloCol}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -1091,9 +1307,16 @@ function SeerDivinationBeamVfx({ actorSeat, targetSeat, choreoTiming, geos, glow
 }
 
 /**
- * 6. GÓI VFX KẺ BỊ NGUYỀN HÓA SÓI (`cursed_blood_metamorph`) & KẺ CỨNG CỎI GỒNG LỬA (`tough_iron_roar`)
+ * 6. GÓI VFX CẤT NHẮC / HÓA SÓI (`cursed_blood_metamorph`) & TRỤ VỮNG (`tough_iron_roar`)
  */
-function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
+function SelfAuraBurstVfx({
+  mode,
+  actorSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  universeId = "classic",
+}) {
   const rootRef = useRef(null);
   const pillarRef = useRef(null);
   const ringARef = useRef(null);
@@ -1101,6 +1324,19 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
   const emberRefs = useRef([]);
 
   const isCursed = mode === "cursed_blood_metamorph";
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const preHex = isOffice ? "#fbbf24" : isSchool ? "#fb7185" : "#a855f7";
+  const mainHex = isCursed
+    ? isOffice
+      ? "#f59e0b"
+      : isSchool
+        ? "#e11d48"
+        : "#dc2626"
+    : isSchool
+      ? "#eab308"
+      : "#f97316";
+  const subHex = isCursed ? (isOffice ? "#fef08a" : isSchool ? "#fda4af" : "#c084fc") : "#fde047";
 
   useFrame((state) => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -1116,7 +1352,6 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
     const cz = actorSeat.z + Math.cos(actorSeat.facingYaw) * fwd;
 
     if (isCursed) {
-      // u = 0.08..0.42: Vòng xoáy tím nguyền rủa thu hẹp; u >= 0.42: Bùng nổ Cột Huyết Nguyệt đỏ thẫm hóa Sói!
       const preMorph = u < 0.42;
       const kp = preMorph ? (u - 0.08) / 0.34 : (u - 0.42) / 0.52;
       const env = Math.sin(clamp01(kp) * Math.PI);
@@ -1136,7 +1371,7 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
         ringARef.current.position.set(cx, preMorph ? 0.25 + kp * 0.75 : 0.04, cz);
         const rs = preMorph ? 1.25 - kp * 0.65 : 0.55 + easeOutCubic(kp) * 1.55;
         ringARef.current.scale.set(rs, rs, 1);
-        ringARef.current.material.color.set(preMorph ? "#a855f7" : "#ef4444");
+        ringARef.current.material.color.set(preMorph ? preHex : mainHex);
         ringARef.current.material.opacity = env * 0.88;
       }
 
@@ -1162,7 +1397,6 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
         em.material.opacity = 0.82 * env;
       }
     } else {
-      // Kẻ Cứng Cỏi gồng lửa cam Ý Chí Thép: u = 0.24..0.90
       const active = u >= 0.24;
       const kt = active ? clamp01((u - 0.24) / 0.66) : 0;
       const env = Math.sin(kt * Math.PI);
@@ -1208,9 +1442,6 @@ function SelfAuraBurstVfx({ mode, actorSeat, choreoTiming, geos, glowTex }) {
       }
     }
   });
-
-  const mainHex = isCursed ? "#dc2626" : "#f97316";
-  const subHex = isCursed ? "#c084fc" : "#fde047";
 
   return (
     <group ref={rootRef} visible={false}>
@@ -1486,15 +1717,28 @@ function PooledActionPointLight({ activeEffects, choreoTiming }) {
 /**
  * 7. GÓI VFX THỢ SĂN BẮN ĐẠN BẠC TRẢ THÙ (`hunter_last_shot`)
  */
-function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+function HunterSilverBoltVfx({
+  actorSeat,
+  targetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  universeId = "classic",
+}) {
   const rootRef = useRef(null);
   const muzzleRef = useRef(null);
   const boltGroupRef = useRef(null);
+  const soundRingRefs = useRef([]);
   const streakRef = useRef(null);
   const streakMatRef = useRef(null);
   const impactRingRef = useRef(null);
   const impactRingMatRef = useRef(null);
   const sparkRefs = useRef([]);
+
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const isClassic = !isOffice && !isSchool;
+  const fxCol = isSchool ? "#fb7185" : isOffice ? "#38bdf8" : "#e0f2fe";
 
   useFrame(() => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -1506,13 +1750,12 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
     rootRef.current.visible = true;
 
     const sx = actorSeat.x + Math.sin(actorSeat.facingYaw) * 0.58;
-    const sy = 0.88;
+    const sy = isClassic ? 0.88 : 1.32;
     const sz = actorSeat.z + Math.cos(actorSeat.facingYaw) * 0.58;
     const tx = targetSeat.x;
-    const ty = 0.92;
+    const ty = 0.98;
     const tz = targetSeat.z;
 
-    // Quầng tụ lực & lóe nòng bạc (Muzzle Flash)
     if (muzzleRef.current) {
       muzzleRef.current.position.set(sx, sy, sz);
       if (u < 0.44) {
@@ -1532,15 +1775,16 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
       }
     }
 
-    // Mũi tên bạc siêu thanh xuyên ngang sân đá (u = 0.44 -> 0.56)
-    const inFlight = u >= 0.44 && u <= 0.57;
+    // Tàu Bay Giấy EMAIL CC ALL (Office) hoặc Mũi Tên Bạc (Classic)
+    const inFlight = !isSchool && u >= 0.44 && u <= (isOffice ? 0.62 : 0.57);
     if (boltGroupRef.current) {
       boltGroupRef.current.visible = inFlight;
       if (inFlight) {
-        const k = easeOutCubic((u - 0.44) / 0.12);
+        const k = easeOutCubic((u - 0.44) / (isOffice ? 0.18 : 0.12));
+        const arcLift = isOffice ? Math.sin(k * Math.PI) * 0.35 : 0;
         TMP_VEC_A.set(
           THREE.MathUtils.lerp(sx, tx, k),
-          THREE.MathUtils.lerp(sy, ty, k),
+          THREE.MathUtils.lerp(sy, ty, k) + arcLift,
           THREE.MathUtils.lerp(sz, tz, k)
         );
         TMP_DIR.set(tx - sx, ty - sy, tz - sz).normalize();
@@ -1550,7 +1794,31 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
       }
     }
 
-    // Vệt rạch không khí trắng bạc kéo dài từ nỏ tới mục tiêu
+    // Sóng Âm Loa Phóng Thanh "EM THƯA CÔ!" (School)
+    if (isSchool) {
+      TMP_DIR.set(tx - sx, ty - sy, tz - sz).normalize();
+      TMP_QUAT.setFromUnitVectors(UP_Y, TMP_DIR);
+      for (let r = 0; r < 3; r += 1) {
+        const sr = soundRingRefs.current[r];
+        if (!sr) continue;
+        const startU = 0.44 + r * 0.05;
+        const activeWave = u >= startU && u <= startU + 0.24;
+        sr.visible = activeWave;
+        if (activeWave) {
+          const kw = (u - startU) / 0.24;
+          sr.position.set(
+            THREE.MathUtils.lerp(sx, tx, kw),
+            THREE.MathUtils.lerp(sy, ty, kw),
+            THREE.MathUtils.lerp(sz, tz, kw)
+          );
+          sr.quaternion.copy(TMP_QUAT);
+          const ws = 0.22 + kw * 0.95;
+          sr.scale.set(ws, ws, ws);
+          sr.material.opacity = (1 - kw) * 0.92;
+        }
+      }
+    }
+
     if (streakRef.current && streakMatRef.current) {
       if (u >= 0.44 && u <= 0.72) {
         streakRef.current.visible = true;
@@ -1561,13 +1829,12 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         streakRef.current.quaternion.copy(TMP_QUAT);
         const fade = 1 - clamp01((u - 0.48) / 0.24);
         streakRef.current.scale.set(0.55 + fade * 0.75, dist, 0.55 + fade * 0.75);
-        streakMatRef.current.opacity = fade * 0.85;
+        streakMatRef.current.opacity = fade * (isSchool ? 0.45 : 0.85);
       } else {
         streakRef.current.visible = false;
       }
     }
 
-    // Vòng xung kích bạc + Tia lửa bạc văng tung tóe tại mục tiêu (u >= 0.54)
     const hitActive = u >= 0.54 && u <= 0.9;
     if (impactRingRef.current && impactRingMatRef.current) {
       impactRingRef.current.visible = hitActive;
@@ -1607,7 +1874,7 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
       <sprite ref={muzzleRef} visible={false} raycast={NOOP_RAYCAST}>
         <spriteMaterial
           map={glowTex}
-          color="#e0f2fe"
+          color={fxCol}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -1615,17 +1882,48 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         />
       </sprite>
       <group ref={boltGroupRef} visible={false}>
-        <mesh geometry={geos.boltShaft} raycast={NOOP_RAYCAST}>
-          <meshBasicMaterial color="#f8fafc" />
-        </mesh>
-        <mesh geometry={geos.boltTip} position={[0, 0.45, 0]} raycast={NOOP_RAYCAST}>
-          <meshBasicMaterial color="#bae6fd" />
-        </mesh>
+        {isOffice ? (
+          /* Tàu Bay Giấy Trắng-Vàng EMAIL CC ALL */
+          <mesh geometry={geos.paperPlaneWing} scale={[1.25, 1.0, 0.22]} raycast={NOOP_RAYCAST}>
+            <meshStandardMaterial color="#f8fafc" emissive="#38bdf8" emissiveIntensity={0.85} roughness={0.25} />
+          </mesh>
+        ) : (
+          <>
+            <mesh geometry={geos.boltShaft} raycast={NOOP_RAYCAST}>
+              <meshBasicMaterial color="#f8fafc" />
+            </mesh>
+            <mesh geometry={geos.boltTip} position={[0, 0.45, 0]} raycast={NOOP_RAYCAST}>
+              <meshBasicMaterial color="#bae6fd" />
+            </mesh>
+          </>
+        )}
       </group>
+      {isSchool &&
+        [0, 1, 2].map((ri) => (
+          <mesh
+            key={`sring_${ri}`}
+            ref={(el) => {
+              soundRingRefs.current[ri] = el;
+            }}
+            geometry={geos.ringThin}
+            rotation={[Math.PI / 2, 0, 0]}
+            visible={false}
+            raycast={NOOP_RAYCAST}
+          >
+            <meshBasicMaterial
+              color={ri % 2 === 0 ? "#f43f5e" : "#fde047"}
+              transparent
+              opacity={0}
+              side={THREE.DoubleSide}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+        ))}
       <mesh ref={streakRef} geometry={geos.beamCore} visible={false} raycast={NOOP_RAYCAST}>
         <meshBasicMaterial
           ref={streakMatRef}
-          color="#e0f2fe"
+          color={fxCol}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -1641,7 +1939,7 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
       >
         <meshBasicMaterial
           ref={impactRingMatRef}
-          color="#bae6fd"
+          color={fxCol}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -1660,7 +1958,7 @@ function HunterSilverBoltVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTe
         >
           <spriteMaterial
             map={glowTex}
-            color={i % 2 === 0 ? "#ffffff" : "#7dd3fc"}
+            color={i % 2 === 0 ? "#ffffff" : fxCol}
             transparent
             opacity={0}
             blending={THREE.AdditiveBlending}
@@ -1971,15 +2269,30 @@ function LoversHeartbreakShatterVfx({ actorSeat, targetSeat, choreoTiming, geos,
 }
 
 /**
- * 10. GÓI VFX SÓI ĐẦU ĐÀN KHẮC ẤN HUYẾT NGUYỆT & CỘT MÁU TRU TRĂNG (`alpha_blood_convert`)
+ * 10. GÓI VFX SÓI ĐẦU ĐÀN KHẮC ẤN HUYẾT NGUYỆT / TRAO THẺ VIP / BĂNG ĐỎ (`alpha_blood_convert`)
  */
-function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex }) {
+function AlphaBloodCrestVfx({
+  actorSeat,
+  targetSeat,
+  choreoTiming,
+  geos,
+  glowTex,
+  universeId = "classic",
+}) {
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
+  const isClassic = !isOffice && !isSchool;
+
   const rootRef = useRef(null);
   const pillarRef = useRef(null);
   const hexSealRef = useRef(null);
   const clawARef = useRef(null);
   const clawBRef = useRef(null);
+  const vipBadgeRef = useRef(null);
   const howlWaveRef = useRef(null);
+
+  const badgeCol = isOffice ? "#f59e0b" : isSchool ? "#e11d48" : "#ef4444";
+  const pillarCol = isOffice ? "#d97706" : isSchool ? "#f43f5e" : "#b91c1c";
 
   useFrame((state) => {
     const u = resolveChoreoProgress(choreoTiming);
@@ -1993,8 +2306,8 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
     const tx = targetSeat.x;
     const tz = targetSeat.z;
 
-    // Nhát vuốt Huyết Ấn chữ X đỏ thẫm (u = 0.34 -> 0.58)
-    const slashOn = u >= 0.34 && u <= 0.6;
+    // Nhát vuốt Huyết Ấn chữ X đỏ thẫm (CHỈ DÀNH CHO CLASSIC: u = 0.34 -> 0.58)
+    const slashOn = isClassic && u >= 0.34 && u <= 0.6;
     [clawARef, clawBRef].forEach((cRef, idx) => {
       if (!cRef.current) return;
       cRef.current.visible = slashOn;
@@ -2008,7 +2321,25 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
       }
     });
 
-    // Vòng cổ ngữ lục giác Huyết Nguyệt xoay dưới chân nạn nhân (u >= 0.36)
+    // Thẻ VIP Cất Nhắc (Office) / Phù Hiệu Sao Đỏ - Giám Thị (School) xoay lơ lửng (u = 0.34 -> 0.88)
+    if (vipBadgeRef.current) {
+      const badgeOn = !isClassic && u >= 0.34 && u <= 0.88;
+      vipBadgeRef.current.visible = badgeOn;
+      if (badgeOn) {
+        const bk = clamp01((u - 0.34) / 0.22);
+        const fade = 1 - clamp01((u - 0.76) / 0.12);
+        vipBadgeRef.current.position.set(
+          tx,
+          THREE.MathUtils.lerp(1.92, 1.38, easeOutCubic(bk)) + Math.sin(t * 5) * 0.04,
+          tz
+        );
+        vipBadgeRef.current.rotation.set(0.12, t * 2.8, isSchool ? Math.PI * 0.5 : 0);
+        const sc = (0.72 + easeOutCubic(bk) * 0.52) * Math.max(0.2, fade);
+        vipBadgeRef.current.scale.set(sc, sc, sc);
+      }
+    }
+
+    // Vòng lục giác phát sáng dưới chân mục tiêu (u >= 0.36)
     if (hexSealRef.current) {
       hexSealRef.current.visible = u >= 0.36;
       if (hexSealRef.current.visible) {
@@ -2022,7 +2353,7 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
       }
     }
 
-    // Cột Hào Quang Huyết Nguyệt & Sóng Hú Trăng (u = 0.54 -> 0.86)
+    // Cột Hào Quang & Vòng Năng Lượng Thăng Cấp (u = 0.54 -> 0.86)
     const howlOn = u >= 0.54 && u <= 0.88;
     if (pillarRef.current) {
       pillarRef.current.visible = howlOn;
@@ -2058,6 +2389,22 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
           />
         </mesh>
       ))}
+      {!isClassic && (
+        <group ref={vipBadgeRef} visible={false}>
+          <mesh geometry={geos.vipBadge} raycast={NOOP_RAYCAST}>
+            <meshStandardMaterial
+              color={badgeCol}
+              emissive={badgeCol}
+              emissiveIntensity={0.85}
+              metalness={0.55}
+              roughness={0.25}
+            />
+          </mesh>
+          <mesh geometry={geos.bonusCard} position={[0, 0, 0.018]} scale={[0.65, 0.55, 0.8]} raycast={NOOP_RAYCAST}>
+            <meshBasicMaterial color="#fef08a" />
+          </mesh>
+        </group>
+      )}
       <mesh
         ref={hexSealRef}
         geometry={geos.hexRing}
@@ -2066,7 +2413,7 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
         raycast={NOOP_RAYCAST}
       >
         <meshBasicMaterial
-          color="#dc2626"
+          color={badgeCol}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -2076,7 +2423,7 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
       </mesh>
       <mesh ref={pillarRef} geometry={geos.pillarCyl} visible={false} raycast={NOOP_RAYCAST}>
         <meshBasicMaterial
-          color="#b91c1c"
+          color={pillarCol}
           transparent
           opacity={0}
           side={THREE.DoubleSide}
@@ -2087,7 +2434,7 @@ function AlphaBloodCrestVfx({ actorSeat, targetSeat, choreoTiming, geos, glowTex
       <sprite ref={howlWaveRef} visible={false} raycast={NOOP_RAYCAST}>
         <spriteMaterial
           map={glowTex}
-          color="#f87171"
+          color={isOffice ? "#fde047" : "#fda4af"}
           transparent
           opacity={0}
           blending={THREE.AdditiveBlending}
@@ -2230,7 +2577,12 @@ function MayorGoldenDecreeVfx({ actorSeat, choreoTiming, geos, glowTex }) {
   );
 }
 
-export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMap }) {
+export default function ActionChoreoVfx3D({
+  actorChoreoMap,
+  choreoTiming,
+  seatMap,
+  universeId = "classic",
+}) {
   const geos = useMemo(() => getSharedVfxGeos(), []);
   const glowTex = useMemo(() => getSoftGlowHaloTexture(), []);
   const mistTex = useMemo(() => getDriftingMistTexture(), []);
@@ -2292,6 +2644,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   geos={geos}
                   glowTex={glowTex}
                   mistTex={mistTex}
+                  universeId={universeId}
                 />
               );
             case "witch_elixir_cast":
@@ -2303,6 +2656,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "wolf_pounce":
@@ -2316,6 +2670,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "guard_intercept":
@@ -2329,6 +2684,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "seer_divine_cast":
@@ -2340,6 +2696,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "cursed_blood_metamorph":
@@ -2352,6 +2709,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "hunter_last_shot":
@@ -2363,6 +2721,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "cupid_love_arrow":
@@ -2397,6 +2756,7 @@ export default function ActionChoreoVfx3D({ actorChoreoMap, choreoTiming, seatMa
                   choreoTiming={choreoTiming}
                   geos={geos}
                   glowTex={glowTex}
+                  universeId={universeId}
                 />
               );
             case "mayor_decree_slam":

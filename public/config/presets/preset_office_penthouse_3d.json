@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "presetId": "preset_office_penthouse_3d",
+  "name": "💼 Công Sở: Penthouse Tập Đoàn",
+  "description": "Phòng họp kính Penthouse cao ốc thành phố về đêm & ban ngày — Bàn tròn Hologram KPI R=1.25m Zero-Clipping",
+  "moodHint": "office_penthouse",
+  "slotMode": "procedural_anime_stage",
+  "updatedAtMs": 1793287200000,
+  "updatedAtIso": "2026-10-29T16:00:00.000Z",
+  "note": "V4.6 Vũ Trụ Công Sở — Render trực tiếp bởi OfficePenthouseStage3D.jsx (0% model trung cổ thừa)",
+  "totalNodes": 1,
+  "nodes": [
+    {
+      "id": "office-kpi-center",
+      "type": "office_kpi_holo_table",
+      "label": "Bàn Kính Hologram KPI Trung Tâm",
+      "category": "centerpiece",
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "seed": 0,
+      "allowCenterZone": true,
+      "lockClick": false,
+      "deletable": false
+    }
+  ]
+}

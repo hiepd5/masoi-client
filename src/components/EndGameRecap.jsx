@@ -2,6 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RolePortrait from "./RolePortrait.jsx";
 import { ROLE_COLORS, ROLE_EMOJIS, ROLE_LABELS, isWolfTeamRole } from "../config/roles.config.js";
 import {
+  sanitizeUniverseId,
+  getUniverseRoleLabel,
+  getUniverseRoleEmoji,
+} from "../config/universeThemes.config.js";
+import {
+  localizeBeatForUniverse,
+  getUniverseRecapUi,
+  getUniverseRecapWinnerConfig,
+} from "../config/universeRecapScripts.js";
+import {
   getCinemaAudioEngine,
   unlockCinemaAudioEngine,
   startCinemaStoryRecording,
@@ -12,33 +22,6 @@ import { getApiBaseUrl } from "../config/runtimeEnv.js";
 import { awardMatchXp } from "../utils/xpProgression.js";
 import { generateMvpShareCardBlob, shareOrDownloadMvpCard } from "../utils/mvpShareCard.js";
 import "./EndGameRecap.css";
-
-const WINNER_CONFIG = {
-  wolf: {
-    emoji: "🐺",
-    title: "Phe Sói Chiến Thắng!",
-    subtitle: "Bóng tối đã hoàn toàn nuốt chửng ngôi làng...",
-    themeClass: "wolf",
-  },
-  village: {
-    emoji: "🏆",
-    title: "Phe Dân Chiến Thắng!",
-    subtitle: "Ánh sáng công lý đã xua tan nanh vuốt bóng đêm!",
-    themeClass: "village",
-  },
-  tanner: {
-    emoji: "💀",
-    title: "Chán Đời Chiến Thắng!",
-    subtitle: "Kẻ chán sống đã thực hiện được tâm nguyện trên giá treo cổ!",
-    themeClass: "tanner",
-  },
-  lovers: {
-    emoji: "💘",
-    title: "Cặp Đôi Định Mệnh Chiến Thắng!",
-    subtitle: "Tình yêu vượt qua ranh giới Sói và Dân, nắm tay nhau sống sót đến cuối cùng!",
-    themeClass: "village",
-  },
-};
 
 function formatTimecode(ms = 0) {
   const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
@@ -156,10 +139,10 @@ function buildFinaleBeat(players, awards, winner, cloneActorSnapshot, simAliveMa
     tag: "👑 CHƯƠNG CUỐI • VINH DANH",
     title: mvpAward
       ? `Người Hùng Của Đêm Dài: ${mvpAward.name} (${ROLE_LABELS[mvpAward.role] || mvpAward.role})`
-      : WINNER_CONFIG[winner]?.title || "Khép Lại Câu Chuyện",
+      : getUniverseRecapWinnerConfig("classic", winner)?.title || "Khép Lại Câu Chuyện",
     narration: mvpAward
       ? `Khép lại câu chuyện sinh tử, ngôi vương MVP thuộc về ${mvpAward.name}. ${mvpAward.description}`
-      : WINNER_CONFIG[winner]?.subtitle || "Trận đấu đã khép lại!",
+      : getUniverseRecapWinnerConfig("classic", winner)?.subtitle || "Trận đấu đã khép lại!",
     durationMs: 6500,
     mood: "victory",
     cameraShot: {
@@ -1842,6 +1825,7 @@ function deriveBeatActorChoreography(beat, players = []) {
 
 export default function EndGameRecap({
   roomCode = "MASOI",
+  universeId = "classic",
   gameStartedAt = 0,
   myPlayerId = null,
   serverGoldenHour = null,
@@ -1954,12 +1938,29 @@ export default function EndGameRecap({
     setXpAwardResult(res);
   }, [isSpectator, myPlayerId, players, winner, loversPublic, roomCode, gameStartedAt, ghostBetBonusXp, serverGoldenHour, didActOrVote]);
 
-  const winConfig = WINNER_CONFIG[winner] || WINNER_CONFIG.village;
+  const cleanUniverse = sanitizeUniverseId(universeId);
+  const winConfig = getUniverseRecapWinnerConfig(cleanUniverse, winner);
+  const recapUi = getUniverseRecapUi(cleanUniverse);
 
-  const storyBeats = useMemo(
-    () => buildTrueSpaceReplayBeats(replayTimeline, history, players, awards, winner, loversPublic),
-    [replayTimeline, history, players, awards, winner, loversPublic]
-  );
+  const storyBeats = useMemo(() => {
+    const rawBeats = buildTrueSpaceReplayBeats(
+      replayTimeline,
+      history,
+      players,
+      awards,
+      winner,
+      loversPublic
+    );
+    if (cleanUniverse === "classic") return rawBeats;
+    return rawBeats.map((b) =>
+      localizeBeatForUniverse(b, {
+        universeId: cleanUniverse,
+        players,
+        awards,
+        winner,
+      })
+    );
+  }, [replayTimeline, history, players, awards, winner, loversPublic, cleanUniverse]);
 
   // Chữ ký kịch bản lời dẫn bất biến (storyVoicePlanKey): giúp useEffect tải Voice KHÔNG BAO GIỜ bị ctrl.abort() khi sân khấu 3D re-render mỗi 280ms!
   const orderedVoicePlan = useMemo(() => {
@@ -1998,13 +1999,14 @@ export default function EndGameRecap({
     overlayStateRef.current = {
       chapterTag: currentBeat?.tag || "",
       winnerBanner: `${winConfig.emoji} ${winConfig.title}`,
+      brandWatermark: recapUi.brandWatermark,
       title: currentBeat?.title || "",
       narration: currentBeat?.narration || "",
       dialogueText: currentBeat?.dialogueText || null,
       isWolfWhisper: Boolean(currentBeat?.isWolfWhisper),
       progressRatio: (safeBeatIdx + 1) / Math.max(1, storyBeats.length),
     };
-  }, [currentBeat, winConfig, safeBeatIdx, storyBeats.length]);
+  }, [currentBeat, winConfig, recapUi, safeBeatIdx, storyBeats.length]);
 
   // Đánh thức thanh điều khiển khi người xem chạm chuột / bàn phím, và tự ẩn sau 2.4s khi đang chiếu phim (giữ sáng hẳn sau khi hết truyện!)
   const wakeUpHud = useCallback(() => {
@@ -2155,10 +2157,13 @@ export default function EndGameRecap({
       setAct2Armed(true);
       const audioEngine = getCinemaAudioEngine();
       audioEngine?.setSpeakerMuted(!speechEnabled);
-      audioEngine?.triggerBeatSound(currentBeat.soundKey || currentBeat.vfxCue?.vfxType || "story");
+      audioEngine?.triggerBeatSound(
+        currentBeat.soundKey || currentBeat.vfxCue?.vfxType || "story",
+        cleanUniverse
+      );
     }, setupDelay);
     return () => clearTimeout(armTimer);
-  }, [currentBeat?.id, recapSpeed, speechEnabled]);
+  }, [currentBeat?.id, recapSpeed, speechEnabled, cleanUniverse]);
 
   // Đồng bộ trạng thái Sân Khấu 3D theo Nhịp 1 (Chuẩn bị góc cá nhân) -> Nhịp 2 (Tung đòn VFX + Hoạt Cảnh Không Gian 9 Vai)
   useEffect(() => {
@@ -2754,6 +2759,7 @@ export default function EndGameRecap({
       }));
       const blob = await generateMvpShareCardBlob({
         winner: winner === "wolf" ? "wolves" : winner,
+        universeId: cleanUniverse,
         players,
         awards: normalizedAwards,
         progression: xpAwardResult?.progression || null,
@@ -2761,13 +2767,13 @@ export default function EndGameRecap({
         roomCode,
         myPlayerName: myPl?.name || "",
       });
-      await shareOrDownloadMvpCard(blob, roomCode);
+      await shareOrDownloadMvpCard(blob, roomCode, cleanUniverse);
     } catch (err) {
       setRecordErrorMsg(err?.message || "Không thể tạo thẻ ảnh chiến tích MVP.");
     } finally {
       setSharingMvpCard(false);
     }
-  }, [sharingMvpCard, myPlayerId, players, awards, winner, xpAwardResult, roomCode]);
+  }, [sharingMvpCard, myPlayerId, players, awards, winner, xpAwardResult, roomCode, cleanUniverse]);
 
   const handleShareRecordedVideoFile = useCallback(async () => {
     if (!recordedVideo?.blob) return;
@@ -2779,8 +2785,8 @@ export default function EndGameRecap({
         });
         if (!navigator.canShare || navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: "🐺 Highlight Ma Sói Online 3D",
-            text: "Xem lại cú lừa đỉnh cao tại Ngôi Làng Ma Sói 3D: https://masoi.hiepd5.com!",
+            title: recapUi.shareTitle,
+            text: recapUi.shareText,
             files: [file],
           });
         }
@@ -2788,7 +2794,7 @@ export default function EndGameRecap({
     } catch {
       // ignore user cancel
     }
-  }, [recordedVideo, roomCode]);
+  }, [recordedVideo, roomCode, recapUi]);
 
   function cycleSpeed() {
     setRecapSpeed((s) => {
@@ -2897,7 +2903,7 @@ export default function EndGameRecap({
 
           <div className="vf-rec-pill" title="Phim kể chuyện diễn biến thật từ góc nhìn từng nhân vật">
             <span className="vf-rec-dot" />
-            <span className="vf-rec-text">PHIM KỂ CHUYỆN</span>
+            <span className="vf-rec-text">{recapUi.recPillText}</span>
             <span className="vf-timecode">{timecodeLabel}</span>
           </div>
           {speechEnabled && (
@@ -3113,7 +3119,7 @@ export default function EndGameRecap({
             {drawerTab === "cards" && (
               <>
                 <div className="recap-cards-heading">
-                  <h3>🎭 Chân Tướng Cả Làng</h3>
+                  <h3>{recapUi.cardsHeading}</h3>
                   <button type="button" className="btn-recap-tool" onClick={handleFlipAll}>
                     Lật tất cả ✓
                   </button>
@@ -3142,28 +3148,35 @@ export default function EndGameRecap({
                           </div>
                           <div className={`card-flip-back ${team}`}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <RolePortrait roleKey={roleKey} size={40} glow />
+                              {cleanUniverse === "classic" ? (
+                                <RolePortrait roleKey={roleKey} size={40} glow />
+                              ) : (
+                                <span style={{ fontSize: "1.65rem" }}>
+                                  {getUniverseRoleEmoji(roleKey, cleanUniverse)}
+                                </span>
+                              )}
                               <img src={p.avatar} alt={p.name} className="card-flip-avatar" style={{ width: 28, height: 28 }} />
                             </div>
                             <span
                               className="card-flip-role-badge"
                               style={{ color: ROLE_COLORS[roleKey] || "#fff" }}
                             >
-                              {ROLE_LABELS[roleKey]}
+                              {getUniverseRoleLabel(roleKey, cleanUniverse)}
                             </span>
                             {wasCursed && (
                               <span style={{ fontSize: "10px", color: "#c084fc", fontWeight: 700 }}>
-                                (Gốc: {ROLE_EMOJIS[p.initialRole]} {ROLE_LABELS[p.initialRole]})
+                                (Gốc: {getUniverseRoleEmoji(p.initialRole, cleanUniverse)}{" "}
+                                {getUniverseRoleLabel(p.initialRole, cleanUniverse)})
                               </span>
                             )}
                             {isLoverCard && (
                               <span style={{ fontSize: "10px", color: "#f472b6", fontWeight: 700 }}>
-                                💘 Cặp Đôi Định Mệnh
+                                {recapUi.loverCardTag}
                               </span>
                             )}
                             <span className="card-flip-player-name">{p.name}</span>
                             <span className={`card-flip-status-pill ${p.alive ? "alive" : "dead"}`}>
-                              {p.alive ? "🟢 Sống sót" : "👻 Tử nạn"}
+                              {p.alive ? recapUi.aliveStatus : recapUi.deadStatus}
                             </span>
                           </div>
                         </div>
@@ -3244,10 +3257,10 @@ export default function EndGameRecap({
                       <span className="mvp-crown-badge">👑</span>
                     </div>
                     <div className="mvp-hero-details">
-                      <span className="mvp-badge-tag">🏆 CẦU THỦ XUẤT SẮC NHẤT TRẬN ĐẤU</span>
+                      <span className="mvp-badge-tag">{recapUi.mvpSectionTag}</span>
                       <h3 className="mvp-hero-name">
-                        {awards[0].name} ({ROLE_EMOJIS[awards[0].role]}{" "}
-                        {ROLE_LABELS[awards[0].role] || awards[0].role})
+                        {awards[0].name} ({getUniverseRoleEmoji(awards[0].role, cleanUniverse)}{" "}
+                        {getUniverseRoleLabel(awards[0].role, cleanUniverse)})
                       </h3>
                       <p className="mvp-hero-desc">{awards[0].description}</p>
                     </div>
@@ -3274,7 +3287,8 @@ export default function EndGameRecap({
                             {award.title}
                           </span>
                           <span className="award-recipient">
-                            {award.name} ({ROLE_EMOJIS[award.role]} {ROLE_LABELS[award.role]})
+                            {award.name} ({getUniverseRoleEmoji(award.role, cleanUniverse)}{" "}
+                            {getUniverseRoleLabel(award.role, cleanUniverse)})
                           </span>
                           <span className="award-description">{award.description}</span>
                         </div>
@@ -3463,7 +3477,7 @@ export default function EndGameRecap({
                     fontWeight: 800,
                   }}
                 >
-                  🔮 +{ghostBetBonusXp} XP Tiên Tri Âm Giới!
+                  {recapUi.ghostXpTemplate.replace("{xp}", String(ghostBetBonusXp))}
                 </span>
               )}
 

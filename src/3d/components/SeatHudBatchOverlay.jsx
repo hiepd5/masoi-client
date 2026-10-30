@@ -2,12 +2,16 @@ import { useEffect, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { ROLE_COLORS, ROLE_EMOJIS } from "../../config/roles.config.js";
+import {
+  getUniverseRoleEmoji,
+  normalizeUniverseId,
+} from "../../config/universeThemes.config.js";
 
 export const SUSPECT_TAG_META = {
-  wolf: { id: "wolf", short: "🐺 Nghi Sói", bg: "rgba(185, 28, 28, 0.92)", border: "#fca5a5", color: "#fee2e2" },
-  trust: { id: "trust", short: "🛡️ Đáng Tin", bg: "rgba(21, 128, 61, 0.92)", border: "#86efac", color: "#dcfce7" },
-  power: { id: "power", short: "🔮 Chức Năng", bg: "rgba(109, 40, 217, 0.92)", border: "#d8b4fe", color: "#f3e8ff" },
-  unknown: { id: "unknown", short: "❓ Khó Đoán", bg: "rgba(180, 83, 9, 0.92)", border: "#fde047", color: "#fef9c3" },
+  wolf: { id: "wolf", short: "🐺 Nghi Sói", officeShort: "👔 Nghi Sếp", schoolShort: "👩‍🏫 Nghi GV", bg: "rgba(185, 28, 28, 0.92)", border: "#fca5a5", color: "#fee2e2" },
+  trust: { id: "trust", short: "🛡️ Đáng Tin", officeShort: "🛡️ Đồng Nghiệp Tốt", schoolShort: "🛡️ Bạn Cùng Bàn", bg: "rgba(21, 128, 61, 0.92)", border: "#86efac", color: "#dcfce7" },
+  power: { id: "power", short: "🔮 Chức Năng", officeShort: "💻 Cốt Cán", schoolShort: "🎽 Cán Sự Lớp", bg: "rgba(109, 40, 217, 0.92)", border: "#d8b4fe", color: "#f3e8ff" },
+  unknown: { id: "unknown", short: "❓ Khó Đoán", officeShort: "❓ Bí Ẩn", schoolShort: "❓ Khó Đoán", bg: "rgba(180, 83, 9, 0.92)", border: "#fde047", color: "#fef9c3" },
 };
 
 const _projVec = new THREE.Vector3();
@@ -96,8 +100,10 @@ export function SeatHudBatchOverlay({
   reactions = [],
   suspectTags = {},
   onLobbyKickPlayer = null,
+  universeId = "classic",
 }) {
   const isLobbyPhase = phase === "lobby";
+  const cleanUniverse = normalizeUniverseId(universeId);
 
   useEffect(() => {
     return () => {
@@ -249,7 +255,11 @@ export function SeatHudBatchOverlay({
                   boxShadow: "0 2px 6px rgba(0,0,0,0.55)",
                 }}
               >
-                {suspectMeta.short}
+                {cleanUniverse === "office"
+                  ? suspectMeta.officeShort
+                  : cleanUniverse === "school"
+                    ? suspectMeta.schoolShort
+                    : suspectMeta.short}
               </div>
             )}
 
@@ -358,8 +368,12 @@ export function SeatHudBatchOverlay({
                 {isLobbyPhase && (
                   <span>{player.isHost ? "👑" : player.ready ? "🟢" : "⏳"}</span>
                 )}
-                {actualIsDead && <span>👻</span>}
-                {isHunterPending && <span title="Thợ Săn đang ngắm bắn trả thù!">🏹</span>}
+                {actualIsDead && <span>{cleanUniverse === "office" ? "🪫" : cleanUniverse === "school" ? "📒" : "👻"}</span>}
+                {isHunterPending && (
+                  <span title="Đang tung kỹ năng phản đòn cuối!">
+                    {cleanUniverse === "office" ? "📁" : cleanUniverse === "school" ? "📢" : "🏹"}
+                  </span>
+                )}
                 {isMayorRevealed && (
                   <span
                     style={{
@@ -371,13 +385,17 @@ export function SeatHudBatchOverlay({
                       borderRadius: "999px",
                     }}
                   >
-                    👑x2
+                    {cleanUniverse === "office" ? "🏅x2" : cleanUniverse === "school" ? "⭐x2" : "👑x2"}
                   </span>
                 )}
-                {isMyLoverPartner && <span title="Nửa kia Tình Nhân của bạn">💘</span>}
+                {isMyLoverPartner && <span title="Đồng minh ghép đôi của bạn">💘</span>}
                 {isCupidSelected && <span title="Đã chọn ghép đôi">💘</span>}
-                {isDefendant && <span title="Đang trên Ghế Nóng">⚖️</span>}
-                {isWolfVictim && <span title="Bị Sói cắn đêm nay">🩸</span>}
+                {isDefendant && <span title="Đang giải trình trên Ghế Nóng">⚖️</span>}
+                {isWolfVictim && (
+                  <span title="Mục tiêu bị nhắm đêm nay">
+                    {cleanUniverse === "office" ? "📉" : cleanUniverse === "school" ? "📝" : "🩸"}
+                  </span>
+                )}
                 <span>{player.name}</span>
                 {isMe && <span>★</span>}
                 {isLobbyPhase && canLobbyKick && onLobbyKickPlayer && (
@@ -411,7 +429,9 @@ export function SeatHudBatchOverlay({
                 )}
                 {actualIsDead && player.role && (
                   <span style={{ fontSize: "10.5px", fontWeight: 700, opacity: 0.95 }}>
-                    {ROLE_EMOJIS[player.role]}
+                    {cleanUniverse === "classic"
+                      ? ROLE_EMOJIS[player.role]
+                      : getUniverseRoleEmoji(player.role, cleanUniverse)}
                   </span>
                 )}
                 {wolfPicksOnThis > 0 && (
@@ -425,7 +445,8 @@ export function SeatHudBatchOverlay({
                       borderRadius: "999px",
                     }}
                   >
-                    {wolfPicksOnThis}🐺
+                    {wolfPicksOnThis}
+                    {cleanUniverse === "office" ? "👔" : cleanUniverse === "school" ? "👩‍🏫" : "🐺"}
                   </span>
                 )}
                 {seerResult && phase === "night_seer" && (
@@ -439,7 +460,13 @@ export function SeatHudBatchOverlay({
                       borderRadius: "999px",
                     }}
                   >
-                    {seerResult === "wolf" ? "🔴SÓI" : "🔵Tốt"}
+                    {seerResult === "wolf"
+                      ? cleanUniverse === "office"
+                        ? "🔴SẾP"
+                        : cleanUniverse === "school"
+                          ? "🔴GV"
+                          : "🔴SÓI"
+                      : "🔵Tốt"}
                   </span>
                 )}
                 {nominationCount > 0 && phase === "day_nominate" && (
@@ -467,7 +494,17 @@ export function SeatHudBatchOverlay({
                       borderRadius: "999px",
                     }}
                   >
-                    {myFinalVote === "hang" ? "🪢" : "🕊️"}
+                    {myFinalVote === "hang"
+                      ? cleanUniverse === "office"
+                        ? "📋"
+                        : cleanUniverse === "school"
+                          ? "📒"
+                          : "🪢"
+                      : cleanUniverse === "office"
+                        ? "🤝"
+                        : cleanUniverse === "school"
+                          ? "🙋"
+                          : "🕊️"}
                   </span>
                 )}
               </div>

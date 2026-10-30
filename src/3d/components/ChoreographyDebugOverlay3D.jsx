@@ -6,6 +6,7 @@ import {
   STUDIO_CHOREO_SCENARIOS,
   TRIPO_ROLE_RIG_GUIDES,
   buildChoreographyDebugArcs,
+  getChoreoScenariosForUniverse,
 } from "../animation/actorChoreography3D.js";
 import {
   get3DModelRenderMode,
@@ -46,6 +47,7 @@ export function ChoreographyDebugArcs3D({
   actorChoreoMap = null,
   seatMap = null,
   gallowsSpot = null,
+  universeId = "classic",
 }) {
   const safeCirclePoints = useMemo(() => {
     const pts = [];
@@ -59,8 +61,8 @@ export function ChoreographyDebugArcs3D({
 
   const arcs = useMemo(() => {
     if (!visible) return [];
-    return buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpot });
-  }, [visible, actorChoreoMap, seatMap, gallowsSpot]);
+    return buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpot, universeId });
+  }, [visible, actorChoreoMap, seatMap, gallowsSpot, universeId]);
 
   if (!visible) return null;
 
@@ -135,13 +137,19 @@ export function ChoreographyStudioHUD({
   onToggleRigGuide,
   onCloseStudio,
   standaloneMode = false,
+  universeId = "classic",
+  onChangeUniverse = null,
 }) {
+  const universeScenarios = useMemo(
+    () => getChoreoScenariosForUniverse(universeId),
+    [universeId]
+  );
   const scenario =
-    STUDIO_CHOREO_SCENARIOS.find((s) => s.id === activeScenarioId) || STUDIO_CHOREO_SCENARIOS[0];
+    universeScenarios.find((s) => s.id === activeScenarioId) || universeScenarios[0] || STUDIO_CHOREO_SCENARIOS[0];
   const rigGuide = TRIPO_ROLE_RIG_GUIDES[scenario.roleFocus] || TRIPO_ROLE_RIG_GUIDES.wolf;
   const [renderMode, setRenderMode] = useState(() => get3DModelRenderMode());
-  const [scenarioFilter, setScenarioFilter] = useState("v3_3"); // 'v3_3' | 'v3_2' | 'all'
-  const [showPortPanel, setShowPortPanel] = useState(true);
+  const [scenarioFilter, setScenarioFilter] = useState("all"); // 'v3_3' | 'v3_2' | 'all'
+  const [showPortPanel, setShowPortPanel] = useState(false);
   const [scanningPorts, setScanningPorts] = useState(false);
   const [, setPortTick] = useState(0);
 
@@ -160,13 +168,13 @@ export function ChoreographyStudioHUD({
 
   const filteredScenarios = useMemo(() => {
     if (scenarioFilter === "v3_3") {
-      return STUDIO_CHOREO_SCENARIOS.filter((s) => s.tier === "v3_3");
+      return universeScenarios.filter((s) => s.tier === "v3_3");
     }
     if (scenarioFilter === "v3_2") {
-      return STUDIO_CHOREO_SCENARIOS.filter((s) => s.tier !== "v3_3");
+      return universeScenarios.filter((s) => s.tier !== "v3_3");
     }
-    return STUDIO_CHOREO_SCENARIOS;
-  }, [scenarioFilter]);
+    return universeScenarios;
+  }, [scenarioFilter, universeScenarios]);
 
   const handKeys = getAvailableHandPropKeys();
   const readyNativePortCount = V3_3_HOTPLUG_PORTS.filter((p) =>
@@ -221,10 +229,10 @@ export function ChoreographyStudioHUD({
       >
         <div>
           <div style={{ fontWeight: 800, fontSize: "13px", color: "#f3e8ff" }}>
-            🎬 Studio Hoạt Cảnh & Ánh Sáng (Bản Mở Rộng V3.3)
+            🎬 Studio Kiểm Định Kỹ Năng 3D (Đa Vũ Trụ V4.6.1)
           </div>
           <div style={{ fontSize: "10.5px", color: "#94a3b8" }}>
-            <code>17 Hoạt Cảnh</code> · <code>11 Gói VFX + Đèn Động</code> · <code>9 Cổng #19–#27 ({readyNativePortCount}/9 .GLB)</code>
+            <code>17 Hoạt Cảnh Độc Lập</code> · <code>3 Không Gian 3D</code> · <code>9 Cổng ({readyNativePortCount}/9 .GLB)</code>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
@@ -275,6 +283,52 @@ export function ChoreographyStudioHUD({
           </button>
         </div>
       </div>
+
+      {/* Thanh Chuyển Nóng 3 Không Gian Độc Lập (Ma Sói | Công Sở | Học Đường) */}
+      {onChangeUniverse && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+            gap: "5px",
+            marginBottom: "8px",
+            padding: "4px",
+            borderRadius: "10px",
+            background: "rgba(15, 23, 42, 0.85)",
+            border: "1px solid rgba(148, 163, 184, 0.24)",
+          }}
+        >
+          {[
+            { id: "classic", label: "🐺 Ma Sói", accent: "rgba(239, 68, 68, 0.42)", border: "#f87171" },
+            { id: "office", label: "💼 Công Sở", accent: "rgba(14, 165, 233, 0.42)", border: "#38bdf8" },
+            { id: "school", label: "🎒 Học Đường", accent: "rgba(245, 158, 11, 0.42)", border: "#fbbf24" },
+          ].map((u) => {
+            const active = universeId === u.id;
+            return (
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => onChangeUniverse(u.id)}
+                style={{
+                  width: "100%",
+                  margin: 0,
+                  padding: "6px 6px",
+                  borderRadius: "8px",
+                  fontSize: "11px",
+                  fontWeight: active ? 800 : 600,
+                  background: active ? u.accent : "transparent",
+                  color: active ? "#ffffff" : "#94a3b8",
+                  border: active ? `1px solid ${u.border}` : "1px solid transparent",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {u.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Thanh Tab Lọc Nhóm Kịch Bản + Nút Quét Nóng 9 Cổng Model (#19 -> #27) */}
       <div
@@ -491,12 +545,16 @@ export function ChoreographyStudioHUD({
           <span>
             ⏱ Nhịp diễn: <b>{Math.round(progress * 100)}%</b>{" "}
             {progress < 0.18
-              ? "(① Gồng rời ghế)"
+              ? "(① Khởi thế rời ghế)"
               : progress < 0.44
-                ? "(② Đang bay / Tung chiêu)"
+                ? universeId === "classic"
+                  ? "(② Đang bay / Tung chiêu)"
+                  : "(② Bước tới / Tung đạo cụ)"
                 : progress < 0.72
                   ? "(③ Đòn Climax!)"
-                  : "(④ Nhảy lùi về ghế)"}
+                  : universeId === "classic"
+                    ? "(④ Nhảy lùi về ghế)"
+                    : "(④ Thu chiêu về ghế)"}
           </span>
           <span>Kéo thanh để dừng soi khớp trên không</span>
         </div>

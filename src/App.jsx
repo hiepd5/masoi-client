@@ -5,19 +5,22 @@ import Room from "./components/Room.jsx";
 import DevSandbox from "./components/DevSandbox.jsx";
 import Scene3DErrorBoundary from "./3d/components/Scene3DErrorBoundary.jsx";
 import { isDevArchitectAllowed } from "./3d/editor/defaultVillageLayout.js";
+import { resolveInitialLobbyUniverse, getUniverseTheme } from "./config/universeThemes.config.js";
 
 const WerewolfScene3D = lazy(() => import("./3d/scene/WerewolfScene3D.jsx"));
 
 const WARMUP_TIPS = [
-  "💡 Mẹo: Không cần đợi đủ 6 người — bấm '⚡ Chơi Nhanh 1 Mình' là vào đấu ngay với 7 AI Bot thông minh!",
-  "⚡ Mới ở V4.1: Bật 'Tốc Chiến 5 Phút' trong phòng để trải nghiệm ván đấu gay cấn tốc độ cao!",
-  "👑 Trưởng Làng có thể giơ Quyền Trượng ban ngày để nhân đôi (x2) sức nặng lá phiếu!",
-  "🏹 Khi Thợ Săn ngã xuống (trừ trúng độc Phù Thủy), bạn có 15 giây cuối để bắn 1 viên đạn bạc trả thù!",
-  "🎬 Cuối mỗi ván đấu sẽ mở Phim Điện Ảnh 3D tua lại toàn bộ mưu kế ban đêm không che giấu!",
+  "💡 Chọn 1 trong 3 không gian (Ma Sói • Công Sở • Học Đường) để bước vào ván đấu suy luận 3D ngay!",
+  "🤖 Không cần chờ đủ người — bấm 'Chơi Cùng BOT AI' là đấu ngay cùng 7 AI thông minh!",
+  "⚡ Bấm 'Vào Chơi Nhanh' để ghép bàn trực tuyến 1-chạm cùng mọi người!",
+  "🔑 Có mã phòng của bạn bè? Nhập 5 ký tự ở sảnh để vào thẳng bàn!",
+  "🎬 Cuối mỗi ván đấu có Phim 3D tua lại toàn bộ diễn biến bí mật!",
 ];
 
 function NordicServerWarmupScreen({ canOpenArchitect, onOpenStudio }) {
   const [elapsedSec, setElapsedSec] = useState(0);
+  const initialUniverseId = resolveInitialLobbyUniverse();
+  const uTheme = getUniverseTheme(initialUniverseId);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -45,27 +48,27 @@ function NordicServerWarmupScreen({ canOpenArchitect, onOpenStudio }) {
       <div
         style={{
           width: "100%",
-          maxWidth: "460px",
-          padding: "28px 24px",
-          borderRadius: "20px",
-          background: "rgba(15, 23, 42, 0.82)",
+          maxWidth: "440px",
+          padding: "26px 22px",
+          borderRadius: "22px",
+          background: "rgba(15, 23, 42, 0.86)",
           backdropFilter: "blur(16px)",
-          border: "1px solid rgba(234, 179, 8, 0.32)",
+          border: `1px solid ${uTheme.panelBorderRgba || "rgba(234, 179, 8, 0.32)"}`,
           boxShadow: "0 20px 50px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
           textAlign: "center",
           color: "#f8fafc",
         }}
       >
-        <div style={{ fontSize: "2.8rem", marginBottom: "8px", filter: "drop-shadow(0 0 16px rgba(250, 204, 21, 0.45))" }}>
-          🌕🐺
+        <div style={{ fontSize: "2.5rem", marginBottom: "8px", filter: "drop-shadow(0 0 16px rgba(250, 204, 21, 0.35))" }}>
+          🐺 💼 🎒
         </div>
-        <h1 style={{ margin: "0 0 6px", fontSize: "1.35rem", fontWeight: 800, color: "#fef08a" }}>
-          Ma Sói Online 3D
+        <h1 style={{ margin: "0 0 6px", fontSize: "1.28rem", fontWeight: 800, color: "#fef08a" }}>
+          {uTheme.brandTitle || "Suy Luận 3D Đa Vũ Trụ"}
         </h1>
-        <p style={{ margin: "0 0 16px", fontSize: "0.9rem", color: "#cbd5e1", lineHeight: 1.45 }}>
+        <p style={{ margin: "0 0 16px", fontSize: "0.88rem", color: "#cbd5e1", lineHeight: 1.45 }}>
           {elapsedSec < 3
-            ? "🔥 Đang thắp lửa trại & kết nối vào Ngôi Làng Bắc Âu..."
-            : "🔔 Đang đánh thức Trưởng Làng & máy chủ đám mây (tự động vào ngay sau vài giây)..."}
+            ? "⚡ Đang kết nối máy chủ trực tuyến..."
+            : "🔔 Đang đánh thức máy chủ đám mây (tự động vào ngay sau vài giây)..."}
         </p>
 
         {/* Thanh tiến trình ánh trăng vàng - chàm */}
@@ -240,6 +243,7 @@ export default function App() {
               standaloneArchitect={standaloneStudioMode === "architect"}
               standaloneChoreo={standaloneStudioMode === "choreo"}
               scenePresetId={roomData?.scenePresetId || null}
+              universeId={roomData?.universeId || "classic"}
               onExitStandalone={() => setStandaloneStudioMode(null)}
             />
           </Suspense>

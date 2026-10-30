@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#991b1b"/>
+      <stop offset="100%" stop-color="#1b121e"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="34%" r="48%">
+      <stop offset="0%" stop-color="#f87171" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#f87171" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="160" height="160" rx="28" fill="url(#bg)"/>
+  <circle cx="80" cy="58" r="62" fill="url(#glow)"/>
+  <path d="M26 160 C28 118, 50 104, 80 104 C110 104, 132 118, 134 160 Z" fill="#eff6ff"/>
+  <rect x="29" y="130" width="22" height="11" rx="3" fill="#dc2626"/>
+  <circle cx="40" cy="135.5" r="3" fill="#fde047"/>
+  <polygon points="80,110 74,123 80,152 86,123" fill="#dc2626"/>
+  <rect x="72" y="90" width="16" height="20" rx="6" fill="#f3cfb6"/>
+  <path d="M48 64 C48 40, 112 40, 112 64 C112 86, 98 101, 80 103 C62 101, 48 86, 48 64 Z" fill="#fde2cc"/>
+  <path d="M46 52 L57 71 L68 54 L80 72 L92 54 L103 70 L114 52 C110 33, 50 33, 46 52 Z" fill="#3f2e26"/>
+  <ellipse cx="65" cy="70" rx="7.5" ry="8.5" fill="#ffffff"/>
+  <ellipse cx="95" cy="70" rx="7.5" ry="8.5" fill="#ffffff"/>
+  <ellipse cx="65" cy="71" rx="5.5" ry="6.8" fill="#059669"/>
+  <ellipse cx="95" cy="71" rx="5.5" ry="6.8" fill="#059669"/>
+  <circle cx="65" cy="72" r="3.2" fill="#0f172a"/>
+  <circle cx="95" cy="72" r="3.2" fill="#0f172a"/>
+  <circle cx="67.5" cy="68.5" r="2.1" fill="#ffffff"/>
+  <circle cx="97.5" cy="68.5" r="2.1" fill="#ffffff"/>
+  <path d="M57 59 Q65 56 72 59" stroke="#3f2e26" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M88 59 Q95 56 103 59" stroke="#3f2e26" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <path d="M74 88 Q80 92 86 88" stroke="#be123c" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+</svg>

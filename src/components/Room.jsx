@@ -26,6 +26,15 @@ import { getTtsCacheKey, normalizeTtsText } from "../utils/ttsTextUtils.js";
 import { unlockCinemaAudioEngine } from "../utils/cinemaVideoRecorder.js";
 import { getSession } from "../hooks/useSocket.js";
 import { getApiBaseUrl, isNativeCapacitor } from "../config/runtimeEnv.js";
+import {
+  UNIVERSE_IDS,
+  UNIVERSE_THEMES,
+  sanitizeUniverseId,
+  getUniverseTheme,
+  getUniverseRoleMeta,
+} from "../config/universeThemes.config.js";
+import StealthCamouflageOverlay, { BossKeyTriggerButton } from "./StealthCamouflageOverlay.jsx";
+import { SFX } from "./SFX.js";
 import "./Room.css";
 
 const WerewolfScene3D = lazy(() => import("../3d/scene/WerewolfScene3D.jsx"));
@@ -77,10 +86,51 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
   const chatEndRef = useRef(null);
 
   // MC audio / Voice + Auto-Ducking (-40%) cho kênh đàm thoại người chơi & Giọng AI Bot thu sẵn
+  const universeId = sanitizeUniverseId(room?.universeId);
+  const uTheme = getUniverseTheme(universeId);
+  const headphoneUnlockedRef = useRef(false);
+
   const [mcLog, setMcLog] = useState([]);
-  const [mcVoiceEnabled, setMcVoiceEnabled] = useState(true);
-  const [botVoiceEnabled, setBotVoiceEnabled] = useState(
-    () => localStorage.getItem("ws_bot_voice") !== "0"
+  const [mcVoiceEnabled, setMcVoiceEnabled] = useState(
+    () => !getUniverseTheme(room?.universeId).silentByDefault
+  );
+  const [botVoiceEnabled, setBotVoiceEnabled] = useState(() => {
+    if (getUniverseTheme(room?.universeId).silentByDefault) return false;
+    return localStorage.getItem("ws_bot_voice") !== "0";
+  });
+
+  // Đồng bộ cờ tắt tiếng & chủ đề âm hiệu SFX theo Vũ trụ hiện tại
+  useEffect(() => {
+    SFX.setMuted(!mcVoiceEnabled);
+    SFX.setUniverse(universeId);
+  }, [mcVoiceEnabled, universeId]);
+
+  // Luật 0dB Mặc Định khi vào Vũ Trụ có cấu hình silentByDefault
+  useEffect(() => {
+    if (uTheme.silentByDefault && !headphoneUnlockedRef.current) {
+      setMcVoiceEnabled(false);
+      setBotVoiceEnabled(false);
+    }
+  }, [universeId, uTheme.silentByDefault]);
+
+  const handleToggleStealthHeadphones = useCallback(() => {
+    setMcVoiceEnabled((prev) => {
+      const next = !prev;
+      headphoneUnlockedRef.current = next;
+      setBotVoiceEnabled(next);
+      return next;
+    });
+  }, []);
+
+  const handleSetRoomUniverse = useCallback(
+    (nextUId) => {
+      const clean = sanitizeUniverseId(nextUId);
+      if (clean === universeId) return;
+      socketRef.current?.emit("room:setUniverse", { universeId: clean }, (res) => {
+        if (res?.error) setError(res.error);
+      });
+    },
+    [socketRef, universeId]
   );
   const [isMcSpeakingNow, setIsMcSpeakingNow] = useState(false);
   const [speakingIds, setSpeakingIds] = useState([]);
@@ -191,6 +241,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
       const meNow = room?.players?.find((p) => p.id === myId);
       if (
         !syncedDefaultPresetRef.current &&
+        sanitizeUniverseId(room?.universeId) === "classic" &&
         meNow?.isHost &&
         room?.phase === "lobby" &&
         (room?.players?.length || 0) <= 1 &&
@@ -732,8 +783,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           const isPersonalized =
             text.includes('AI Bot') || playerNames.some((n) => text.includes(n));
 
-          // Ưu tiên 2A (Câu chuyển pha chung không chứa tên riêng): Phát ngay 27 file MP3 tĩnh trên Vercel (0ms)
-          if (!isPersonalized) {
+          // Ưu tiên 2A (Câu chuyển pha chung không chứa tên riêng): Chỉ phát 27 file MP3 trung cổ khi ở Vũ Trụ Ma Sói gốc!
+          if (!isPersonalized && universeId === "classic") {
             const staticSrc = findAudioFile(text);
             if (staticSrc) {
               const mp3Played = await playMp3(staticSrc, { meta: msgMeta });
@@ -741,7 +792,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             }
           }
 
-          // Ưu tiên 2B (Câu có tên người chơi hoặc chưa có MP3 tĩnh): Gọi VoiceStudio / Server RAM Cache (~5ms nếu Server đã tạo trước!)
+          // Ưu tiên 2B (Câu có tên người chơi hoặc Công Sở / Học Đường đọc chuẩn từ ngữ mới qua VoiceStudio):
           const vsOnline = await checkVoiceStudio();
           let dynamicPlayed = false;
           if (VOICESTUDIO_URL) {
@@ -755,8 +806,8 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           }
           if (dynamicPlayed) continue;
 
-          // Ưu tiên 3 (Khi PC cá nhân tắt / Offline): Nếu câu trùng mẫu MP3 tĩnh chung thì phát MP3 tiếng Việt
-          if (isPersonalized) {
+          // Ưu tiên 3 (Khi PC cá nhân tắt / Offline): Chỉ phát MP3 tĩnh ở Vũ Trụ Ma Sói gốc
+          if (isPersonalized && universeId === "classic") {
             const fallbackStaticSrc = findAudioFile(text);
             if (fallbackStaticSrc) {
               await playMp3(fallbackStaticSrc, { meta: msgMeta });
@@ -1168,6 +1219,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
         mcLog={mcLog}
         mcVoiceEnabled={mcVoiceEnabled}
         setMcVoiceEnabled={setMcVoiceEnabled}
+        onToggleStealthHeadphones={handleToggleStealthHeadphones}
         onLeave={handleLeave}
         onExitRecapToLobby={handleExitRecapToLobby}
         voicePregening={voicePregening}
@@ -1230,6 +1282,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
     roomScreenBody = (
       <div className={`lobby-3d-shell ${lobbyView3D ? "mode-3d" : "mode-2d"}`}>
+      <StealthCamouflageOverlay universeId={universeId} phaseKey="lobby" />
       <CitizenAvatarVaultModal
         open={showAvatarVault}
         onClose={() => setShowAvatarVault(false)}
@@ -1249,16 +1302,17 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
             <Suspense
               fallback={
                 <div className="lobby-3d-loading">
-                  🏡 Đang dựng vòng ghế Dân Làng 3D quanh lửa trại...
+                  🏡 Đang dựng không gian 3D {uTheme.shortTab}...
                 </div>
               }
             >
               <WerewolfScene3D
                 roomCode={room.code}
+                universeId={universeId}
                 players={room.players}
                 me={me}
                 phase="lobby"
-                isNight={true}
+                isNight={universeId === "classic"}
                 myRole={null}
                 hasWinner={false}
                 lobbyTargetSeatCount={seatRingTarget}
@@ -1360,8 +1414,23 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
           )}
         </div>
 
-        {/* CỤM 3–5: MIC GIỮ NÓI + ĐÓNG/MỞ BỘ BÀI + ⚙️ CÀI ĐẶT + RỜI */}
+        {/* CỤM 3–5: BOSS KEY + TAI NGHE 0dB + MIC GIỮ NÓI + ĐÓNG/MỞ BỘ BÀI + ⚙️ CÀI ĐẶT + RỜI */}
         <div className="lobby-header-actions">
+          <BossKeyTriggerButton universeId={universeId} />
+          {uTheme.silentByDefault && (
+            <button
+              type="button"
+              className={`btn-lobby-pill ${mcVoiceEnabled ? "active" : ""}`}
+              onClick={handleToggleStealthHeadphones}
+              title={
+                mcVoiceEnabled
+                  ? "Đang bật âm thanh Tai nghe — Bấm để quay về Chế độ 0dB Im Lặng"
+                  : "Chế độ 0dB Im Lặng mặc định khi ở Văn Phòng / Lớp Học — Bấm khi bạn đã đeo tai nghe!"
+              }
+            >
+              {mcVoiceEnabled ? "🎧 Tai nghe: BẬT" : "🔇 0dB (Bật Tai Nghe)"}
+            </button>
+          )}
           <VoiceQuickMicPill />
 
           <button
@@ -1513,10 +1582,58 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
 
           {mobileTab === "roles" ? (
             <div className="lobby-drawer-content">
+              {/* CHUYỂN ĐỔI 3 VŨ TRỤ NGAY TRONG PHÒNG CHỜ (Đồng bộ tức thì cho cả 6–18 ghế!) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                  gap: 6,
+                  padding: "6px",
+                  borderRadius: 12,
+                  background: "rgba(9, 14, 28, 0.85)",
+                  border: "1px solid rgba(148, 163, 184, 0.25)",
+                }}
+              >
+                {UNIVERSE_IDS.map((uKey) => {
+                  const ut = UNIVERSE_THEMES[uKey];
+                  const isCur = universeId === uKey;
+                  return (
+                    <button
+                      key={uKey}
+                      type="button"
+                      disabled={!me?.isHost && !isCur}
+                      onClick={() => me?.isHost && handleSetRoomUniverse(uKey)}
+                      title={
+                        me?.isHost
+                          ? `Đổi toàn bộ không gian 3D & bộ vai sang ${ut.brandTitle}`
+                          : `Phòng đang ở không gian ${ut.brandTitle}`
+                      }
+                      style={{
+                        margin: 0,
+                        padding: "7px 6px",
+                        borderRadius: 9,
+                        fontSize: "0.73rem",
+                        fontWeight: 800,
+                        border: isCur
+                          ? `1.5px solid ${ut.accentHex}`
+                          : "1px solid rgba(148, 163, 184, 0.18)",
+                        background: isCur
+                          ? "rgba(30, 41, 59, 0.96)"
+                          : "rgba(15, 23, 42, 0.55)",
+                        color: isCur ? "#fff" : "#94a3b8",
+                        cursor: me?.isHost ? "pointer" : "default",
+                      }}
+                    >
+                      {ut.tabIcon} {ut.shortTab}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* 3 THẺ BẢN ĐỒ 3D TRỰC QUAN (Thay thế <select> thô) */}
               <div className="scene-map-picker-block">
                 <div className="scene-map-header">
-                  <span className="scene-bar-label">🗺️ Không Gian Làng 3D</span>
+                  <span className="scene-bar-label">🗺️ Không Gian Sân Khấu 3D</span>
                   <span className="scene-active-caption">
                     {activeSceneMeta?.name || "🌲 Làng Sương Bắc Âu"}
                   </span>
@@ -1590,7 +1707,7 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       🎲 Ngẫu nhiên
                     </button>
                     {ORDERED_ROLES.map((rk) => {
-                      const rc = ROLES_CONFIG[rk];
+                      const rc = getUniverseRoleMeta(rk, universeId);
                       if (!rc) return null;
                       return (
                         <button
@@ -1600,7 +1717,11 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                           onClick={() => handleSelectSoloRole(rk)}
                           style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}
                         >
-                          <RolePortrait roleKey={rk} size={18} />
+                          {universeId === "classic" ? (
+                            <RolePortrait roleKey={rk} size={18} />
+                          ) : (
+                            <span>{rc.emoji}</span>
+                          )}
                           <span>{rc.label}</span>
                         </button>
                       );
@@ -1834,24 +1955,21 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                 </div>
               )}
 
-              {/* LƯỚI 12 THẺ BÀI TAROT 3D UE5 CHÂN THẬT */}
+              {/* LƯỚI 12 THẺ BÀI VAI TRÒ 3 VŨ TRỤ (MA SÓI / CÔNG SỞ / HỌC ĐƯỜNG) */}
               <div className="roles-thumb-grid">
                 {ORDERED_ROLES.map((roleKey) => {
-                  const conf = ROLES_CONFIG[roleKey] || {
-                    label: roleKey,
-                    emoji: "🎭",
-                    color: "#94a3b8",
-                    thumbGradient: "linear-gradient(145deg, #1e293b, #334155)",
-                    shortSkill: "",
-                    team: "village",
-                    description: "",
-                  };
+                  const conf = getUniverseRoleMeta(roleKey, universeId);
                   const count = Number(rolesConfig[roleKey]) || 0;
                   const isWolfCard = roleKey === "wolf" || roleKey === "alpha_wolf";
                   const disableMinus =
                     count <= 0 || (isWolfCard && count === 1 && totalWolfTeam <= 1);
                   const teamText =
-                    conf.team === "wolf" ? "Phe Sói" : conf.team === "neutral" ? "Độc Lập" : "Phe Dân";
+                    conf.team === "wolf"
+                      ? uTheme.factions?.wolf || "Phe Sói"
+                      : conf.team === "neutral"
+                        ? uTheme.factions?.neutral || "Độc Lập"
+                        : uTheme.factions?.village || "Phe Dân";
+                  const showStudioCard = universeId === "classic" && Boolean(ROLE_PORTRAIT_CARDS[roleKey]);
 
                   return (
                     <div
@@ -1861,10 +1979,10 @@ export default function Room({ socketRef, roomCode, roomData, onLeave, onOpenArc
                       title={`${conf.label} (${teamText}): ${conf.description}`}
                     >
                       <div
-                        className={`role-thumb-art ${ROLE_PORTRAIT_CARDS[roleKey] ? "has-studio-portrait" : ""}`}
+                        className={`role-thumb-art ${showStudioCard ? "has-studio-portrait" : ""}`}
                         style={{ background: conf.thumbGradient || "linear-gradient(145deg, #1e293b, #334155)" }}
                       >
-                        {ROLE_PORTRAIT_CARDS[roleKey] ? (
+                        {showStudioCard ? (
                           <img
                             src={withPortraitVer(ROLE_PORTRAIT_CARDS[roleKey])}
                             alt={conf.label}

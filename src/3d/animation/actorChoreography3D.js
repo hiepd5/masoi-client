@@ -220,8 +220,13 @@ export function evaluateActorChoreography({
   seatMap,
   gallowsSpot,
   tClock = 0,
+  universeId = "classic",
 }) {
   if (!choreoRoleAction || !seatTransform) return null;
+
+  const isClassic = !universeId || universeId === "classic";
+  const isOffice = universeId === "office";
+  const isSchool = universeId === "school";
 
   const u = clamp01(progress);
   const {
@@ -275,7 +280,7 @@ export function evaluateActorChoreography({
 
   switch (actionType) {
     // =========================================================================
-    // 1. MA SÓI RỜI GHẾ PHÓNG VỒ CẮN ĐƯỜNG CONG BEZIER (ĐƠN HOẶC ĐÀN 2–3 CON)
+    // 1. MA SÓI RỜI GHẾ PHÓNG VỒ CẮN (CLASSIC) | SẾP ĐÓNG MỘC KPI (OFFICE) | CÔ GÕ THƯỚC (SCHOOL)
     // =========================================================================
     case "wolf_pounce": {
       const land = computeVictimFrontLandingXZ(targetSeat || { x: 0, z: 0, facingYaw: 0 }, 0.84, slotIndex, totalSlots);
@@ -288,6 +293,83 @@ export function evaluateActorChoreography({
         CAMPFIRE_SAFE_RADIUS,
         preferredSide
       );
+
+      if (!isClassic) {
+        if (u < 0.14) {
+          // Nhịp 1: Đứng thẳng dậy khỏi ghế xoay/ghế gỗ uy nghiêm (0% nhe nanh thú!)
+          const k = smoothstep01(u / 0.14);
+          sitFactor = 1 - k;
+          const stepOut = sampleQuadraticBezierXZ(curve, k * 0.08);
+          worldX = stepOut.x;
+          worldZ = stepOut.z;
+          worldYaw = stepOut.tangentYaw;
+          spineLeanX = 0.08 * k;
+          rightArmPitchX = -0.45 - 0.55 * k;
+          leftArmPitchX = -0.45 - 0.25 * k;
+        } else if (u < 0.43) {
+          // Nhịp 2: Bước bộ nhanh dứt khoát tới bàn mục tiêu (worldY sát mặt sàn, 0% nhảy vồ 0.96m!)
+          const k = (u - 0.14) / 0.29;
+          const sample = sampleQuadraticBezierXZ(curve, 0.08 + easeInOutQuad(k) * 0.92);
+          const stride = Math.sin(k * Math.PI * 6);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = Math.abs(stride) * 0.045;
+          worldYaw = k > 0.82 ? land.faceTargetYaw : sample.tangentYaw;
+          sitFactor = 0;
+          spineLeanX = 0.12;
+          leftThighAddX = -stride * 0.58;
+          rightThighAddX = stride * 0.58;
+          leftKneeAddX = Math.max(0, stride) * 0.68;
+          rightKneeAddX = Math.max(0, -stride) * 0.68;
+          leftFootPitch = stride * 0.25;
+          rightFootPitch = -stride * 0.25;
+          leftArmPitchX = -0.4 + stride * 0.35;
+          rightArmPitchX = -1.05 - Math.abs(stride) * 0.15; // Tay phải cầm chắc Mộc KPI / Thước Gỗ
+          rightForeArmBend = -0.78;
+        } else if (u < 0.68) {
+          // Nhịp 3: Đứng thẳng trước bàn mục tiêu — ĐÓNG MỘC ĐỎ CẮT KPI (Office) / GÕ THƯỚC GỖ & GHI SỔ (School)
+          const k = (u - 0.43) / 0.25;
+          worldX = land.x;
+          worldZ = land.z;
+          worldY = 0;
+          worldYaw = land.faceTargetYaw;
+          sitFactor = 0.04;
+          const slamDown = k < 0.36 ? smoothstep01(k / 0.36) : 1 - clamp01((k - 0.72) / 0.28) * 0.5;
+          const rulerTap = isSchool ? Math.sin(k * Math.PI * 3) * 0.32 : 0;
+          spineLeanX = isOffice ? 0.28 * slamDown : 0.18 + Math.max(0, rulerTap) * 0.12;
+          spineTwistY = -0.18 * slamDown;
+          headPitchX = 0.12 * slamDown;
+          rightArmPitchX = isOffice
+            ? THREE.MathUtils.lerp(-2.32, -0.72, slamDown)
+            : -1.65 + rulerTap * 0.85;
+          rightForeArmBend = isOffice ? THREE.MathUtils.lerp(-0.28, -0.58, slamDown) : -0.35;
+          leftArmPitchX = isSchool ? -1.08 : -0.62;
+          leftForeArmBend = isSchool ? -0.95 : -0.68;
+          bodyEmissiveHex = isOffice ? "#f59e0b" : "#e11d48";
+          bodyEmissiveIntensity = 0.46 * (1 - k * 0.45);
+        } else {
+          // Nhịp 4: Xoay người bước bộ lịch thiệp về lại ghế ngồi
+          const k = easeInOutQuad((u - 0.68) / 0.32);
+          const sample = sampleQuadraticBezierXZ(curve, 1 - k);
+          const stride = Math.sin(k * Math.PI * 5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = k < 0.78 ? Math.abs(stride) * 0.04 : 0;
+          worldYaw =
+            k > 0.78
+              ? THREE.MathUtils.lerp(land.faceTargetYaw, seatTransform.facingYaw, (k - 0.78) / 0.22)
+              : normalizeAngleRad(sample.tangentYaw + Math.PI);
+          sitFactor = k > 0.75 ? smoothstep01((k - 0.75) / 0.25) : 0;
+          const walkAmp = k < 0.75 ? 1 : 1 - (k - 0.75) / 0.25;
+          leftThighAddX = -stride * 0.5 * walkAmp;
+          rightThighAddX = stride * 0.5 * walkAmp;
+          leftKneeAddX = Math.max(0, stride) * 0.6 * walkAmp;
+          rightKneeAddX = Math.max(0, -stride) * 0.6 * walkAmp;
+          leftArmPitchX = THREE.MathUtils.lerp(-0.55, -0.45, k);
+          rightArmPitchX = THREE.MathUtils.lerp(-0.85, -0.45, k);
+        }
+        break;
+      }
 
       if (u < 0.16) {
         // Pha 1 (0..16%): Bật khỏi ghế sồi, khuỵu gối gồng cơ lưng, nhe nanh mở rộng hai vuốt
@@ -416,6 +498,57 @@ export function evaluateActorChoreography({
         preferredSide
       );
 
+      if (!isClassic) {
+        if (u < 0.36) {
+          const k = u / 0.36;
+          const sample = sampleQuadraticBezierXZ(curve, easeInOutQuad(k));
+          const stride = Math.sin(k * Math.PI * 5.5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = Math.abs(stride) * 0.045;
+          worldYaw = sample.tangentYaw;
+          sitFactor = k < 0.2 ? 1 - k * 5 : 0;
+          spineLeanX = 0.14;
+          leftThighAddX = -stride * 0.55;
+          rightThighAddX = stride * 0.55;
+          leftKneeAddX = Math.max(0, stride) * 0.65;
+          rightKneeAddX = Math.max(0, -stride) * 0.65;
+          rightArmPitchX = -1.65 * smoothstep01(k);
+          leftArmPitchX = -0.5;
+        } else if (u < 0.68) {
+          // Bị Tường Lửa KPI / Bảng Phấn Đỡ Lời chặn đứng -> khựng lùi lịch thiệp 2 bước (0% bật ngửa thú!)
+          const k = (u - 0.36) / 0.32;
+          const sample = sampleQuadraticBezierXZ(curve, 1 - easeOutCubic(k) * 0.42);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = 0;
+          worldYaw = clashSpot.faceTargetYaw;
+          sitFactor = 0.04;
+          spineLeanX = -0.16 * (1 - k * 0.5);
+          headYawY = Math.sin(k * Math.PI * 3) * 0.18;
+          leftArmPitchX = -1.15;
+          rightArmPitchX = -1.15;
+          leftForeArmBend = -0.65;
+          rightForeArmBend = -0.65;
+          leftArmSpreadZ = 0.34;
+          rightArmSpreadZ = -0.34;
+          bodyEmissiveHex = isOffice ? "#06b6d4" : "#10b981";
+          bodyEmissiveIntensity = (1 - k) * 0.48;
+        } else {
+          const k = easeInOutQuad((u - 0.68) / 0.32);
+          const sample = sampleQuadraticBezierXZ(curve, 0.58 * (1 - k));
+          const stride = Math.sin(k * Math.PI * 4.5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = k < 0.72 ? Math.abs(stride) * 0.038 : 0;
+          worldYaw = THREE.MathUtils.lerp(clashSpot.faceTargetYaw, seatTransform.facingYaw, k);
+          sitFactor = k > 0.68 ? (k - 0.68) / 0.32 : 0;
+          leftThighAddX = -stride * 0.45 * (1 - k);
+          rightThighAddX = stride * 0.45 * (1 - k);
+        }
+        break;
+      }
+
       if (u < 0.36) {
         // Phóng vút tới định vồ nạn nhân
         const k = u / 0.36;
@@ -487,6 +620,60 @@ export function evaluateActorChoreography({
         CAMPFIRE_SAFE_RADIUS,
         0
       );
+
+      if (!isClassic) {
+        if (u < 0.31) {
+          // Bước sải chân nhanh ra che trước bàn đồng nghiệp / bạn học (0% phóng nhảy trên không!)
+          const k = easeOutCubic(u / 0.31);
+          const sample = sampleQuadraticBezierXZ(curve, k);
+          const stride = Math.sin(k * Math.PI * 5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = Math.abs(stride) * 0.048;
+          worldYaw = k > 0.72 ? faceOutwardYaw : sample.tangentYaw;
+          sitFactor = k < 0.18 ? 1 - k * 5.5 : 0;
+          spineLeanX = 0.14;
+          leftThighAddX = -stride * 0.56;
+          rightThighAddX = stride * 0.56;
+          leftKneeAddX = Math.max(0, stride) * 0.65;
+          rightKneeAddX = Math.max(0, -stride) * 0.65;
+          leftArmPitchX = -1.52;
+          leftForeArmBend = -0.95;
+          rightArmPitchX = -1.18;
+          rightForeArmBend = -0.82;
+        } else if (u < 0.74) {
+          // Đứng sừng sững giơ cao Tường Lửa KPI (Office) / Bảng Phấn Xanh Đỡ Lời (School)
+          const k = (u - 0.31) / 0.43;
+          const impactShock = k < 0.35 ? Math.sin((k / 0.35) * Math.PI) : 0;
+          const pushBack = impactShock * 0.08;
+          worldX = shieldSpot.x - Math.sin(faceOutwardYaw) * pushBack;
+          worldZ = shieldSpot.z - Math.cos(faceOutwardYaw) * pushBack;
+          worldY = 0;
+          worldYaw = faceOutwardYaw;
+          sitFactor = 0.08 + impactShock * 0.06;
+          spineLeanX = 0.08 - impactShock * 0.12;
+          leftArmPitchX = -1.62 - impactShock * 0.12;
+          rightArmPitchX = -1.48 - impactShock * 0.12;
+          leftForeArmBend = -0.78;
+          rightForeArmBend = -0.78;
+          leftArmSpreadZ = 0.18;
+          rightArmSpreadZ = -0.18;
+          bodyEmissiveHex = isOffice ? "#06b6d4" : "#10b981";
+          bodyEmissiveIntensity = 0.48 * Math.max(0.25, impactShock);
+        } else {
+          const k = easeInOutQuad((u - 0.74) / 0.26);
+          const sample = sampleQuadraticBezierXZ(curve, 1 - k);
+          const stride = Math.sin(k * Math.PI * 4.5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = k < 0.72 ? Math.abs(stride) * 0.04 : 0;
+          worldYaw = THREE.MathUtils.lerp(faceOutwardYaw, seatTransform.facingYaw, k);
+          sitFactor = k > 0.68 ? (k - 0.68) / 0.32 : 0;
+          leftArmPitchX = THREE.MathUtils.lerp(-1.45, -0.48, k);
+          rightArmPitchX = THREE.MathUtils.lerp(-1.25, -0.48, k);
+        }
+        break;
+      }
 
       if (u < 0.31) {
         // Lao cắt ngang siêu tốc tới trước nạn nhân sớm hơn Sói 0.15s!
@@ -628,7 +815,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 7. TIÊN TRI ĐỨNG DẬY & LƠ LỬNG NHẸ NÂNG QUẢ CẦU PHA LÊ SOI CHÂN TƯỚNG
+    // 7. TIÊN TRI NÂNG CẦU PHA LÊ (CLASSIC) | IT GÕ PHÍM QUÉT IP (OFFICE) | SAO ĐỎ RỌI ĐÈN PIN (SCHOOL)
     // =========================================================================
     case "seer_divine_cast": {
       const standWeight = smoothstep01(u < 0.2 ? u / 0.2 : u > 0.82 ? (1 - u) / 0.18 : 1);
@@ -636,9 +823,40 @@ export function evaluateActorChoreography({
       const fwd = 0.34 * standWeight;
       worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
       worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
-      worldY = mysticFloat * 0.11; // Lơ lửng huyền bí cách mặt sân đá 11cm!
       worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, standWeight);
       sitFactor = 1 - standWeight;
+
+      if (!isClassic) {
+        worldY = 0; // Đứng vững trên mặt sàn (0% bay lơ lửng phép thuật!)
+        if (isOffice) {
+          // Chuyên Viên IT gõ phím Hologram lốc xoáy quét Log IP
+          const typeTap = Math.sin(tClock * 22) * 0.085 * standWeight;
+          spineLeanX = 0.08 * standWeight;
+          headPitchX = 0.08 * standWeight;
+          leftArmPitchX = -0.48 - 0.72 * standWeight + typeTap;
+          rightArmPitchX = -0.48 - 0.72 * standWeight - typeTap;
+          leftForeArmBend = -0.92;
+          rightForeArmBend = -0.92;
+          leftArmSpreadZ = -0.12 * standWeight;
+          rightArmSpreadZ = 0.12 * standWeight;
+          bodyEmissiveHex = "#10b981";
+          bodyEmissiveIntensity = 0.38 * mysticFloat;
+        } else {
+          // Sao Đỏ Học Đường đứng nghiêm rọi thẳng Đèn Pin Vàng kiểm tra phù hiệu
+          spineLeanX = -0.04 * standWeight;
+          headPitchX = -0.04 * standWeight;
+          rightArmPitchX = -0.48 - 1.05 * standWeight;
+          rightForeArmBend = -0.18;
+          leftArmPitchX = -0.42;
+          leftForeArmBend = -0.85 * standWeight - 0.45 * (1 - standWeight);
+          leftArmSpreadZ = 0.26 * standWeight; // Tay trái chống hông chuẩn Sao Đỏ!
+          bodyEmissiveHex = "#fbbf24";
+          bodyEmissiveIntensity = 0.38 * mysticFloat;
+        }
+        break;
+      }
+
+      worldY = mysticFloat * 0.11; // Lơ lửng huyền bí cách mặt sân đá 11cm!
       spineLeanX = -0.09 * mysticFloat;
       headPitchX = -0.18 * mysticFloat;
       // Hai tay cùng khum khuỷu nâng Quả Cầu Pha Lê trước ngực
@@ -654,9 +872,40 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 8. TRÁNG SĨ CỨNG CỎI TRỤ VỮNG — BẬT DẬY GỒNG CƠ NGỰC BÙNG LỬA Ý CHÍ THÉP
+    // 8. TRÁNG SĨ CỨNG CỎI (CLASSIC) | THÂM NIÊN NÂNG CỐC ESPRESSO (OFFICE) | HỌC SINH GIỎI GIƠ ĐIỂM 10 (SCHOOL)
     // =========================================================================
     case "tough_iron_roar": {
+      if (!isClassic) {
+        const standWeight = smoothstep01(u < 0.2 ? u / 0.2 : u > 0.84 ? (1 - u) / 0.16 : 1);
+        const pulse = Math.sin(clamp01((u - 0.2) / 0.6) * Math.PI);
+        const fwd = 0.36 * standWeight;
+        worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+        worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+        sitFactor = 1 - standWeight;
+        spineLeanX = -0.12 * pulse;
+        headPitchX = -0.12 * pulse;
+        if (isOffice) {
+          // Nâng Ly Cà Phê Espresso Đặc tự tin trụ KPI thêm 1 ngày
+          rightArmPitchX = -0.48 - 1.55 * standWeight * (0.65 + 0.35 * pulse);
+          rightForeArmBend = -0.55;
+          leftArmPitchX = -0.42;
+          leftForeArmBend = -0.88 * standWeight;
+          leftArmSpreadZ = 0.26 * standWeight;
+          bodyEmissiveHex = "#f59e0b";
+        } else {
+          // Học Sinh Giỏi giơ cao Xấp Bài Thi Điểm 10 bằng cả hai tay
+          leftArmPitchX = -0.48 - 1.48 * standWeight * (0.65 + 0.35 * pulse);
+          rightArmPitchX = -0.48 - 1.48 * standWeight * (0.65 + 0.35 * pulse);
+          leftForeArmBend = -0.45;
+          rightForeArmBend = -0.45;
+          leftArmSpreadZ = 0.16 * pulse;
+          rightArmSpreadZ = -0.16 * pulse;
+          bodyEmissiveHex = "#fbbf24";
+        }
+        bodyEmissiveIntensity = 0.52 * pulse;
+        break;
+      }
+
       if (u < 0.22) {
         // Nghiến răng chịu chấn động ban đầu
         const shock = Math.sin((u / 0.22) * Math.PI);
@@ -688,7 +937,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 9. KẺ BỊ NGUYỀN CO GIẬT ÔM ĐẦU & NGỬA CỔ HÚ TRĂNG HÓA THÀNH MA SÓI!
+    // 9. KẺ BỊ NGUYỀN HÓA SÓI (CLASSIC) | THỰC TẬP SINH ĐƯỢC CẤT NHẮC VIP (OFFICE) | ĐEO BĂNG ĐỎ BAN GIÁM HIỆU (SCHOOL)
     // =========================================================================
     case "cursed_blood_metamorph": {
       const standWeight = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.85 ? (1 - u) / 0.15 : 1);
@@ -696,6 +945,37 @@ export function evaluateActorChoreography({
       worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
       worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
       sitFactor = 1 - standWeight;
+
+      if (!isClassic) {
+        // 0% ôm đầu co giật & 0% ngửa cổ hú trăng!
+        if (u < 0.42) {
+          // Ngạc nhiên mở Quyết Định Bổ Nhiệm / Nhận Băng Đỏ Ban Cán Sự
+          spineLeanX = 0.1 * standWeight;
+          headPitchX = 0.18 * standWeight;
+          leftArmPitchX = -1.05 * standWeight;
+          rightArmPitchX = -1.05 * standWeight;
+          leftForeArmBend = -0.85 * standWeight;
+          rightForeArmBend = -0.85 * standWeight;
+          bodyEmissiveHex = isOffice ? "#f59e0b" : "#fb7185";
+          bodyEmissiveIntensity = 0.42 * standWeight;
+        } else {
+          // Từ 42%: Khoác Suit Sếp / Đeo Băng Đỏ Giám Thị — Chỉnh cà vạt & khoanh tay tự hào!
+          overrideCostumeRole = "wolf";
+          const proud = Math.sin(clamp01((u - 0.42) / 0.45) * Math.PI);
+          worldY = 0;
+          spineLeanX = -0.1 * proud;
+          headPitchX = -0.06 * proud;
+          leftArmPitchX = -1.02 * standWeight;
+          rightArmPitchX = -1.02 * standWeight;
+          leftForeArmBend = -1.28 * standWeight;
+          rightForeArmBend = -1.28 * standWeight;
+          leftArmSpreadZ = -0.22 * standWeight;
+          rightArmSpreadZ = 0.22 * standWeight;
+          bodyEmissiveHex = isOffice ? "#fbbf24" : "#e11d48";
+          bodyEmissiveIntensity = 0.56 * proud;
+        }
+        break;
+      }
 
       if (u < 0.42) {
         // Giai đoạn 1: Gập khuỷu ôm đầu co giật dữ dội vì huyết nguyền sôi sục
@@ -733,7 +1013,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 10. ÁP GIẢI BƯỚC BỘ RA ĐÀI TREO CỔ D5 (TREO CỔ THƯỜNG vs CHÁN ĐỜI ĐẮC THẮNG!)
+    // 10. ĐÀI TREO CỔ (CLASSIC) | BÀN GIAO THÙNG CARTON & ĐỀN BÙ (OFFICE) | BỤC KIỂM ĐIỂM & CĂNG-TIN (SCHOOL)
     // =========================================================================
     case "gallows_walk_hang":
     case "gallows_walk_tanner_win": {
@@ -749,7 +1029,6 @@ export function evaluateActorChoreography({
       );
 
       if (u < 0.46) {
-        // Bước bộ lảo đảo theo đường cong tránh lửa ra thẳng Đài Treo Cổ!
         const walkK = easeInOutQuad(u / 0.46);
         const sample = sampleQuadraticBezierXZ(curve, walkK);
         worldX = sample.x;
@@ -757,23 +1036,31 @@ export function evaluateActorChoreography({
         worldYaw = walkK > 0.85 ? gSpot.yaw : sample.tangentYaw;
         sitFactor = u < 0.08 ? 1 - u / 0.08 : 0;
 
-        // Chu kỳ bước chân đối xứng chân trái - chân phải + đánh khuỷu tay & cổ chân tự nhiên
         const stride = Math.sin(walkK * Math.PI * 7);
         worldY = Math.abs(stride) * 0.045;
-        spineLeanX = isTannerWin ? 0.06 : 0.22; // Kẻ bị kết án cúi đầu nặng bước
-        headPitchX = isTannerWin ? -0.05 : 0.28;
+        spineLeanX = isTannerWin ? 0.06 : isClassic ? 0.22 : 0.1;
+        headPitchX = isTannerWin ? -0.05 : isClassic ? 0.28 : 0.14;
         leftThighAddX = -stride * 0.58;
         rightThighAddX = stride * 0.58;
         leftKneeAddX = Math.max(0, stride) * 0.72;
         rightKneeAddX = Math.max(0, -stride) * 0.72;
         leftFootPitch = stride * 0.28;
         rightFootPitch = -stride * 0.28;
-        leftArmPitchX = -0.35 + stride * 0.42;
-        rightArmPitchX = -0.35 - stride * 0.42;
-        leftForeArmBend = -0.45 - Math.max(0, -stride) * 0.35;
-        rightForeArmBend = -0.45 - Math.max(0, stride) * 0.35;
+        if (!isClassic && !isTannerWin && isOffice) {
+          // Ôm Thùng Carton đồ cá nhân trước ngực bước ra cửa bàn giao
+          leftArmPitchX = -0.96;
+          rightArmPitchX = -0.96;
+          leftForeArmBend = -0.82;
+          rightForeArmBend = -0.82;
+          leftArmSpreadZ = -0.14;
+          rightArmSpreadZ = 0.14;
+        } else {
+          leftArmPitchX = -0.35 + stride * 0.42;
+          rightArmPitchX = -0.35 - stride * 0.42;
+          leftForeArmBend = -0.45 - Math.max(0, -stride) * 0.35;
+          rightForeArmBend = -0.45 - Math.max(0, stride) * 0.35;
+        }
       } else {
-        // Đứng trên Đài Treo Cổ đón nhận Phán Quyết Định Mệnh!
         const climaxK = clamp01((u - 0.46) / 0.54);
         worldX = gSpot.x;
         worldZ = gSpot.z;
@@ -781,22 +1068,47 @@ export function evaluateActorChoreography({
         sitFactor = 0;
 
         if (isTannerWin) {
-          // CHÁN ĐỜI THẮNG LỢI: Dang rộng 2 tay ngửa mặt cười điên loạn trong hào quang tím!
-          const laughBounce = Math.abs(Math.sin(tClock * 8.5)) * 0.08;
-          worldY = 0.14 + laughBounce;
-          spineLeanX = -0.26;
-          headPitchX = -0.38;
-          headYawY = Math.sin(tClock * 9) * 0.22;
+          // THẮNG LỢI: Chán Đời (Classic) / Thánh Săn Đền Bù 6 Tháng Lương (Office) / Thánh Thèm Căng-Tin (School)!
+          const laughBounce = Math.abs(Math.sin(tClock * 8.5)) * 0.09;
+          worldY = 0.12 + laughBounce;
+          spineLeanX = isClassic ? -0.26 : -0.16;
+          headPitchX = isClassic ? -0.38 : -0.22;
+          headYawY = Math.sin(tClock * 9) * 0.2;
           leftArmPitchX = -2.35;
           rightArmPitchX = -2.35;
           leftForeArmBend = -0.42;
           rightForeArmBend = -0.42;
-          leftArmSpreadZ = 0.62;
-          rightArmSpreadZ = -0.62;
-          bodyEmissiveHex = "#a855f7";
+          leftArmSpreadZ = 0.58;
+          rightArmSpreadZ = -0.58;
+          bodyEmissiveHex = isOffice ? "#eab308" : isSchool ? "#ec4899" : "#a855f7";
           bodyEmissiveIntensity = 0.65;
+        } else if (!isClassic) {
+          // 0% sập bệ treo cổ!
+          worldY = 0;
+          if (isOffice) {
+            // Công Sở: Tay trái ôm thùng Carton, tay phải vẫy chào đồng nghiệp chuyển sang dự án mới
+            spineLeanX = 0.06;
+            headPitchX = 0.08;
+            leftArmPitchX = -0.96;
+            leftForeArmBend = -0.85;
+            leftArmSpreadZ = -0.14;
+            rightArmPitchX = -1.92;
+            rightForeArmBend = -0.45 + Math.sin(tClock * 7.5) * 0.28;
+            rightArmSpreadZ = -0.28;
+          } else {
+            // Học Đường: Đứng trên bục giảng khoanh hai tay trước ngực cúi đầu tự kiểm điểm ngoan ngoãn!
+            const bowK = smoothstep01(climaxK * 2.5);
+            spineLeanX = 0.22 * bowK;
+            headPitchX = 0.36 * bowK;
+            leftArmPitchX = -1.04;
+            rightArmPitchX = -1.04;
+            leftForeArmBend = -1.36;
+            rightForeArmBend = -1.36;
+            leftArmSpreadZ = -0.22;
+            rightArmSpreadZ = 0.22;
+          }
         } else {
-          // Treo cổ phán quyết: giật nảy tại khoảnh khắc sập bệ rồi rũ đầu bất động
+          // Treo cổ phán quyết (Classic): giật nảy tại khoảnh khắc sập bệ rồi rũ đầu bất động
           const dropShock = climaxK < 0.25 ? Math.sin((climaxK / 0.25) * Math.PI) : 0;
           worldY = 0.22 * smoothstep01(climaxK * 3) - dropShock * 0.08;
           spineLeanX = 0.28 * smoothstep01(climaxK * 2);
@@ -847,9 +1159,26 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 12. SÓI NHỔM DẬY GẦM GỪ TRÊN GHẾ TRONG ĐÊM (CHỈ MÀN HÌNH PHE SÓI THẤY — ZERO LEAK!)
+    // 12. SÓI NHỔM DẬY RÌNH MỒI (CLASSIC) | SẾP GÕ BÌA KPI / CÔ CHỐNG NẠNH DÒ BÀI (OFFICE / SCHOOL)
     // =========================================================================
     case "wolf_stalk_preview": {
+      if (!isClassic) {
+        sitFactor = 0.84;
+        const fwd = 0.08;
+        worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
+        worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
+        worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, 0.72);
+        spineLeanX = 0.12 + Math.sin(tClock * 2.8) * 0.025;
+        leftArmPitchX = isSchool ? -0.42 : -0.68;
+        leftArmSpreadZ = isSchool ? 0.26 : 0.08;
+        rightArmPitchX = -0.92 + Math.sin(tClock * 3.8) * 0.1;
+        leftForeArmBend = -0.78;
+        rightForeArmBend = -0.76;
+        jawOpen = 0;
+        tailYaw = 0;
+        break;
+      }
+
       sitFactor = 0.45; // Nhổm nửa thân rời mặt ghế như thú săn mồi chuẩn bị vồ
       const fwd = 0.18;
       worldX = seatTransform.x + Math.sin(seatTransform.facingYaw) * fwd;
@@ -868,7 +1197,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 13. THỢ SĂN (#19) — QUỲ 1 GỐI GIƯƠNG NỎ BẠC BẮN TRẢ THÙ GIẬT NẢY VAI!
+    // 13. THỢ SĂN QUỲ BẮN NỎ (CLASSIC) | SENIOR PHÓNG TÀU BAY EMAIL CC ALL (OFFICE) | LOA THƯA CÔ (SCHOOL)
     // =========================================================================
     case "hunter_last_shot": {
       const activeW = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.88 ? (1 - u) / 0.12 : 1);
@@ -877,6 +1206,47 @@ export function evaluateActorChoreography({
       worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
       worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, activeW);
       sitFactor = 1 - activeW;
+
+      if (!isClassic) {
+        // Đứng thẳng hiên ngang 100% (0% quỳ gối nỏ bạc!)
+        worldY = 0;
+        if (isOffice) {
+          // Senior Giữ Pass vung tay phải phóng Máy Bay Giấy "EMAIL CC ALL" thẳng vào Sếp!
+          if (u < 0.44) {
+            const windK = smoothstep01(u / 0.36);
+            spineLeanX = -0.14 * windK;
+            spineTwistY = -0.28 * windK;
+            rightArmPitchX = -0.45 - 1.75 * windK;
+            rightForeArmBend = -0.95;
+            leftArmPitchX = -0.78 * windK;
+            bodyEmissiveHex = "#38bdf8";
+            bodyEmissiveIntensity = 0.34 * windK;
+          } else {
+            const throwK = easeOutCubic(clamp01((u - 0.44) / 0.26));
+            spineLeanX = 0.22 * throwK * activeW;
+            spineTwistY = (-0.28 + 0.56 * throwK) * activeW;
+            rightArmPitchX = THREE.MathUtils.lerp(-2.2, -1.25, throwK) * activeW;
+            rightForeArmBend = -0.18;
+            leftArmPitchX = -0.62 * activeW;
+            bodyEmissiveHex = "#0ea5e9";
+            bodyEmissiveIntensity = 0.65 * (1 - clamp01((u - 0.65) / 0.28));
+          }
+        } else {
+          // Chiến Thần Thưa Cô đứng thẳng nâng Loa Phóng Thanh lên miệng phát sóng âm!
+          const shoutWave = u >= 0.44 && u <= 0.78 ? Math.sin(((u - 0.44) / 0.34) * Math.PI) : 0;
+          spineLeanX = -0.1 * activeW - 0.08 * shoutWave;
+          headPitchX = -0.14 * activeW;
+          rightArmPitchX = -0.45 - 1.25 * activeW;
+          leftArmPitchX = -0.45 - 1.18 * activeW;
+          rightForeArmBend = -1.12 * activeW;
+          leftForeArmBend = -1.08 * activeW;
+          rightArmSpreadZ = 0.16 * activeW;
+          leftArmSpreadZ = -0.16 * activeW;
+          bodyEmissiveHex = "#f43f5e";
+          bodyEmissiveIntensity = (0.3 + 0.52 * shoutWave) * activeW;
+        }
+        break;
+      }
 
       // Thế quỳ 1 gối xạ thủ Bắc Âu: chân trái chống vuông góc trước, gối phải chạm sát đá (-0.24m)
       worldY = -0.24 * activeW;
@@ -925,7 +1295,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 14. THẦN TÌNH YÊU CUPID (#20) — BAY LƠ LỬNG GIƯƠNG CUNG BẮN ĐÔI TƠ HỒNG!
+    // 14. CUPID BẮN TƠ HỒNG (CLASSIC) | BÀ TÁM SHIP ĐÔI OT (OFFICE) | BÀ MỐI NÉM THƯ BÀN CUỐI (SCHOOL)
     // =========================================================================
     case "cupid_love_arrow": {
       const standW = smoothstep01(u < 0.16 ? u / 0.16 : u > 0.86 ? (1 - u) / 0.14 : 1);
@@ -934,7 +1304,6 @@ export function evaluateActorChoreography({
       worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
       sitFactor = 1 - standW;
 
-      // Xoay hướng nhìn về trung điểm của Đôi Tình Nhân A & B (hoặc quét nhẹ từ A sang B)
       const yawA = yawToTargetFromSeat;
       const yawB = secondaryTargetSeat
         ? Math.atan2(secondaryTargetSeat.x - seatTransform.x, secondaryTargetSeat.z - seatTransform.z)
@@ -945,6 +1314,20 @@ export function evaluateActorChoreography({
       while (diffYaw < -Math.PI) diffYaw += Math.PI * 2;
       const aimYaw = yawA + diffYaw * (0.25 + 0.5 * panMix);
       worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, aimYaw, standW);
+
+      if (!isClassic) {
+        // Đứng trên mặt sàn nhún nhảy hào hứng ship đôi Trà Sữa / Thư Tình Hồng (0% bay cánh thiên thần!)
+        worldY = Math.abs(Math.sin(tClock * 5.2)) * 0.03 * standW;
+        const tossK = clamp01((u - 0.38) / 0.32);
+        spineLeanX = (u < 0.44 ? -0.06 : 0.14 * Math.sin(tossK * Math.PI)) * standW;
+        leftArmPitchX = (-1.15 - 0.25 * Math.sin(tossK * Math.PI)) * standW;
+        rightArmPitchX = (-1.35 - 0.45 * Math.sin(tossK * Math.PI)) * standW;
+        leftForeArmBend = -0.65;
+        rightForeArmBend = -0.35;
+        bodyEmissiveHex = "#ec4899";
+        bodyEmissiveIntensity = 0.52 * standW;
+        break;
+      }
 
       // Bay lơ lửng thần thoại cách mặt sân đá 22cm + co nhẹ chân trên không
       worldY = (0.22 + Math.sin(tClock * 4.4) * 0.035) * standW;
@@ -983,7 +1366,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 15. ĐÔI TÌNH NHÂN ĐỨT TƠ HỒNG — VƯƠN TAY TUYỆT VỌNG & ÔM NGỰC QUỲ GỤC!
+    // 15. ĐÔI TÌNH NHÂN ĐỨT TƠ HỒNG (CLASSIC) | ĐÔI BẠN OT / CẶP BÀI TRÙNG RỜI TEAM CÙNG NHAU (OFFICE / SCHOOL)
     // =========================================================================
     case "lovers_heartbreak_cascade": {
       const standW = smoothstep01(u < 0.14 ? u / 0.14 : u > 0.88 ? (1 - u) / 0.12 : 1);
@@ -992,6 +1375,32 @@ export function evaluateActorChoreography({
       worldZ = seatTransform.z + Math.cos(seatTransform.facingYaw) * fwd;
       worldYaw = THREE.MathUtils.lerp(seatTransform.facingYaw, yawToTargetFromSeat, standW);
       sitFactor = 1 - standW;
+
+      if (!isClassic) {
+        // Đứng thẳng nhún vai tiếc nuối đồng hành cùng đồng đội OT / bạn cùng bàn (0% ôm ngực quỳ gục bi thương!)
+        worldY = 0;
+        if (u < 0.44) {
+          const reach = smoothstep01(u / 0.34);
+          spineLeanX = 0.1 * reach;
+          leftArmPitchX = -0.45 - 0.75 * reach;
+          rightArmPitchX = -0.45 - 0.75 * reach;
+          bodyEmissiveHex = "#f472b6";
+          bodyEmissiveIntensity = 0.32 * reach;
+        } else {
+          const shrugK = smoothstep01((u - 0.44) / 0.26);
+          spineLeanX = 0.08 * shrugK * standW;
+          headYawY = Math.sin(tClock * 8) * 0.14 * standW;
+          leftArmPitchX = -0.88 * standW;
+          rightArmPitchX = -0.88 * standW;
+          leftForeArmBend = -0.68 * standW;
+          rightForeArmBend = -0.68 * standW;
+          leftArmSpreadZ = 0.36 * shrugK * standW;
+          rightArmSpreadZ = -0.36 * shrugK * standW;
+          bodyEmissiveHex = "#fb7185";
+          bodyEmissiveIntensity = 0.48 * (1 - clamp01((u - 0.56) / 0.36));
+        }
+        break;
+      }
 
       if (u < 0.44) {
         // Nhịp 1: Đứng bật dậy vươn hai tay về phía người thương đối diện trước khi dây tơ đứt
@@ -1027,7 +1436,7 @@ export function evaluateActorChoreography({
     }
 
     // =========================================================================
-    // 16. SÓI ĐẦU ĐÀN (#21) — PHÓNG VỒ BEZIER KHẮC ẤN HUYẾT NGUYỆT & HÚ TRĂNG!
+    // 16. SÓI ĐẦU ĐÀN HUYẾT NGUYỆT (CLASSIC) | CHỦ TỊCH TRAO THẺ VIP (OFFICE) | GIÁM THỊ TRAO BĂNG ĐỎ (SCHOOL)
     // =========================================================================
     case "alpha_blood_convert": {
       const land = computeVictimFrontLandingXZ(targetSeat || { x: 0, z: 0, facingYaw: 0 }, 0.88, 0, 1);
@@ -1039,6 +1448,56 @@ export function evaluateActorChoreography({
         CAMPFIRE_SAFE_RADIUS,
         0
       );
+
+      if (!isClassic) {
+        // Đi bộ quyền uy tới trao Thẻ VIP / Băng Đỏ Ban Giám Hiệu (0% phóng nhảy 1.08m & 0% hú trăng!)
+        if (u < 0.34) {
+          const walkK = clamp01((u - 0.04) / 0.3);
+          const sample = sampleQuadraticBezierXZ(curve, easeInOutQuad(walkK));
+          const stride = Math.sin(walkK * Math.PI * 5.5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = Math.abs(stride) * 0.045;
+          worldYaw = walkK < 0.84 ? sample.tangentYaw : land.faceTargetYaw;
+          sitFactor = u < 0.08 ? 1 - u / 0.08 : 0;
+          spineLeanX = 0.06;
+          leftThighAddX = -stride * 0.56;
+          rightThighAddX = stride * 0.56;
+          leftKneeAddX = Math.max(0, stride) * 0.65;
+          rightKneeAddX = Math.max(0, -stride) * 0.65;
+          rightArmPitchX = -0.95;
+          leftArmPitchX = -0.45;
+        } else if (u < 0.78) {
+          // Đứng uy nghi trao Thẻ Đỏ VIP / Băng Đỏ Giám Thị và bắt tay chúc mừng gia nhập Ban Điều Hành
+          const handoffK = smoothstep01((u - 0.34) / 0.22);
+          const nodK = u >= 0.56 ? Math.sin(((u - 0.56) / 0.22) * Math.PI) : 0;
+          worldX = land.x;
+          worldZ = land.z;
+          worldY = 0;
+          worldYaw = land.faceTargetYaw;
+          sitFactor = 0;
+          spineLeanX = -0.06 + nodK * 0.1;
+          headPitchX = nodK * 0.16;
+          rightArmPitchX = -0.6 - 0.92 * handoffK;
+          rightForeArmBend = -0.28;
+          leftArmPitchX = -0.48 - 0.35 * nodK;
+          leftArmSpreadZ = 0.18;
+          bodyEmissiveHex = isOffice ? "#fbbf24" : "#e11d48";
+          bodyEmissiveIntensity = 0.62 * Math.max(0.35, handoffK);
+        } else {
+          const retK = clamp01((u - 0.78) / 0.22);
+          const sample = sampleQuadraticBezierXZ(curve, 1 - easeInOutQuad(retK));
+          const stride = Math.sin(retK * Math.PI * 4.5);
+          worldX = sample.x;
+          worldZ = sample.z;
+          worldY = retK < 0.78 ? Math.abs(stride) * 0.04 : 0;
+          worldYaw = THREE.MathUtils.lerp(land.faceTargetYaw, seatTransform.facingYaw, retK);
+          sitFactor = retK > 0.78 ? (retK - 0.78) / 0.22 : 0;
+          leftThighAddX = -stride * 0.45 * (1 - retK);
+          rightThighAddX = stride * 0.45 * (1 - retK);
+        }
+        break;
+      }
 
       if (u < 0.34) {
         // Nhịp 1: Sói Vương 2.18m phóng bật cao 1.08m uy lực vượt lửa trại
@@ -1200,8 +1659,14 @@ export function evaluateActorChoreography({
  * Xây dựng mảng các đường cong Quỹ đạo 3D (Debug Trajectories) để hiển thị trực tiếp
  * trên sân đá trong chế độ '📐 Đường Quỹ Đạo 3D & Gợi Ý Rig Tripo'!
  */
-export function buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpot }) {
+export function buildChoreographyDebugArcs({
+  actorChoreoMap,
+  seatMap,
+  gallowsSpot,
+  universeId = "classic",
+}) {
   if (!actorChoreoMap || !seatMap) return [];
+  const isClassic = !universeId || universeId === "classic";
   const arcs = [];
 
   Object.entries(actorChoreoMap).forEach(([actorId, spec]) => {
@@ -1210,7 +1675,7 @@ export function buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpo
 
     let endXZ = null;
     let color = "#f59e0b";
-    let peakHeight = 0.85;
+    let peakHeight = isClassic ? 0.85 : 0.08;
     const preferredSide =
       (spec.totalSlots || 1) > 1 ? (spec.slotIndex || 0) - ((spec.totalSlots || 1) - 1) * 0.5 : 0;
 
@@ -1222,8 +1687,8 @@ export function buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpo
         spec.totalSlots || 1
       );
       endXZ = [land.x, land.z];
-      color = "#ef4444";
-      peakHeight = 0.96;
+      color = universeId === "office" ? "#f59e0b" : universeId === "school" ? "#e11d48" : "#ef4444";
+      peakHeight = isClassic ? 0.96 : 0.06;
     } else if (spec.actionType === "wolf_blocked_recoil" && spec.targetId && seatMap[spec.targetId]) {
       const land = computeVictimFrontLandingXZ(
         seatMap[spec.targetId],
@@ -1233,17 +1698,17 @@ export function buildChoreographyDebugArcs({ actorChoreoMap, seatMap, gallowsSpo
       );
       endXZ = [land.x, land.z];
       color = "#f97316";
-      peakHeight = 0.85;
+      peakHeight = isClassic ? 0.85 : 0.06;
     } else if (spec.actionType === "guard_intercept" && spec.targetId && seatMap[spec.targetId]) {
       const land = computeVictimFrontLandingXZ(seatMap[spec.targetId], 0.88, 0, 1);
       endXZ = [land.x, land.z];
-      color = "#3b82f6";
-      peakHeight = 0.58;
+      color = universeId === "school" ? "#10b981" : "#3b82f6";
+      peakHeight = isClassic ? 0.58 : 0.06;
     } else if (spec.actionType === "alpha_blood_convert" && spec.targetId && seatMap[spec.targetId]) {
       const land = computeVictimFrontLandingXZ(seatMap[spec.targetId], 0.88, 0, 1);
       endXZ = [land.x, land.z];
-      color = "#dc2626";
-      peakHeight = 1.08;
+      color = universeId === "office" ? "#fbbf24" : "#dc2626";
+      peakHeight = isClassic ? 1.08 : 0.06;
     } else if (spec.actionType === "hunter_last_shot" && spec.targetId && seatMap[spec.targetId]) {
       const tSeat = seatMap[spec.targetId];
       arcs.push({
@@ -1897,3 +2362,196 @@ export const STUDIO_CHOREO_SCENARIOS = [
     },
   },
 ];
+
+export const CHOREO_SCENARIO_UNIVERSE_TEXT = {
+  office: {
+    hunter_silver_revenge: {
+      label: "✈️📩 Senior Phóng Tàu Bay Email CC All",
+      description:
+        "[Công Sở · Giờ Hành Chính] Senior Giữ Pass đứng thẳng hiên ngang, vung tay phóng Tàu Bay Giấy 'EMAIL CC ALL' kèm hồ sơ bàn giao trúng thẳng Sếp!",
+    },
+    cupid_twin_tether: {
+      label: "🧋✨ Bà Tám Ship Đôi Cạ Cứng OT",
+      description:
+        "[Công Sở · Tăng Ca] Bà Tám Trà Nước đứng hào hứng tung dây duyên Trà Sữa Trân Châu ghép đôi 2 đồng nghiệp thành Cặp Đôi Chung Dự Án OT!",
+    },
+    lovers_tragic_shatter: {
+      label: "💔📋 Cặp Đôi OT Đồng Loạt Nộp Đơn",
+      description:
+        "[Công Sở · Dây Chuyền] Khi 1 người bị cắt KPI rời dự án, đồng đội chung thuyền OT đứng dậy nhún vai nộp đơn rút lui theo cùng nhau!",
+    },
+    alpha_wolf_blood_brand: {
+      label: "👑👔 Chủ Tịch HĐQT Trao Thẻ Đỏ VIP",
+      description:
+        "[Công Sở · Tầng 18] Chủ Tịch HĐQT bước bộ uy nghiêm tới trước mặt nhân sự, trao Thẻ Đỏ VIP cất nhắc thẳng vào Ban Giám Đốc!",
+    },
+    mayor_golden_decree: {
+      label: "🏅⚖️ Chủ Tịch Công Đoàn Chốt Phiếu x2",
+      description:
+        "[Công Sở · Họp Giao Ban] Chủ Tịch Công Đoàn bước lên giơ cao Cúp Vàng Quyền Lực phát sóng chấn động Hoàng Kim nhân đôi trọng số biểu quyết!",
+    },
+    villager_trio_showcase: {
+      label: "💼👔 Đội Hình Nhân Sự Văn Phòng Giơ Thẻ HR",
+      description:
+        "[Công Sở · Phòng Họp Kính] Soi trực quan dàn nhân sự Anime Suit đồng loạt đứng dậy giơ Thẻ Đỏ HR biểu quyết điều chuyển nhân sự!",
+    },
+    wolf_solo_pounce: {
+      label: "👔📉 1 Sếp Bước Tới Đóng Mộc Cắt KPI",
+      description:
+        "Sếp rời ghế xoay, bước bộ dứt khoát tới bàn Nhân viên #5 rồi dộng mạnh Con Dấu Đỏ 'CẮT KPI' phát chấn động vàng-đỏ (0% nhảy vồ trên không!).",
+    },
+    wolf_pack_3_fan: {
+      label: "👔👔👔 Hội Đồng 3 Sếp Kiểm Toán KPI",
+      description:
+        "Cả 3 Sếp cùng rời ghế xoay từ 3 hướng, bước bộ tách góc quạt lịch lãm tới trước bàn Nhân viên #5 đồng loạt đóng mộc cắt KPI!",
+    },
+    guard_dual_clash: {
+      label: "🛡️💻 Team Lead Bật Tường Lửa Chặn Sếp",
+      description:
+        "Đối kháng Công Sở: Sếp bước tới định đóng mộc cắt KPI nhưng Team Lead bước chắn ngang mở Tường Lửa Hologram Xanh — khiến Sếp khựng lùi lịch thiệp!",
+    },
+    witch_elixir_save: {
+      label: "💳💚 Kế Toán Tung Thưởng Nóng Chuyên Cần",
+      description:
+        "Kế Toán Trưởng đứng dậy nâng cao Thẻ Thưởng Chuyên Cần xanh ngọc duyệt cứu nguy 100% lương thưởng cho đồng nghiệp!",
+    },
+    witch_poison_hurl: {
+      label: "🪙⚡ Kế Toán Phóng Lệnh Khấu Trừ Lương",
+      description:
+        "Kế Toán Trưởng xoay vai phóng Đồng Xu Khấu Trừ Vàng vạch trần kẻ khả nghi ngay trong ca OT!",
+    },
+    seer_orb_divine: {
+      label: "💻🟢 Chuyên Viên IT Gõ Phím Quét Log IP",
+      description:
+        "Chuyên Viên IT đứng vững gõ bàn phím Hologram siêu tốc, phóng chùm Laser Matrix Xanh kiểm tra IP đăng nhập là Sếp hay Nhân viên!",
+    },
+    tough_iron_endure: {
+      label: "☕💪 Nhân Viên Thâm Niên Nâng Cốc Espresso",
+      description:
+        "Nhờ ly Espresso đặc và thâm niên dày dạn, Nhân Viên Thâm Niên đứng thẳng nâng cốc vàng cam trụ vững thêm trọn 1 ngày làm việc!",
+    },
+    cursed_metamorph: {
+      label: "🪪➡️👔 Thực Tập Sinh Nhận Thẻ VIP Lên Sếp",
+      description:
+        "Thực Tập Sinh ngạc nhiên mở Quyết Định Bổ Nhiệm rồi khoác Suit Sếp, chỉnh cà vạt khoanh tay tự hào gia nhập Ban Điều Hành!",
+    },
+    tanner_gallows_laugh: {
+      label: "🏖️💰 Thánh Săn Đền Bù Ăn Trọn 6 Tháng Lương",
+      description:
+        "Cả văn phòng giơ Thẻ Đỏ HR cho nghỉ việc — ai ngờ Thánh Săn Đền Bù bước lên bục tung hoa ăn mừng gói đền bù 6 tháng lương đi Phú Quốc!",
+    },
+    villager_tribunal_hang: {
+      label: "📦👋 Biểu Quyết HR & Ôm Thùng Carton Bàn Giao",
+      description:
+        "Đồng nghiệp đồng loạt giơ Thẻ Đỏ HR; nhân sự bị gọi tên ôm Thùng Carton đồ cá nhân bước lên vẫy tay chào tạm biệt chuyển dự án!",
+    },
+    cloak_wolf_night_stalk: {
+      label: "👔📁 Giờ Tăng Ca & Sếp Ngồi Soi Bìa KPI",
+      description:
+        "Kiểm chứng In-Game Zero-Leak: Nhân viên nghỉ giải lao, chỉ riêng các Sếp nhìn thấy nhau nghiêng người gõ nhẹ Bìa Hồ Sơ Đỏ chọn người cắt KPI!",
+    },
+  },
+  school: {
+    hunter_silver_revenge: {
+      label: "📢💥 Chiến Thần Thưa Cô Bật Loa Phóng Thanh",
+      description:
+        "[Học Đường · Ra Chơi] Chiến Thần Thưa Cô đứng thẳng nâng Loa Đỏ-Trắng lên miệng phát sóng âm 'EM THƯA CÔ BẠN ẤY CŨNG NÓI CHUYỆN!'",
+    },
+    cupid_twin_tether: {
+      label: "💌✨ Bà Mối Bàn Cuối Ném Thư Tình Hồng",
+      description:
+        "[Học Đường · Tự Học] Bà Mối Bàn Cuối hào hứng ném Thư Giấy Gấp Hồng ghép đôi 2 bạn học thành Cặp Bài Trùng Cùng Bàn!",
+    },
+    lovers_tragic_shatter: {
+      label: "💔📒 Đôi Bạn Cùng Bàn Chịu Phạt Chung",
+      description:
+        "[Học Đường · Dây Chuyền] Khi 1 bạn bị ghi Sổ Đầu Bài, người bạn cùng bàn đứng dậy nhún vai đồng cam cộng khổ lên văn phòng Đoàn cùng nhau!",
+    },
+    alpha_wolf_blood_brand: {
+      label: "🚨🎽 Giám Thị Trao Băng Đỏ Ban Cán Sự",
+      description:
+        "[Học Đường · Hành Lang] Thầy Giám Thị bước bộ nghiêm nghị tới trao Băng Đỏ Trực Nhật mật, thu nạp học sinh về phe Ban Giám Hiệu!",
+    },
+    mayor_golden_decree: {
+      label: "⭐🚩 Lớp Trưởng Phất Cờ Thi Đua x2",
+      description:
+        "[Học Đường · Sinh Hoạt Lớp] Lớp Trưởng bước lên giơ cao Huy Hiệu Cờ Đỏ Sao Vàng nhân đôi uy tín lá phiếu trước cả lớp!",
+    },
+    villager_trio_showcase: {
+      label: "🎒🙋 Cả Lớp Đồng Phục Giơ Bảng Biểu Quyết",
+      description:
+        "[Học Đường · Lớp Học Hoàng Hôn] Dàn học sinh Anime đồng phục thủy thủ/sơ mi trắng đồng loạt đứng dậy giơ Bảng Đỏ biểu quyết!",
+    },
+    wolf_solo_pounce: {
+      label: "👩‍🏫📏 Cô Chủ Nhiệm Bước Tới Gõ Thước & Ghi Sổ",
+      description:
+        "Cô Chủ Nhiệm rời ghế, bước bộ nghiêm túc tới bàn Học sinh #5, gõ Thước Gỗ và đóng dấu Sao Đỏ Sổ Đầu Bài (0% nhảy vồ móng vuốt!).",
+    },
+    wolf_pack_3_fan: {
+      label: "👩‍🏫🚨👩‍🏫 Tổ Giáo Viên Kiểm Tra Đột Xuất 3 Hướng",
+      description:
+        "Cả 3 Thầy Cô bước bộ từ 3 phía tới trước bàn Học sinh #5 kiểm tra bài cũ và ghi nhận vi phạm nội quy đồng bộ!",
+    },
+    guard_dual_clash: {
+      label: "📚💚 Lớp Phó Giơ Bảng Phấn Xanh Đỡ Lời",
+      description:
+        "Đối kháng Học Đường: Cô Chủ Nhiệm bước tới định ghi sổ nhưng Lớp Phó Học Tập chạy ra giơ Bảng Xanh 'Bạn ấy đang giảng bài!' che chắn kịp thời!",
+    },
+    witch_elixir_save: {
+      label: "🌸💯 Thư Ký Tặng Hoa Điểm 10 Xóa Tên Sổ",
+      description:
+        "Thư Ký Sổ Đầu Bài đứng dậy trao Bông Hoa Điểm 10 lấp lánh xóa tên bạn học khỏi danh sách phê bình tiết tự học!",
+    },
+    witch_poison_hurl: {
+      label: "📒⚡ Thư Ký Phóng Sổ Đầu Bài Ghi Thẳng Tên",
+      description:
+        "Thư Ký xoay vai phóng Cuốn Sổ Đầu Bài Đỏ Chót đáp trúng bàn đối tượng gây mất trật tự trong lớp!",
+    },
+    seer_orb_divine: {
+      label: "🎽🔦 Sao Đỏ Chống Hông Rọi Đèn Pin Kiểm Tra",
+      description:
+        "Đội Viên Sao Đỏ đứng thẳng tay chống hông, tay phải rọi thẳng chùm Đèn Pin Vàng kiểm tra phù hiệu phát hiện Giáo Viên hay Học Sinh!",
+    },
+    tough_iron_endure: {
+      label: "🏆📄 Học Sinh Giỏi Giơ Cao Bài Thi Điểm 10",
+      description:
+        "Nhờ thành tích Học Sinh Giỏi cấp trường, cậu bạn tự tin giơ cao xấp Bài Thi Điểm 10 vàng rực được miễn phạt thêm trọn 1 tiết!",
+    },
+    cursed_metamorph: {
+      label: "🤫➡️🎽 Tổ Trưởng Ngầm Đeo Băng Đỏ Giám Thị",
+      description:
+        "Tổ Trưởng Ngầm bất ngờ nhận tín hiệu từ Giáo Viên, đeo Băng Đỏ lên tay và khoanh tay nghiêm nghị về phe Ban Giám Hiệu!",
+    },
+    tanner_gallows_laugh: {
+      label: "🧋🎉 Thánh Thèm Căng-Tin Được Ra Ngoài Mua Trà Sữa",
+      description:
+        "Cả lớp giơ bảng mời ra khỏi lớp — đúng ý Thánh Thèm Căng-Tin nhảy cẫng ăn mừng vì được chuồn xuống căng-tin uống trà sữa sớm!",
+    },
+    villager_tribunal_hang: {
+      label: "🙋🙇 Sinh Hoạt Lớp & Khoanh Tay Cúi Đầu Kiểm Điểm",
+      description:
+        "Cả lớp giơ Bảng Biểu Quyết; người bị gọi tên bước lên bục giảng ngoan ngoãn khoanh hai tay trước ngực cúi đầu tự kiểm điểm!",
+    },
+    cloak_wolf_night_stalk: {
+      label: "🎒📏 Giờ Tự Học & Thầy Cô Đi Tuần Ngầm",
+      description:
+        "Kiểm chứng In-Game Zero-Leak: Cả lớp cúi đầu ôn bài, chỉ riêng Thầy Cô thấy nhau cầm Thước Gỗ quan sát chọn bàn kiểm tra!",
+    },
+  },
+};
+
+export function getChoreoScenariosForUniverse(universeId = "classic") {
+  if (!universeId || universeId === "classic" || !CHOREO_SCENARIO_UNIVERSE_TEXT[universeId]) {
+    return STUDIO_CHOREO_SCENARIOS;
+  }
+  const dict = CHOREO_SCENARIO_UNIVERSE_TEXT[universeId];
+  return STUDIO_CHOREO_SCENARIOS.map((sc) => {
+    const ov = dict[sc.id];
+    if (!ov) return sc;
+    return {
+      ...sc,
+      label: ov.label || sc.label,
+      description: ov.description || sc.description,
+    };
+  });
+}

@@ -9,12 +9,13 @@ import {
 // Files cần: /audio/ambient_night.mp3, /audio/ambient_day.mp3, /audio/ambient_tense.mp3
 // Nếu file không tồn tại -> silent fail (không crash)
 
-export default function AmbientSound({ isNight, isTense, enabled }) {
+export default function AmbientSound({ isNight, isTense, enabled, universeId = "classic" }) {
   const audioRef = useRef(null);
   const currentSrcRef = useRef(null);
 
   useEffect(() => {
-    if (!enabled) {
+    // Chỉ phát tiếng củi nổ lửa trại & gió rừng Bắc Âu trong vũ trụ Ma Sói Classic
+    if (!enabled || universeId !== "classic") {
       stopBonfireCrackling();
       if (audioRef.current) {
         audioRef.current.pause();
@@ -66,19 +67,19 @@ export default function AmbientSound({ isNight, isTense, enabled }) {
     return () => {
       clearInterval(fadeIn);
     };
-  }, [isNight, isTense, enabled]);
+  }, [isNight, isTense, enabled, universeId]);
 
   // Chốt #12: Tự động nối lại âm thanh nền khi quay lại từ cuộc gọi Zalo / Điện thoại
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible" && enabled) {
+      if (document.visibilityState === "visible" && enabled && universeId === "classic") {
         resumeSpatialAudioIfNeeded();
         audioRef.current?.play?.().catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [enabled]);
+  }, [enabled, universeId]);
 
   // Stop on unmount
   useEffect(() => {

@@ -5,6 +5,7 @@ import {
 import { ASSET_SYNC_VERSION } from "./propManifest.js";
 import { getPublicCitizenPersona } from "../../config/roles.config.js";
 import { loadCitizenAvatarCatalog } from "../../config/citizenAvatars.config.js";
+import { getApiBaseUrl } from "../../config/runtimeEnv.js";
 
 function withAssetVersion(url) {
   if (!url) return null;
@@ -272,6 +273,111 @@ export const CHARACTER_SLOTS = {
     preferNativeClip: true,
     proxySlot: "villager_cloak",
   },
+  // ================== 8 CỔNG VROID / VRM ANIME 3D V4.6 (VŨ TRỤ CÔNG SỞ & HỌC ĐƯỜNG — ZERO-404 HOT-PLUG) ==================
+  office_suit_m: {
+    key: "office_suit_m",
+    portNumber: 31,
+    fileName: "char_office_suit_m.glb",
+    label: "Nhân Viên Vest Nam Anime (#31)",
+    standingHeight: 1.78,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  office_blazer_f: {
+    key: "office_blazer_f",
+    portNumber: 32,
+    fileName: "char_office_blazer_f.glb",
+    label: "Nhân Viên Blazer Nữ Anime (#32)",
+    standingHeight: 1.7,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  office_exec_boss: {
+    key: "office_exec_boss",
+    portNumber: 33,
+    fileName: "char_office_exec_boss.glb",
+    label: "Sếp Tổng Vi Hành Anime (#33)",
+    standingHeight: 1.84,
+    seatHipOffsetY: 0.045,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  office_it_tech: {
+    key: "office_it_tech",
+    portNumber: 34,
+    fileName: "char_office_it_tech.glb",
+    label: "Chuyên Viên IT Anime (#34)",
+    standingHeight: 1.76,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  school_boy_blazer: {
+    key: "school_boy_blazer",
+    portNumber: 35,
+    fileName: "char_school_boy_blazer.glb",
+    label: "Nam Sinh Đồng Phục Anime (#35)",
+    standingHeight: 1.75,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  school_girl_sailor: {
+    key: "school_girl_sailor",
+    portNumber: 36,
+    fileName: "char_school_girl_sailor.glb",
+    label: "Nữ Sinh Đồng Phục Anime (#36)",
+    standingHeight: 1.66,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  school_teacher_f: {
+    key: "school_teacher_f",
+    portNumber: 37,
+    fileName: "char_school_teacher_f.glb",
+    label: "Cô Chủ Nhiệm Vi Hành Anime (#37)",
+    standingHeight: 1.72,
+    seatHipOffsetY: 0.04,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
+  school_proctor_m: {
+    key: "school_proctor_m",
+    portNumber: 38,
+    fileName: "char_school_proctor_m.glb",
+    label: "Thầy Giám Thị Anime (#38)",
+    standingHeight: 1.82,
+    seatHipOffsetY: 0.045,
+    seatForwardOffsetZ: 0.05,
+    staticStandZ: 0.12,
+    tintableCloak: false,
+    preferNativeClip: true,
+    proxySlot: null,
+  },
 };
 
 let availableCharacterModels = {};
@@ -300,7 +406,7 @@ export async function ensureCharacterManifestLoaded({ force = false } = {}) {
   inflightPromise = (async () => {
     if (!import.meta.env.PROD) {
       try {
-        const apiRes = await fetch("http://localhost:3001/api/character-models", {
+        const apiRes = await fetch(`${getApiBaseUrl()}/api/character-models`, {
           cache: "no-store",
         });
         if (apiRes.ok) {
@@ -430,7 +536,59 @@ export function resolveActiveCharacterSlot({
   seatIndex = 0,
   roomCode = "MASOI",
   preferAltWolf = false,
+  universeId = "classic",
 }) {
+  if (universeId === "office") {
+    if (visibleCostumeRole === "wolf" || visibleCostumeRole === "alpha_wolf") {
+      return "office_exec_boss";
+    }
+    if (visibleCostumeRole === "seer" && availableCharacterModels.office_it_tech) {
+      return "office_it_tech";
+    }
+    if (citizenModelId === "office_it_tech" && availableCharacterModels.office_it_tech) {
+      return "office_it_tech";
+    }
+    if (
+      citizenModelId === "office_blazer_f" ||
+      citizenModelId === "office_hr_lead" ||
+      citizenModelId === "office_finance_f"
+    ) {
+      return "office_blazer_f";
+    }
+    if (
+      citizenModelId === "office_suit_m" ||
+      citizenModelId === "office_intern_m" ||
+      citizenModelId === "office_it_tech"
+    ) {
+      return "office_suit_m";
+    }
+    return Math.abs(Number(seatIndex) || 0) % 2 === 0 ? "office_suit_m" : "office_blazer_f";
+  }
+
+  if (universeId === "school") {
+    if (visibleCostumeRole === "alpha_wolf") {
+      return "school_proctor_m";
+    }
+    if (visibleCostumeRole === "wolf") {
+      return "school_teacher_f";
+    }
+    if (
+      citizenModelId === "school_girl_sailor" ||
+      citizenModelId === "school_class_rep" ||
+      citizenModelId === "school_scholar_f"
+    ) {
+      return "school_girl_sailor";
+    }
+    if (
+      citizenModelId === "school_boy_blazer" ||
+      citizenModelId === "school_monitor_m" ||
+      citizenModelId === "school_club_pres"
+    ) {
+      return "school_boy_blazer";
+    }
+    return Math.abs(Number(seatIndex) || 0) % 2 === 0 ? "school_boy_blazer" : "school_girl_sailor";
+  }
+
   const persona = getPublicCitizenPersona(roomCode, seatIndex);
   const resolveCitizenSlot = () => {
     if (citizenModelId) {

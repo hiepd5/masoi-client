@@ -44,6 +44,7 @@ import {
 
 import {
   STUDIO_CHOREO_SCENARIOS,
+  getChoreoScenariosForUniverse,
   resolveGallowsStageSpot,
 } from "../animation/actorChoreography3D.js";
 import {
@@ -55,6 +56,7 @@ import {
   saveGraphicsQualityPresetId,
   subscribeGraphicsQuality,
 } from "../../config/runtimeEnv.js";
+import { normalizeUniverseId } from "../../config/universeThemes.config.js";
 
 // Tách rời 100% mã nguồn D5 Architect Studio & Studio Hoạt Cảnh 9 Vai khỏi Bundle của người chơi trên Web Production!
 const ArchitectGizmo3D = lazy(() =>
@@ -154,11 +156,13 @@ export default function WerewolfScene3D({
   recapStageState = null,
   liveMicroChoreo = null,
   scenePresetId = null,
+  universeId = "classic",
   standaloneArchitect = false,
   standaloneChoreo = false,
   onExitStandalone = null,
   externalOpenArchitectCounter = 0,
 }) {
+  const cleanUniverse = normalizeUniverseId(universeId);
   const isDevSetup = useMemo(() => isDevArchitectAllowed(), []);
   const isLowPowerDevice = useMemo(() => detectLowPowerDevice(), []);
   const [gfxPreset, setGfxPreset] = useState(() => getGraphicsQualityPreset());
@@ -211,7 +215,19 @@ export default function WerewolfScene3D({
 
   // ================== TRẠNG THÁI STUDIO DIỄN THỬ HOẠT CẢNH 9+6 VAI (PRE-VIS RIG STUDIO) ==================
   const [choreoStudioOpen, setChoreoStudioOpen] = useState(() => Boolean(standaloneChoreo && isDevSetup));
-  const [choreoScenarioId, setChoreoScenarioId] = useState("hunter_silver_revenge");
+  const [studioUniverseId, setStudioUniverseId] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const q = p.get("mode") || p.get("universe");
+        if (q) return normalizeUniverseId(q);
+      } catch {
+        // ignore
+      }
+    }
+    return cleanUniverse;
+  });
+  const [choreoScenarioId, setChoreoScenarioId] = useState("wolf_solo_pounce");
   const [choreoMoodOverride, setChoreoMoodOverride] = useState("auto"); // 'auto' | 'night' | 'dawn' | 'day' | 'dusk_trial'
   const [choreoIsPlaying, setChoreoIsPlaying] = useState(true);
   const [choreoLoop, setChoreoLoop] = useState(true);
@@ -220,14 +236,45 @@ export default function WerewolfScene3D({
   const [choreoCycleTick, setChoreoCycleTick] = useState(0);
   const [choreoCameraPreset, setChoreoCameraPreset] = useState("director"); // 'director' | 'high' | 'closeup' | 'free'
   const [choreoShowArcs, setChoreoShowArcs] = useState(true);
-  const [choreoShowRigGuide, setChoreoShowRigGuide] = useState(true);
+  const [choreoShowRigGuide, setChoreoShowRigGuide] = useState(false);
+  const [devPreviewChoreo, setDevPreviewChoreo] = useState(null);
+
+  useEffect(() => {
+    if (!standaloneChoreo) {
+      setStudioUniverseId(cleanUniverse);
+    }
+  }, [cleanUniverse, standaloneChoreo]);
+
+  const effectiveUniverse = choreoStudioOpen ? studioUniverseId : cleanUniverse;
 
   // ================== TRẠNG THÁI D5 ARCHITECT SCENE EDITOR & MULTI-SCENE PRESETS ==================
   const [architectMode, setArchitectMode] = useState(() => Boolean(standaloneArchitect && !standaloneChoreo && isDevSetup));
   const [studioMood, setStudioMood] = useState(() => (standaloneArchitect ? "day" : "auto")); // 'auto' | 'day' | 'dawn' | 'dusk_trial' | 'night'
   const [studioSeatCount, setStudioSeatCount] = useState(8); // 6 | 8 | 12 (ghế tham chiếu khóa cứng trong Studio)
   const [presetsIndex, setPresetsIndex] = useState(null);
-  const [activePresetId, setActivePresetId] = useState(() => scenePresetId || null);
+  const [activePresetId, setActivePresetId] = useState(() => {
+    if (standaloneChoreo) {
+      if (studioUniverseId === "office") return "preset_office_penthouse_3d";
+      if (studioUniverseId === "school") return "preset_school_sunset_3d";
+      return "nordic_village_v3";
+    }
+    return scenePresetId || null;
+  });
+
+  const handleChangeStudioUniverse = useCallback((nextRaw) => {
+    const nextUniv = normalizeUniverseId(nextRaw);
+    setStudioUniverseId(nextUniv);
+    const targetPreset =
+      nextUniv === "office"
+        ? "preset_office_penthouse_3d"
+        : nextUniv === "school"
+          ? "preset_school_sunset_3d"
+          : "nordic_village_v3";
+    setActivePresetId(targetPreset);
+    setChoreoProgress(0);
+    setChoreoCycleTick((c) => c + 1);
+    setChoreoIsPlaying(true);
+  }, []);
   const [syncingTripoConcepts, setSyncingTripoConcepts] = useState(false);
   const [conceptCount, setConceptCount] = useState(0);
   const [layoutNodes, setLayoutNodes] = useState(() => buildDefaultVillageNodes());
@@ -266,12 +313,12 @@ export default function WerewolfScene3D({
     });
   }, []);
 
-  // Đồng bộ theo bối cảnh Chủ Phòng chọn trong ván chơi (khi không mở chế độ Edit D5)
+  // Đồng bộ theo bối cảnh Chủ Phòng chọn trong ván chơi (khi không mở chế độ Edit D5 hoặc Choreo Studio)
   useEffect(() => {
-    if (!architectMode && scenePresetId && scenePresetId !== activePresetId) {
+    if (!architectMode && !choreoStudioOpen && scenePresetId && scenePresetId !== activePresetId) {
       setActivePresetId(scenePresetId);
     }
-  }, [scenePresetId, architectMode, activePresetId]);
+  }, [scenePresetId, architectMode, choreoStudioOpen, activePresetId]);
 
   // Tải bố cục theo Bối Cảnh Đang Mở (hoặc bản nháp localStorage riêng của từng Preset trên máy Dev)
   useEffect(() => {
@@ -310,8 +357,8 @@ export default function WerewolfScene3D({
         activePropKeys.push(pk);
       }
     });
-    preloadActiveLayoutProps(activePropKeys, { includeChair: true });
-  }, [layoutNodes, conceptCount]);
+    preloadActiveLayoutProps(activePropKeys, { includeChair: effectiveUniverse === "classic" });
+  }, [layoutNodes, conceptCount, effectiveUniverse]);
 
   // Mở nhanh D5 Studio khi bấm nút cam trên thanh HUD trong ván đấu
   useEffect(() => {
@@ -857,15 +904,17 @@ export default function WerewolfScene3D({
     }
     if (players && players.length > 0) return players;
     const count = studioSeatCount || 8;
+    const prefix =
+      effectiveUniverse === "office" ? "NV" : effectiveUniverse === "school" ? "HS" : "Ghế";
     return Array.from({ length: count }, (_, idx) => ({
       id: `studio-dummy-${idx + 1}`,
-      name: `Ghế #${idx + 1}`,
+      name: `${prefix} #${idx + 1}`,
       seatIndex: idx,
       alive: true,
       ready: true,
       avatar: "/portraits/badges/villager_cloak.webp",
     }));
-  }, [phase, choreoStudioOpen, architectMode, players, lobbyTargetSeatCount, studioSeatCount]);
+  }, [phase, choreoStudioOpen, architectMode, players, lobbyTargetSeatCount, studioSeatCount, effectiveUniverse]);
 
   const orderedPlayers = useMemo(() => {
     return [...effectivePlayers].sort((a, b) => (a.seatIndex ?? 0) - (b.seatIndex ?? 0));
@@ -878,11 +927,69 @@ export default function WerewolfScene3D({
     [layoutNodes, circleRadius]
   );
 
+  // Lắng nghe sự kiện 1-Click Live Skill Preview từ DevSandbox (chạy được ở cả Sảnh Phòng & Trong Trận!)
+  useEffect(() => {
+    if (!isDevSetup || typeof window === "undefined") return undefined;
+    let clearTimer = null;
+    const handleDevPreview = (ev) => {
+      const detail = ev?.detail || {};
+      if (detail.openStudio) {
+        setShowPropTuner(false);
+        setArchitectMode(false);
+        if (detail.scenarioId) setChoreoScenarioId(detail.scenarioId);
+        setChoreoProgress(0);
+        setChoreoCycleTick((c) => c + 1);
+        setChoreoIsPlaying(true);
+        setChoreoStudioOpen(true);
+        return;
+      }
+      const actionType = detail.actionType;
+      if (!actionType || orderedPlayers.length === 0) return;
+
+      const actorSeat =
+        (me?.id && orderedPlayers.find((p) => p.id === me.id)) || orderedPlayers[0];
+      const actorId = actorSeat?.id;
+      if (!actorId) return;
+
+      const nonActorSeats = orderedPlayers.filter((p) => p.id !== actorId);
+      const preferredTargetIdx = Math.min(2, Math.max(0, Math.floor(nonActorSeats.length / 2)));
+      const targetSeat = nonActorSeats[preferredTargetIdx] || nonActorSeats[0] || actorSeat;
+      const secondarySeat =
+        nonActorSeats.find((p) => p.id !== targetSeat?.id) || targetSeat;
+      const dur = Math.max(2200, Number(detail.durationMs) || 3500);
+
+      setDevPreviewChoreo({
+        actionType,
+        actorId,
+        targetId: targetSeat?.id || null,
+        secondaryTargetId: secondarySeat?.id || null,
+        startedAtPerfMs: performance.now(),
+        durationMs: dur,
+      });
+      if (clearTimer) clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => {
+        setDevPreviewChoreo(null);
+      }, dur + 140);
+    };
+
+    window.addEventListener("ws:dev-preview-choreo", handleDevPreview);
+    return () => {
+      window.removeEventListener("ws:dev-preview-choreo", handleDevPreview);
+      if (clearTimer) clearTimeout(clearTimer);
+    };
+  }, [isDevSetup, orderedPlayers, me?.id]);
+
   // ================== BỘ PHÁT THỜI GIAN THỰC CHO STUDIO DIỄN THỬ HOẠT CẢNH 9 VAI ==================
+  const universeChoreoScenarios = useMemo(
+    () => getChoreoScenariosForUniverse(effectiveUniverse),
+    [effectiveUniverse]
+  );
   const activeChoreoScenario = useMemo(
     () =>
-      STUDIO_CHOREO_SCENARIOS.find((s) => s.id === choreoScenarioId) || STUDIO_CHOREO_SCENARIOS[0],
-    [choreoScenarioId]
+      universeChoreoScenarios.find((s) => s.id === choreoScenarioId) ||
+      universeChoreoScenarios[0] ||
+      STUDIO_CHOREO_SCENARIOS[0],
+    [universeChoreoScenarios, choreoScenarioId]
   );
 
   useEffect(() => {
@@ -990,47 +1097,76 @@ export default function WerewolfScene3D({
 
   const effectiveRecapStage = studioSimStage || (hasWinner ? recapStageState : null);
 
-  // Hoạt cảnh ngắn 3D + VFX trực tiếp trên máy người thực hiện trong trận (100% Zero-Leak)
+  // Hoạt cảnh ngắn 3D + VFX trực tiếp trên máy người thực hiện trong trận (100% Zero-Leak) hoặc 1-Click Dev Preview
   const liveLocalChoreoStage = useMemo(() => {
+    const activeMicro = devPreviewChoreo || liveMicroChoreo;
+    const isDevForced = Boolean(devPreviewChoreo);
     if (
       hasWinner ||
       studioSimStage ||
       architectMode ||
-      !liveMicroChoreo?.actionType ||
-      !liveMicroChoreo?.actorId ||
-      liveMicroChoreo.actorId !== me?.id
+      !activeMicro?.actionType ||
+      !activeMicro?.actorId ||
+      (!isDevForced && activeMicro.actorId !== me?.id)
     ) {
       return null;
     }
     const map = {
-      [liveMicroChoreo.actorId]: {
-        actionType: liveMicroChoreo.actionType,
-        targetId: liveMicroChoreo.targetId || null,
-        secondaryTargetId: liveMicroChoreo.secondaryTargetId || null,
+      [activeMicro.actorId]: {
+        actionType: activeMicro.actionType,
+        targetId: activeMicro.targetId || null,
+        secondaryTargetId: activeMicro.secondaryTargetId || null,
         slotIndex: 0,
         totalSlots: 1,
       },
     };
     if (
-      (liveMicroChoreo.actionType === "wolf_pounce" ||
-        liveMicroChoreo.actionType === "witch_poison_throw" ||
-        liveMicroChoreo.actionType === "hunter_last_shot") &&
-      liveMicroChoreo.targetId &&
-      liveMicroChoreo.targetId !== liveMicroChoreo.actorId
+      (activeMicro.actionType === "wolf_pounce" ||
+        activeMicro.actionType === "witch_poison_throw" ||
+        activeMicro.actionType === "hunter_last_shot") &&
+      activeMicro.targetId &&
+      activeMicro.targetId !== activeMicro.actorId
     ) {
-      map[liveMicroChoreo.targetId] = {
+      map[activeMicro.targetId] = {
         actionType: "victim_hit_recoil",
-        targetId: liveMicroChoreo.actorId,
+        targetId: activeMicro.actorId,
       };
+    } else if (
+      isDevForced &&
+      activeMicro.actionType === "guard_intercept" &&
+      activeMicro.targetId &&
+      activeMicro.secondaryTargetId &&
+      activeMicro.secondaryTargetId !== activeMicro.actorId
+    ) {
+      map[activeMicro.secondaryTargetId] = {
+        actionType: "wolf_blocked_recoil",
+        targetId: activeMicro.targetId,
+        slotIndex: 0,
+        totalSlots: 1,
+      };
+    } else if (
+      isDevForced &&
+      (activeMicro.actionType === "gallows_walk_hang" ||
+        activeMicro.actionType === "gallows_walk_tanner_win")
+    ) {
+      orderedPlayers.forEach((p, idx) => {
+        if (p.id !== activeMicro.actorId) {
+          map[p.id] = {
+            actionType: "tribunal_torch_stand",
+            targetId: activeMicro.actorId,
+            slotIndex: idx,
+          };
+        }
+      });
     }
     return {
       actorChoreoMap: map,
       choreoTiming: {
-        startedAtPerfMs: liveMicroChoreo.startedAtPerfMs,
-        durationMs: liveMicroChoreo.durationMs || 2800,
+        startedAtPerfMs: activeMicro.startedAtPerfMs,
+        durationMs: activeMicro.durationMs || 2800,
       },
     };
-  }, [hasWinner, studioSimStage, architectMode, liveMicroChoreo, me?.id]);
+  }, [hasWinner, studioSimStage, architectMode, devPreviewChoreo, liveMicroChoreo, me?.id, orderedPlayers]);
 
   const effectiveChoreoMap =
     effectiveRecapStage?.actorChoreoMap || liveLocalChoreoStage?.actorChoreoMap || null;
@@ -1835,6 +1971,7 @@ export default function WerewolfScene3D({
               actorChoreoMap={effectiveRecapStage?.actorChoreoMap || null}
               seatMap={seatMap}
               gallowsSpot={gallowsSpot}
+              universeId={effectiveUniverse}
             />
           </Suspense>
         )}
@@ -1873,6 +2010,7 @@ export default function WerewolfScene3D({
             actorChoreoMap={effectiveChoreoMap}
             choreoTiming={effectiveChoreoTiming}
             seatMap={seatMap}
+            universeId={effectiveUniverse}
           />
         )}
 
@@ -1967,6 +2105,7 @@ export default function WerewolfScene3D({
               seatMap={seatMap}
               gallowsSpot={gallowsSpot}
               suppressInlineHtml={!effectiveEnvironmentMood.hasWinner && !architectMode && !studioSimStage}
+              universeId={effectiveUniverse}
               onSelect={onSelectPlayer}
             />
           );
@@ -2001,6 +2140,7 @@ export default function WerewolfScene3D({
           reactions={reactions}
           suspectTags={suspectTags}
           onLobbyKickPlayer={onLobbyKickPlayer}
+          universeId={effectiveUniverse}
         />
       )}
 
@@ -2009,6 +2149,8 @@ export default function WerewolfScene3D({
         <Suspense fallback={null}>
           <ChoreographyStudioHUD
             activeScenarioId={choreoScenarioId}
+            universeId={studioUniverseId}
+            onChangeUniverse={handleChangeStudioUniverse}
             onSelectScenario={(nextId) => {
               setChoreoScenarioId(nextId);
               setChoreoProgress(0);

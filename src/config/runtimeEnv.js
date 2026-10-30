@@ -7,6 +7,26 @@
 export const CLOUD_SERVER_URL = "https://masoi-server-2eca.onrender.com";
 export const LOCAL_DEV_SERVER_URL = "http://localhost:3001";
 
+export function resolveLocalDevServerUrl() {
+  if (typeof window !== "undefined") {
+    try {
+      const host = String(window.location?.hostname || "").trim();
+      if (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        /^192\.168\.\d+\.\d+$/.test(host) ||
+        /^10\.\d+\.\d+\.\d+$/.test(host) ||
+        /^172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+$/.test(host)
+      ) {
+        return `http://${host}:3001`;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return LOCAL_DEV_SERVER_URL;
+}
+
 export function isNativeCapacitor() {
   if (typeof window === "undefined") return false;
   try {
@@ -43,7 +63,7 @@ export function getApiBaseUrl() {
   if (import.meta.env.PROD || isNativeCapacitor()) {
     return CLOUD_SERVER_URL;
   }
-  return LOCAL_DEV_SERVER_URL;
+  return resolveLocalDevServerUrl();
 }
 
 export function getSocketServerUrl() {

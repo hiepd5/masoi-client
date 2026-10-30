@@ -9,11 +9,13 @@ import {
   ROLE_PORTRAIT_BADGES,
   getPublicCitizenPersona,
 } from "../config/roles.config.js";
+import { getUniverseRoleLabel, sanitizeUniverseId } from "../config/universeThemes.config.js";
 import { getCitizenAvatarMeta } from "../config/citizenAvatars.config.js";
 import { SUSPECT_TAG_META } from "../3d/components/SeatHudBatchOverlay.jsx";
 
 export default function PlayerCircle({
   roomCode = "MASOI",
+  universeId = "classic",
   players,
   me,
   phase,
@@ -98,29 +100,34 @@ export default function PlayerCircle({
           let visiblePortraitKey = null;
           let visibleRoleLabel = null;
 
+          const cleanU = sanitizeUniverseId(universeId);
+          const rLabel = (rk) => getUniverseRoleLabel(rk, cleanU);
+
           if ((hasWinner || isDead) && p.role) {
-            if (p.role !== "villager") {
+            if (p.role !== "villager" && cleanU === "classic") {
               visiblePortraitKey =
                 p.role === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : p.role;
             }
-            visibleRoleLabel = ROLE_LABELS[p.role] || p.role;
+            visibleRoleLabel = rLabel(p.role);
           } else if (isMe && myRole) {
-            if (myRole !== "villager") {
+            if (myRole !== "villager" && cleanU === "classic") {
               visiblePortraitKey =
                 myRole === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : myRole;
             }
-            visibleRoleLabel = ROLE_LABELS[myRole] || myRole;
+            visibleRoleLabel = rLabel(myRole);
           } else if (isMayorPublic) {
-            visiblePortraitKey = "mayor";
-            visibleRoleLabel = ROLE_LABELS.mayor;
+            if (cleanU === "classic") visiblePortraitKey = "mayor";
+            visibleRoleLabel = rLabel("mayor");
           } else if (isHunterLastBreath) {
-            visiblePortraitKey = "hunter";
-            visibleRoleLabel = ROLE_LABELS.hunter;
+            if (cleanU === "classic") visiblePortraitKey = "hunter";
+            visibleRoleLabel = rLabel("hunter");
           } else if (isWolfTeammate && String(phase || "").startsWith("night_") && !isDead) {
             const mateRole = alphaWolfId && p.id === alphaWolfId ? "alpha_wolf" : "wolf";
-            visiblePortraitKey =
-              mateRole === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : mateRole;
-            visibleRoleLabel = ROLE_LABELS[mateRole];
+            if (cleanU === "classic") {
+              visiblePortraitKey =
+                mateRole === "wolf" && seatIdx % 2 === 1 ? "wolf_alt" : mateRole;
+            }
+            visibleRoleLabel = rLabel(mateRole);
           }
 
           const portraitSrc = visiblePortraitKey

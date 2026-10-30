@@ -24,6 +24,10 @@ import {
   getDriftingMistTexture,
   getSoftGlowHaloTexture,
 } from "../shaders/villageCinematicShaders.js";
+import {
+  OfficePenthouseStage3D,
+  SchoolSunsetStage3D,
+} from "./OfficePenthouseStage3D.jsx";
 
 // Bảng màu Khí Quyển 4 Buổi chuẩn Concept Bắc Âu Điện Ảnh (Dù Ban Ngày vẫn giữ chất Chạng Vạng Sương Rừng ấm-lạnh mướt mắt!)
 const ATMOSPHERE_PALETTES = {
@@ -2525,6 +2529,30 @@ export default function VillageEnvironment3D({
       );
     }
   });
+
+  if (!architectMode && scenePresetId === "preset_office_penthouse_3d") {
+    return (
+      <OfficePenthouseStage3D
+        circleRadius={circleRadius}
+        phase={phase}
+        isNight={isNightActive}
+        hasWinner={hasWinner}
+        isLowPowerDevice={isLowPowerDevice}
+      />
+    );
+  }
+
+  if (!architectMode && scenePresetId === "preset_school_sunset_3d") {
+    return (
+      <SchoolSunsetStage3D
+        circleRadius={circleRadius}
+        phase={phase}
+        isNight={isNightActive}
+        hasWinner={hasWinner}
+        isLowPowerDevice={isLowPowerDevice}
+      />
+    );
+  }
 
   return (
     <group>

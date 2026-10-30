@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "defaultPresetId": "nordic_village_v3",
-  "updatedAtIso": "2026-10-28T17:00:00.000Z",
+  "updatedAtIso": "2026-10-29T16:00:00.000Z",
   "presets": [
     {
       "id": "nordic_village_v3",
@@ -51,6 +51,32 @@
       "nodeCount": 30,
       "moodHint": "dark_academia",
       "updatedAtIso": "2026-10-29T09:00:00.000Z"
+    },
+    {
+      "id": "preset_office_penthouse_3d",
+      "name": "💼 Công Sở: Penthouse KPI",
+      "shortLabel": "Công Sở 3D",
+      "description": "Phòng họp kính Penthouse cao ốc & bàn tròn Hologram KPI chuẩn Anime Cel-Shaded",
+      "thumbnailUrl": "/backgrounds/concept_space_office_anime.jpg",
+      "url": "/config/presets/preset_office_penthouse_3d.json",
+      "builtIn": true,
+      "slotMode": "procedural_anime_stage",
+      "nodeCount": 1,
+      "moodHint": "office_penthouse",
+      "updatedAtIso": "2026-10-29T16:00:00.000Z"
+    },
+    {
+      "id": "preset_school_sunset_3d",
+      "name": "🎒 Học Đường: Sổ Đầu Bài",
+      "shortLabel": "Học Đường 3D",
+      "description": "Lớp học hoàng hôn nắng ấm, bảng phấn xanh & bục Cúp Thi Đua Anime 3D",
+      "thumbnailUrl": "/backgrounds/concept_space_school_anime.jpg",
+      "url": "/config/presets/preset_school_sunset_3d.json",
+      "builtIn": true,
+      "slotMode": "procedural_anime_stage",
+      "nodeCount": 1,
+      "moodHint": "school_sunset",
+      "updatedAtIso": "2026-10-29T16:00:00.000Z"
     }
   ]
 }

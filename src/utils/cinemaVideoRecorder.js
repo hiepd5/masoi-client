@@ -333,9 +333,87 @@ export function getCinemaAudioEngine() {
       osc.stop(t0 + durationSec + 0.03);
     };
 
-    const triggerBeatSound = (cueKey = "story") => {
+    const triggerBeatSound = (cueKey = "story", universeId = "classic") => {
       try {
         if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        if (universeId === "office") {
+          switch (cueKey) {
+            case "reveal_wave":
+              playTone(392, 392, 0.45, "sine", 0.12, 0);
+              playTone(587.33, 587.33, 0.55, "sine", 0.12, 0.12);
+              playTone(783.99, 783.99, 0.75, "triangle", 0.11, 0.24);
+              break;
+            case "wolf_aim":
+            case "wolf_whisper":
+              playTone(320, 240, 0.22, "triangle", 0.08, 0);
+              break;
+            case "wolf_attack":
+              // Tiếng cộp đóng Mộc Đỏ CẮT KPI đanh gọn
+              playTone(180, 68, 0.28, "triangle", 0.19, 0);
+              playTone(440, 220, 0.22, "sine", 0.11, 0.06);
+              break;
+            case "guard_aim":
+            case "guard_block":
+              playTone(587.33, 880, 0.48, "sine", 0.14, 0);
+              break;
+            case "witch_save":
+              playTone(523.25, 783.99, 0.45, "sine", 0.13, 0);
+              break;
+            case "witch_poison":
+              playTone(349.23, 196, 0.42, "triangle", 0.13, 0);
+              break;
+            case "seer_scan":
+              // Bíp quét IP Wi-Fi Matrix
+              playTone(880, 1174.66, 0.14, "sine", 0.1, 0);
+              playTone(1174.66, 1318.5, 0.18, "sine", 0.1, 0.14);
+              break;
+            case "mvp_crown":
+              playTone(523.25, 523.25, 0.55, "sine", 0.13, 0);
+              playTone(659.25, 659.25, 0.55, "sine", 0.13, 0.12);
+              playTone(783.99, 783.99, 0.65, "sine", 0.13, 0.24);
+              playTone(1046.5, 1046.5, 0.9, "triangle", 0.14, 0.36);
+              break;
+            default:
+              playTone(440, 523.25, 0.25, "sine", 0.07, 0);
+              break;
+          }
+          return;
+        }
+        if (universeId === "school") {
+          switch (cueKey) {
+            case "reveal_wave":
+              // Tiếng chuông vào tiết rộn ràng
+              playTone(659.25, 659.25, 0.22, "triangle", 0.12, 0);
+              playTone(783.99, 783.99, 0.22, "triangle", 0.12, 0.12);
+              playTone(1046.5, 1046.5, 0.45, "sine", 0.12, 0.24);
+              break;
+            case "wolf_aim":
+            case "wolf_whisper":
+              playTone(480, 360, 0.2, "triangle", 0.08, 0);
+              break;
+            case "wolf_attack":
+              // Tiếng gõ thước kẻ gỗ lên bàn + bút tích Sổ Đầu Bài
+              playTone(640, 290, 0.18, "triangle", 0.17, 0);
+              playTone(880, 587.33, 0.24, "sine", 0.11, 0.08);
+              break;
+            case "guard_aim":
+            case "guard_block":
+              playTone(523.25, 783.99, 0.42, "triangle", 0.13, 0);
+              break;
+            case "seer_scan":
+              // Còi/đèn Sao Đỏ
+              playTone(783.99, 987.77, 0.22, "sine", 0.11, 0);
+              break;
+            case "mvp_crown":
+              playTone(523.25, 659.25, 0.35, "triangle", 0.13, 0);
+              playTone(783.99, 1046.5, 0.75, "sine", 0.14, 0.18);
+              break;
+            default:
+              playTone(523.25, 587.33, 0.22, "sine", 0.07, 0);
+              break;
+          }
+          return;
+        }
         switch (cueKey) {
           case "reveal_wave":
             playTone(196, 196, 1.1, "triangle", 0.14, 0);
@@ -560,14 +638,15 @@ export function startCinemaStoryRecording({ getOverlayState, aspectMode = "16:9"
     const state = getOverlayState?.() || {};
     const fontStack = "'Segoe UI', Roboto, system-ui, sans-serif";
 
-    // 4. Nhãn Chương & Huy hiệu Kết Quả + Đóng dấu thương hiệu masoi.hiepd5.com
+    // 4. Nhãn Chương & Huy hiệu Kết Quả + Đóng dấu thương hiệu theo Vũ trụ
+    const watermarkLabel = state.brandWatermark || "🐺 Ma Sói 3D • masoi.hiepd5.com";
     if (isVertical) {
       // Bố cục dọc TikTok 9:16: Thương hiệu ở đỉnh giữa + Nhãn chương xếp gọn không đè UI TikTok bên phải
       ctx.font = `800 20px ${fontStack}`;
       ctx.fillStyle = "#fde047";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("🐺 Ma Sói 3D • masoi.hiepd5.com", outWidth * 0.5, 42);
+      ctx.fillText(watermarkLabel, outWidth * 0.5, 42);
 
       if (state.winnerBanner) {
         ctx.font = `700 17px ${fontStack}`;
@@ -622,7 +701,7 @@ export function startCinemaStoryRecording({ getOverlayState, aspectMode = "16:9"
       ctx.fillStyle = "rgba(253, 224, 71, 0.78)";
       ctx.textAlign = "right";
       ctx.textBaseline = "alphabetic";
-      ctx.fillText("🐺 Ma Sói 3D • masoi.hiepd5.com", outWidth - 24, outHeight - 12);
+      ctx.fillText(watermarkLabel, outWidth - 24, outHeight - 12);
     }
 
     // 5. Bóng Thoại Mật Đàm Sói / Lời Tranh Biện Nhân Vật (nếu cảnh hiện tại có thoại)
